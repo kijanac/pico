@@ -26,6 +26,7 @@ import {
 } from "effect";
 import { PiClient, type PiSession, type PiEmission, PiError } from "./pi.ts";
 import type {
+  ModelSummary,
   PermissionChoice,
   SessionMeta,
   WireEvent,
@@ -74,6 +75,18 @@ export class SessionManager extends Context.Tag("SessionManager")<
       id: string,
       msgId: string,
       choice: PermissionChoice,
+    ) => Effect.Effect<void, PiError | SessionNotFound>;
+    readonly listModels: (
+      id: string,
+    ) => Effect.Effect<{ current?: ModelSummary; models: ModelSummary[] }, PiError | SessionNotFound>;
+    readonly setModel: (
+      id: string,
+      provider: string,
+      modelId: string,
+    ) => Effect.Effect<void, PiError | SessionNotFound>;
+    readonly compact: (
+      id: string,
+      instructions?: string,
     ) => Effect.Effect<void, PiError | SessionNotFound>;
     /** Partial update — title and/or archived state. Returns the new meta. */
     readonly patch: (
@@ -400,6 +413,17 @@ const make = Effect.gen(function* () {
   const approve = (id: string, msgId: string, choice: PermissionChoice) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.approve(msgId, choice));
 
+  const listModels = (id: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.listModels());
+
+  const setModel = (id: string, provider: string, modelId: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) =>
+      ms.pi.setModel(provider, modelId),
+    );
+
+  const compact = (id: string, instructions?: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.compact(instructions));
+
   /**
    * Apply a partial update to the persisted SessionMeta and, when the
    * session is currently live, mirror the change into the in-process
@@ -464,6 +488,9 @@ const make = Effect.gen(function* () {
     send,
     interrupt,
     approve,
+    listModels,
+    setModel,
+    compact,
     patch,
     remove,
   });

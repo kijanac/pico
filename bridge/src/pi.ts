@@ -48,6 +48,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type {
   PermissionChoice,
+  ModelSummary,
   PermissionRequest,
   SessionMeta,
   SessionStatus,
@@ -120,6 +121,9 @@ export interface PiSession {
     id: string,
     choice: PermissionChoice,
   ) => Effect.Effect<void, PiError>;
+  readonly listModels: () => Effect.Effect<{ current?: ModelSummary; models: ModelSummary[] }, PiError>;
+  readonly setModel: (provider: string, modelId: string) => Effect.Effect<void, PiError>;
+  readonly compact: (instructions?: string) => Effect.Effect<void, PiError>;
   readonly close: () => Effect.Effect<void>;
 }
 
@@ -548,6 +552,41 @@ const wirePiSession = (
         Effect.sync(() => {
           // No-op for v0. The permission extension will wire this up.
         }),
+      listModels: () =>
+        Effect.sync(() => {
+          const current = piSession.model;
+          const models = piSession.modelRegistry.getAvailable().map((m) => ({
+            provider: m.provider,
+            id: m.id,
+            name: m.name,
+            reasoning: m.reasoning,
+            input: [...m.input],
+            contextWindow: m.contextWindow,
+            maxTokens: m.maxTokens,
+            current: current?.provider === m.provider && current?.id === m.id,
+            usingOAuth: piSession.modelRegistry.isUsingOAuth(m),
+          }));
+          return {
+            current: models.find((m) => m.current),
+            models,
+          };
+        }),
+      setModel: (provider, modelId) =>
+        Effect.tryPromise({
+          try: async () => {
+            const model = piSession.modelRegistry.find(provider, modelId);
+            if (!model) throw new Error(`model not found: ${provider}/${modelId}`);
+            await piSession.setModel(model);
+          },
+          catch: (e) => new PiError(`setModel failed: ${String(e)}`),
+        }),
+      compact: (instructions) =>
+        Effect.tryPromise({
+          try: async () => {
+            await piSession.compact(instructions?.trim() || undefined);
+          },
+          catch: (e) => new PiError(`compact failed: ${String(e)}`),
+        }),
       close: () =>
         Effect.sync(() => {
           unsub();
@@ -883,6 +922,35 @@ const makeMockSession = (opts: {
           });
           yield* Queue.offer(q, { t: "status", status: "idle" });
         }),
+      listModels: () =>
+        Effect.succeed({
+          current: {
+            provider: "mock",
+            id: "mock-1",
+            name: "Mock Model",
+            reasoning: false,
+            input: ["text"],
+            contextWindow: 100_000,
+            maxTokens: 4096,
+            current: true,
+            usingOAuth: false,
+          },
+          models: [
+            {
+              provider: "mock",
+              id: "mock-1",
+              name: "Mock Model",
+              reasoning: false,
+              input: ["text"],
+              contextWindow: 100_000,
+              maxTokens: 4096,
+              current: true,
+              usingOAuth: false,
+            },
+          ],
+        }),
+      setModel: () => Effect.void,
+      compact: () => Effect.void,
       close: () =>
         Effect.gen(function* () {
           const prev = yield* Ref.get(currentFiber);

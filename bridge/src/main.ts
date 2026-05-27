@@ -59,6 +59,15 @@ const PatchBody = v.object({
   archived: v.optional(v.boolean()),
 });
 
+const SetModelBody = v.object({
+  provider: v.string(),
+  modelId: v.string(),
+});
+
+const CompactBody = v.object({
+  instructions: v.optional(v.string()),
+});
+
 const app = new Hono();
 
 // Capacitor serves the app from a custom origin such as
@@ -156,6 +165,51 @@ app.delete("/sessions/:id", async (c) => {
     return c.json({ error: "not_found" }, 404);
   }
   return c.body(null, 204);
+});
+
+app.get("/sessions/:id/models", async (c) => {
+  const id = c.req.param("id");
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) => m.listModels(id)),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "models_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json(result.value);
+});
+
+app.post("/sessions/:id/model", async (c) => {
+  const id = c.req.param("id");
+  const body = v.safeParse(SetModelBody, await c.req.json().catch(() => null));
+  if (!body.success) {
+    return c.json({ error: "invalid_body", issues: body.issues }, 400);
+  }
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) =>
+      m.setModel(id, body.output.provider, body.output.modelId),
+    ),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "set_model_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json({ ok: true });
+});
+
+app.post("/sessions/:id/compact", async (c) => {
+  const id = c.req.param("id");
+  const body = v.safeParse(CompactBody, await c.req.json().catch(() => ({})));
+  if (!body.success) {
+    return c.json({ error: "invalid_body", issues: body.issues }, 400);
+  }
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) =>
+      m.compact(id, body.output.instructions),
+    ),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "compact_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json({ ok: true });
 });
 
 /* ── slash commands ──────────────────────────────────────────────────── */

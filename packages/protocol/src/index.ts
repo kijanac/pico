@@ -123,6 +123,25 @@ export const SessionMeta = v.object({
 });
 export type SessionMeta = v.InferOutput<typeof SessionMeta>;
 
+export const ModelSummary = v.object({
+  provider: v.string(),
+  id: v.string(),
+  name: v.string(),
+  reasoning: v.boolean(),
+  input: v.array(v.picklist(["text", "image"])),
+  contextWindow: v.number(),
+  maxTokens: v.number(),
+  current: v.boolean(),
+  usingOAuth: v.boolean(),
+});
+export type ModelSummary = v.InferOutput<typeof ModelSummary>;
+
+export const SessionModelState = v.object({
+  current: v.optional(ModelSummary),
+  models: v.array(ModelSummary),
+});
+export type SessionModelState = v.InferOutput<typeof SessionModelState>;
+
 /* ── wire events — server → client ──────────────────────────────────── */
 
 /**

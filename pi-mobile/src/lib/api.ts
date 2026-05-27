@@ -7,7 +7,12 @@
  * app backgrounds.
  */
 import { WebSocket as ReconnectingWS } from "partysocket";
-import type { ClientEvent, SessionMeta, WireEvent } from "@pi-mobile/protocol";
+import type {
+  ClientEvent,
+  SessionMeta,
+  SessionModelState,
+  WireEvent,
+} from "@pi-mobile/protocol";
 
 /* ── REST ───────────────────────────────────────────────────────────── */
 
@@ -78,6 +83,52 @@ export async function healthcheck(baseUrl: string): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/* ── agent actions ──────────────────────────────────────────────────── */
+
+export async function listSessionModels(
+  baseUrl: string,
+  id: string,
+): Promise<SessionModelState> {
+  const res = await fetch(`${baseUrl}/sessions/${encodeURIComponent(id)}/models`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(`listSessionModels ${res.status}: ${body.error ?? "unknown"}`);
+  }
+  return (await res.json()) as SessionModelState;
+}
+
+export async function setSessionModel(
+  baseUrl: string,
+  id: string,
+  opts: { provider: string; modelId: string },
+): Promise<void> {
+  const res = await fetch(`${baseUrl}/sessions/${encodeURIComponent(id)}/model`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(opts),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(`setSessionModel ${res.status}: ${body.error ?? "unknown"}`);
+  }
+}
+
+export async function compactSession(
+  baseUrl: string,
+  id: string,
+  instructions?: string,
+): Promise<void> {
+  const res = await fetch(`${baseUrl}/sessions/${encodeURIComponent(id)}/compact`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ instructions: instructions?.trim() || undefined }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(`compactSession ${res.status}: ${body.error ?? "unknown"}`);
   }
 }
 

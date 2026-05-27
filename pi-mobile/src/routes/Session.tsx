@@ -5,6 +5,7 @@ import StatusDot from "~/components/StatusDot";
 import RetryBanner from "~/components/chat/RetryBanner";
 import MessageList from "~/components/chat/MessageList";
 import InputBar from "~/components/chat/InputBar";
+import SessionAgentActions from "~/components/chat/SessionAgentActions";
 import {
   activeStatus,
   applyWireEvent,
@@ -134,7 +135,10 @@ export default function Session(): JSX.Element {
 
   return (
     <div class="flex min-h-dvh flex-col">
-      <Header back="/">
+      <Header
+        back="/"
+        trailing={<SessionAgentActions sessionId={params.id} />}
+      >
         <Show when={session()}>
           {(s) => (
             <div class="flex min-w-0 items-center gap-2">
