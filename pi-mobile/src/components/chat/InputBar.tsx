@@ -5,7 +5,7 @@ import { activeSend } from "~/stores/connection";
 import { createSpeechRecognition } from "~/lib/speech";
 import { chooseFromGallery } from "~/lib/image-picker";
 import { haptic } from "~/lib/haptics";
-import type { ImageAttachment } from "~/lib/types";
+import type { ImageAttachment } from "@pi-mobile/protocol";
 import SlashPalette from "./SlashPalette";
 import ImageTray from "./ImageTray";
 

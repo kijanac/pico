@@ -5,7 +5,7 @@ import {
   type JSX,
 } from "solid-js";
 import Anser from "anser";
-import type { ToolCallMessage } from "~/lib/types";
+import type { ToolCallMessage } from "@pi-mobile/protocol";
 import { highlightToHtml, inferLangFromPath } from "~/lib/highlighter";
 
 /**

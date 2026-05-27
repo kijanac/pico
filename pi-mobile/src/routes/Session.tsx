@@ -26,7 +26,7 @@ import {
 } from "~/lib/settings";
 import { resumeTick } from "~/lib/lifecycle";
 import { formatCost, formatTokens, shortPath } from "~/lib/format";
-import type { WireEvent } from "~/lib/types";
+import type { WireEvent } from "@pi-mobile/protocol";
 
 export default function Session(): JSX.Element {
   const params = useParams<{ id: string }>();

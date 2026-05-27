@@ -1,5 +1,5 @@
 import { type JSX } from "solid-js";
-import type { SessionStatus } from "~/lib/types";
+import type { SessionStatus } from "@pi-mobile/protocol";
 
 interface Props {
   status: SessionStatus;

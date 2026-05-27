@@ -1,10 +1,8 @@
 /**
- * Wire protocol — defined once with Valibot, types derived.
+ * Shared wire protocol — defined once with Valibot, types derived.
  *
- * This file is logically shared with the mobile client. Until the monorepo
- * lands it lives in both repos; keep them in sync by treating this file as
- * the source of truth and copying into `mobile/src/lib/types.ts` when you
- * touch it.
+ * Both the bridge and mobile client import this package so REST/WS payload
+ * types and runtime validation stay in sync.
  */
 import * as v from "valibot";
 

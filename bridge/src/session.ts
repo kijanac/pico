@@ -29,7 +29,7 @@ import type {
   PermissionChoice,
   SessionMeta,
   WireEvent,
-} from "./protocol.ts";
+} from "@pi-mobile/protocol";
 import { Store } from "./store.ts";
 
 interface ManagedSession {

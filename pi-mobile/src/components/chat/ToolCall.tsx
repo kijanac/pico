@@ -8,7 +8,7 @@ import {
   X,
   Loader2,
 } from "lucide-solid";
-import type { ToolCallMessage, ToolName } from "~/lib/types";
+import type { ToolCallMessage, ToolName } from "@pi-mobile/protocol";
 import { shortPath } from "~/lib/format";
 import EditDiff from "./EditDiff";
 import ToolResult from "./ToolResult";

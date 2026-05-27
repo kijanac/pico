@@ -7,7 +7,7 @@
  * app backgrounds.
  */
 import { WebSocket as ReconnectingWS } from "partysocket";
-import type { ClientEvent, SessionMeta, WireEvent } from "./types";
+import type { ClientEvent, SessionMeta, WireEvent } from "@pi-mobile/protocol";
 
 /* ── REST ───────────────────────────────────────────────────────────── */
 

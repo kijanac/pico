@@ -52,7 +52,7 @@ import type {
   SessionMeta,
   SessionStatus,
   ToolCallMessage,
-} from "./protocol.ts";
+} from "@pi-mobile/protocol";
 import { SessionNotFound } from "./errors.ts";
 
 /* ── public types ────────────────────────────────────────────────────── */

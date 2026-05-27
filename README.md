@@ -8,6 +8,7 @@ This repository contains the mobile client and local bridge for using the pi cod
 | --- | --- |
 | [`bridge/`](./bridge) | Node/TypeScript REST + WebSocket bridge between pi-mobile and the pi coding agent. |
 | [`pi-mobile/`](./pi-mobile) | Solid + Capacitor mobile client. |
+| [`packages/protocol/`](./packages/protocol) | Shared Valibot schemas and TypeScript types for the REST/WS protocol. |
 
 ## Requirements
 
@@ -54,6 +55,7 @@ This typechecks the bridge and builds the mobile app.
 ```text
 .
 ├── bridge/              # pi bridge service
+├── packages/protocol/   # shared protocol schemas/types
 ├── pi-mobile/           # Solid + Capacitor client
 ├── package.json         # root workspace scripts
 ├── pnpm-workspace.yaml  # workspace package list
@@ -64,4 +66,31 @@ This typechecks the bridge and builds the mobile app.
 
 - The original tarballs are import artifacts and are ignored by git.
 - Runtime bridge data (`bridge/data/`, SQLite files) is ignored by git.
-- `bridge/src/protocol.ts` and `pi-mobile/src/lib/types.ts` currently duplicate the wire protocol; if this grows, extract a shared `packages/protocol` workspace package.
+- The bridge and mobile app both import protocol types from `@pi-mobile/protocol`.
+
+## iPhone native shell
+
+Install dependencies from the workspace root first:
+
+```bash
+pnpm install
+```
+
+Then create/open the iOS project:
+
+```bash
+pnpm --filter pi-mobile build
+pnpm --filter pi-mobile exec cap add ios   # first time only
+pnpm --filter pi-mobile exec cap sync ios
+pnpm --filter pi-mobile exec cap open ios
+```
+
+## Remote bridge + iPhone
+
+The intended production shape is:
+
+```text
+iPhone app ──Tailscale HTTPS/WSS──> Hetzner VPS: tailscale serve ──localhost──> pi-bridge ──> pi agent
+```
+
+See [`bridge/deploy/README.md`](./bridge/deploy/README.md) for the full server setup. In short: run `bridge/deploy/install.sh` on the VPS, deploy with `PI_BRIDGE_HOST=root@YOURBOX ./bridge/deploy/deploy.sh`, authenticate pi either by running `/login` as the `pi-bridge` server user or by setting API-key env vars in `/etc/pi-bridge/env`, expose `localhost:7777` with `tailscale serve`, then enter that `https://…ts.net` URL in the iPhone app Settings.

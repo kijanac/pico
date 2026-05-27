@@ -6,7 +6,10 @@ const config: CapacitorConfig = {
   webDir: "dist",
   backgroundColor: "#0a0a0a",
   ios: {
-    contentInset: "always",
+    // Let CSS safe-area env() drive app chrome placement. `always` adds a
+    // native WebView inset on top of our header safe-area padding, which can
+    // show up as a dead strip above sticky headers during iOS rubber-band scroll.
+    contentInset: "never",
     backgroundColor: "#0a0a0a",
   },
   android: {

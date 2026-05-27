@@ -67,9 +67,9 @@
   }
 
   body {
-    /* honour the notch */
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    /* Horizontal safe areas only. Top/bottom are handled by sticky app
+       chrome so the header can pin flush to the viewport without creating
+       a dead strip above it while scrolling. */
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }

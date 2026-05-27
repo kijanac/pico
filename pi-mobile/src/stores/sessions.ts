@@ -12,7 +12,7 @@ import type {
   LogEntry,
   SessionMeta,
   WireEvent,
-} from "~/lib/types";
+} from "@pi-mobile/protocol";
 import * as api from "~/lib/api";
 
 /* ── session list ────────────────────────────────────────────────────── */

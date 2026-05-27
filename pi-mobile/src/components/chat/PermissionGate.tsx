@@ -1,6 +1,6 @@
 import { Show, type JSX } from "solid-js";
 import { Terminal, Shield } from "lucide-solid";
-import type { PermissionRequest } from "~/lib/types";
+import type { PermissionRequest } from "@pi-mobile/protocol";
 import { resolvePermissionLocal } from "~/stores/sessions";
 import { activeSend } from "~/stores/connection";
 

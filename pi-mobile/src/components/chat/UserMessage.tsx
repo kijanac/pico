@@ -1,4 +1,4 @@
-import type { UserMessage } from "~/lib/types";
+import type { UserMessage } from "@pi-mobile/protocol";
 import type { JSX } from "solid-js";
 
 export default function UserMessageView(props: { msg: UserMessage }): JSX.Element {

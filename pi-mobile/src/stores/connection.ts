@@ -2,7 +2,7 @@
  * Live connection state — what the header status pill renders.
  */
 import { createSignal } from "solid-js";
-import type { ClientEvent } from "~/lib/types";
+import type { ClientEvent } from "@pi-mobile/protocol";
 
 /**
  * Live connection state — what the header status pill renders.

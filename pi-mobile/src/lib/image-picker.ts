@@ -4,7 +4,7 @@ import {
   MediaTypeSelection,
   type MediaResult,
 } from "@capacitor/camera";
-import type { ImageAttachment } from "./types";
+import type { ImageAttachment } from "@pi-mobile/protocol";
 
 /**
  * Image picker, wrapping @capacitor/camera v8.

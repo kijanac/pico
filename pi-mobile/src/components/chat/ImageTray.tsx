@@ -1,6 +1,6 @@
 import { For, Show, type JSX } from "solid-js";
 import { X } from "lucide-solid";
-import type { ImageAttachment } from "~/lib/types";
+import type { ImageAttachment } from "@pi-mobile/protocol";
 
 /**
  * Strip of picked-image thumbnails shown above the InputBar textarea.

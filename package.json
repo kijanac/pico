@@ -10,9 +10,9 @@
     "dev:bridge": "pnpm --filter pi-bridge dev",
     "dev:bridge:mock": "PI_USE_MOCK=1 pnpm --filter pi-bridge dev",
     "dev:mobile": "pnpm --filter pi-mobile dev",
-    "typecheck": "pnpm --filter pi-bridge typecheck",
+    "typecheck": "pnpm --filter @pi-mobile/protocol typecheck && pnpm --filter pi-bridge typecheck",
     "build:mobile": "pnpm --filter pi-mobile build",
-    "check": "pnpm --filter pi-bridge typecheck && pnpm --filter pi-mobile build"
+    "check": "pnpm typecheck && pnpm --filter pi-mobile build"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]

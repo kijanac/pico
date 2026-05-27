@@ -1,6 +1,6 @@
 import { Show, type JSX } from "solid-js";
 import { AlertCircle, XCircle, AlertTriangle } from "lucide-solid";
-import type { AssistantMessage } from "~/lib/types";
+import type { AssistantMessage } from "@pi-mobile/protocol";
 import StreamingMarkdown from "./StreamingMarkdown";
 
 /**

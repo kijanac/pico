@@ -25,49 +25,116 @@ providing the HTTPS endpoint the mobile app talks to.
 - A Tailscale account; both the VPS and your phone joined to the same
   tailnet (you'll authenticate the VPS during install, the phone via
   the Tailscale iOS/Android app).
-- An Anthropic API key.
+- Either a pi-supported subscription login — Claude Pro/Max, ChatGPT
+  Plus/Pro/Codex, or GitHub Copilot — or a provider API key.
 - SSH key auth set up (the install + deploy scripts assume `ssh` Just
   Works for the target host).
 
 ## First-time install — on the server
 
 ```sh
-# from your laptop
-scp -r deploy/ root@YOURBOX:/tmp/pi-bridge-deploy/
+# from the repository root on your laptop
+scp -r bridge/deploy/ root@YOURBOX:/tmp/pi-bridge-deploy/
 ssh root@YOURBOX 'bash /tmp/pi-bridge-deploy/install.sh'
 ```
 
 `install.sh` is idempotent — re-running it is safe (won't clobber
 `/etc/pi-bridge/env`). It:
 
-1. Creates the `pi-bridge` system user, `/opt/pi-bridge` source dir,
-   `/var/lib/pi-bridge` data dir.
-2. Installs node 24+ (NodeSource), pnpm 10.5.2 (via corepack),
-   tailscale (via the official install script) if any are missing.
+1. Creates the `pi-bridge` system user, `/opt/pi-mobile-workspace` source dir,
+   `/var/lib/pi-bridge` data dir, and `/var/lib/pi-bridge/workspaces` for git repos.
+2. Installs node 24+ (NodeSource), pnpm 10.5.2 (via corepack), git,
+   and tailscale (via the official install script) if any are missing.
 3. Drops the systemd unit, enables it (doesn't start it yet).
 4. Seeds `/etc/pi-bridge/env` from `env.example` *only if it doesn't
    already exist*.
 
-After it finishes, edit `/etc/pi-bridge/env` to set
-`ANTHROPIC_API_KEY=sk-ant-...`.
+After it finishes, authenticate pi for the same Unix user the systemd service
+runs as. For subscription login, deploy the source first if you have not yet,
+then run:
+
+```sh
+ssh root@YOURBOX
+cd /opt/pi-mobile-workspace/bridge
+sudo -u pi-bridge HOME=/var/lib/pi-bridge pnpm exec pi
+# inside pi: /login, choose Claude / OpenAI Codex / GitHub Copilot,
+# complete the browser or device-code flow, then /quit
+```
+
+This writes credentials to `/var/lib/pi-bridge/.pi/agent/auth.json`, which is
+where the service looks because its `HOME` is `/var/lib/pi-bridge`.
+
+For API-key mode instead, edit `/etc/pi-bridge/env` and set a provider env var
+such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`.
 
 ## Deploy the source — from your laptop
 
 ```sh
-PI_BRIDGE_HOST=root@YOURBOX ./deploy/deploy.sh
+# from the repository root
+PI_BRIDGE_HOST=root@YOURBOX ./bridge/deploy/deploy.sh
 ```
 
-This rsyncs `src/`, `package.json`, `pnpm-lock.yaml`, and
-`tsconfig.json` to `/opt/pi-bridge`, runs `pnpm install --prod
---frozen-lockfile` on the server, restarts the service, and hits
-`/healthz` to confirm the boot succeeded.
+If this is your first deploy and you want subscription auth, run the `pi /login`
+command above after this deploy, then restart once more:
 
-`data/`, `node_modules/`, smoke scripts, and the demo `faux-direct.mjs`
-are excluded — the box doesn't need them.
+```sh
+ssh root@YOURBOX 'systemctl restart pi-bridge'
+```
+
+This rsyncs the workspace pieces the bridge needs — root pnpm metadata,
+`bridge/`, and `packages/` — to `/opt/pi-mobile-workspace`, runs a filtered
+production install for `pi-bridge` and its workspace dependencies, restarts the
+service, and hits `/healthz` to confirm the boot succeeded.
+
+`node_modules/`, build outputs, tarballs, and local scratch files are excluded.
+The mobile source is not deployed to the server; the box only runs the bridge.
 
 Re-run this script for every deploy. The bridge has no migration story
 yet (SQLite tables use `CREATE TABLE IF NOT EXISTS`); a schema change
 will require manual intervention until that's built out.
+
+## Git workspaces on the box
+
+The bridge service is sandboxed so the agent's writable area is
+`/var/lib/pi-bridge`. Clone repos under:
+
+```text
+/var/lib/pi-bridge/workspaces
+```
+
+That directory is also the default root shown by the mobile "choose directory"
+picker. If the picker shows no project folders, the box simply has no repos
+there yet.
+
+For public repos:
+
+```sh
+ssh root@YOURBOX
+sudo -u pi-bridge HOME=/var/lib/pi-bridge git clone \
+  https://github.com/OWNER/REPO.git \
+  /var/lib/pi-bridge/workspaces/REPO
+```
+
+For private repos, create an SSH key for the `pi-bridge` user and add its
+public key as a GitHub/GitLab deploy key or account key:
+
+```sh
+ssh root@YOURBOX
+sudo -u pi-bridge HOME=/var/lib/pi-bridge ssh-keygen -t ed25519 -C pi-bridge@YOURBOX -f /var/lib/pi-bridge/.ssh/id_ed25519
+cat /var/lib/pi-bridge/.ssh/id_ed25519.pub
+# add that public key to GitHub/GitLab, then:
+sudo -u pi-bridge HOME=/var/lib/pi-bridge ssh -T git@github.com
+sudo -u pi-bridge HOME=/var/lib/pi-bridge git clone \
+  git@github.com:OWNER/REPO.git \
+  /var/lib/pi-bridge/workspaces/REPO
+```
+
+Set commit identity for agent-made commits:
+
+```sh
+sudo -u pi-bridge HOME=/var/lib/pi-bridge git config --global user.name "Pi Agent"
+sudo -u pi-bridge HOME=/var/lib/pi-bridge git config --global user.email "pi-agent@YOURBOX"
+```
 
 ## Tailscale serve — one time per box
 
@@ -121,7 +188,7 @@ systemctl stop pi-bridge
 
 # fully remove (irreversible — drops the DB and session JSONLs)
 systemctl disable --now pi-bridge
-rm -rf /opt/pi-bridge /var/lib/pi-bridge /etc/pi-bridge /etc/systemd/system/pi-bridge.service
+rm -rf /opt/pi-mobile-workspace /var/lib/pi-bridge /etc/pi-bridge /etc/systemd/system/pi-bridge.service
 systemctl daemon-reload
 userdel pi-bridge
 ```
@@ -142,9 +209,16 @@ userdel pi-bridge
 ## Troubleshooting
 
 **`systemctl is-active pi-bridge` reports `failed`.** Check
-`journalctl -u pi-bridge -n 50`. Most common: `/etc/pi-bridge/env`
-doesn't have `ANTHROPIC_API_KEY` set, or the value is wrapped in
-quotes (don't quote in env files).
+`journalctl -u pi-bridge -n 50`. Common causes: no provider auth for the
+`pi-bridge` user, stale OAuth credentials, or quoted env values in
+`/etc/pi-bridge/env` for API-key mode. For subscription auth, re-run:
+
+```sh
+cd /opt/pi-mobile-workspace/bridge
+sudo -u pi-bridge HOME=/var/lib/pi-bridge pnpm exec pi
+```
+
+then use `/login` or `/model` as needed.
 
 **Mobile connects but `/healthz` 404s.** The `tailscale serve` route
 isn't pointing at port 7777 — re-run the `tailscale serve` command

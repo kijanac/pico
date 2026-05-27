@@ -13,7 +13,10 @@ interface Props {
 
 export default function Header(props: Props): JSX.Element {
   return (
-    <header class="hairline-b sticky top-0 z-30 bg-[color:var(--color-bg)]/85 backdrop-blur-md">
+    <header
+      class="hairline-b sticky top-0 z-30 bg-[color:var(--color-bg)]/85 backdrop-blur-md"
+      style={{ "padding-top": "env(safe-area-inset-top)" }}
+    >
       <div class="flex h-12 items-center gap-2 px-3">
         <Show
           when={props.back}

@@ -42,11 +42,14 @@ export default function CwdPicker(props: Props): JSX.Element {
   const [path, setPath] = createSignal<string | undefined>(props.initial);
 
   // Fetch the listing for the active path. Re-runs on path change.
-  const [listing] = createResource<FsListing, string | undefined>(
-    () => path(),
+  // Solid does not run a resource fetch when the source is undefined, but
+  // undefined is exactly how this picker asks the bridge for its default root.
+  // Use an empty-string sentinel so the first open fetches /fs/ls immediately.
+  const [listing] = createResource<FsListing, string>(
+    () => path() ?? "",
     async (p) => {
       const baseUrl = await getBridgeUrl();
-      return lsFs(baseUrl, p);
+      return lsFs(baseUrl, p || undefined);
     },
   );
 

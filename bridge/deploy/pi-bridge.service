@@ -12,7 +12,7 @@ StartLimitBurst=5
 Type=simple
 User=pi-bridge
 Group=pi-bridge
-WorkingDirectory=/opt/pi-bridge
+WorkingDirectory=/opt/pi-mobile-workspace/bridge
 
 # Secrets and runtime config live in /etc/pi-bridge/env (chmod 600).
 # See deploy/env.example for the keys.
@@ -24,6 +24,7 @@ Environment=HOST=127.0.0.1
 Environment=PORT=7777
 Environment=BRIDGE_DB=/var/lib/pi-bridge/bridge.db
 Environment=HOME=/var/lib/pi-bridge
+Environment=PI_WORKSPACES_DIR=/var/lib/pi-bridge/workspaces
 Environment=NODE_ENV=production
 
 ExecStart=/usr/bin/node --import tsx --no-warnings src/main.ts

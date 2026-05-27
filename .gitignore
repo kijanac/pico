@@ -3,12 +3,13 @@ node_modules/
 .pnpm-store/
 
 # Build outputs
-/dist/
+dist/
 build/
 .out/
 .vite/
 .cache/
 coverage/
+*.tsbuildinfo
 
 # Logs
 *.log

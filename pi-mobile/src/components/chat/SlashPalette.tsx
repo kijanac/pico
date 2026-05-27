@@ -5,8 +5,10 @@ import {
   createSignal,
   createMemo,
   createEffect,
+  onCleanup,
   type JSX,
 } from "solid-js";
+import { Portal } from "solid-js/web";
 import { Search, X, Hash, FileText, Sparkles } from "lucide-solid";
 import { listCommands, type CommandEntry, type Commands } from "~/lib/api";
 import { getBridgeUrl } from "~/lib/settings";
@@ -91,14 +93,30 @@ export default function SlashPalette(props: Props): JSX.Element {
     props.onPick(commandInsertion(c));
   }
 
+  createEffect(() => {
+    if (!props.open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") props.onCancel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+  });
+
   return (
     <Show when={props.open}>
-      <div class="fixed inset-0 z-40 bg-[color:var(--color-bg)]/60 backdrop-blur-sm">
+      <Portal>
+        <div
+          class="fixed inset-0 z-[100] bg-[color:var(--color-bg)]/60 backdrop-blur-sm"
+          onPointerDown={(e) => {
+            if (e.currentTarget === e.target) props.onCancel();
+          }}
+        >
         <div
           class="absolute inset-x-0 bottom-0 flex max-h-[80dvh] flex-col rounded-t-[12px] border-t border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]"
           style={{
             "padding-bottom": "calc(env(safe-area-inset-bottom) + 0.5rem)",
           }}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           {/* drag handle */}
           <div class="flex justify-center py-2">
@@ -111,8 +129,17 @@ export default function SlashPalette(props: Props): JSX.Element {
               <span class="text-[13px] font-medium">commands</span>
               <button
                 type="button"
-                onClick={props.onCancel}
-                class="flex h-8 w-8 items-center justify-center text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  props.onCancel();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  props.onCancel();
+                }}
+                class="flex h-10 w-10 items-center justify-center text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
                 aria-label="Close"
               >
                 <X size={14} />
@@ -163,7 +190,8 @@ export default function SlashPalette(props: Props): JSX.Element {
             </Show>
           </div>
         </div>
-      </div>
+        </div>
+      </Portal>
     </Show>
   );
 }

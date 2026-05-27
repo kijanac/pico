@@ -14,7 +14,7 @@ import {
   decodeClientEvent,
   encodeWireEvent,
   type ClientEvent,
-} from "./protocol.ts";
+} from "@pi-mobile/protocol";
 import { SessionManager } from "./session.ts";
 
 export interface WsBindings {

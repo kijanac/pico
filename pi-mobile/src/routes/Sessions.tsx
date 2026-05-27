@@ -18,7 +18,7 @@ import {
 import { getBridgeUrl } from "~/lib/settings";
 import { haptic } from "~/lib/haptics";
 import { relativeTime, shortPath, formatCost } from "~/lib/format";
-import type { SessionMeta } from "~/lib/types";
+import type { SessionMeta } from "@pi-mobile/protocol";
 
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_MOVE_PX = 8; // cancel long-press if finger drifts this far

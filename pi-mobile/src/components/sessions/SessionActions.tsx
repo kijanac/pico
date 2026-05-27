@@ -1,6 +1,6 @@
 import { Show, type JSX } from "solid-js";
 import { Pencil, Archive, Trash2, X, ArchiveRestore } from "lucide-solid";
-import type { SessionMeta } from "~/lib/types";
+import type { SessionMeta } from "@pi-mobile/protocol";
 
 /**
  * Per-session action menu, rendered as a bottom sheet over a dimmed

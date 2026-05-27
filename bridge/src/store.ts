@@ -21,7 +21,7 @@
  */
 import { Context, Effect, Layer, Option } from "effect";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import type { SessionMeta, WireEvent } from "./protocol.ts";
+import type { SessionMeta, WireEvent } from "@pi-mobile/protocol";
 
 /* ── tag ─────────────────────────────────────────────────────────────── */
 

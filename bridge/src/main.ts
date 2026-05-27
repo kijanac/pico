@@ -9,6 +9,7 @@
  */
 import { Effect, Layer, ManagedRuntime, Logger, LogLevel } from "effect";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
 import { mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -59,6 +60,20 @@ const PatchBody = v.object({
 });
 
 const app = new Hono();
+
+// Capacitor serves the app from a custom origin such as
+// capacitor://localhost. REST calls to the tailnet HTTPS bridge are therefore
+// cross-origin inside the WebView even though curl/Safari can reach them.
+// The bridge is protected by Tailscale, not by browser same-origin policy, so
+// allow browser clients through CORS.
+app.use(
+  "*",
+  cors({
+    origin: "*",
+    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["content-type"],
+  }),
+);
 
 app.get("/healthz", (c) => c.text("ok"));
 
@@ -322,7 +337,10 @@ app.get("/fs/ls", (c) => {
 
   let target: string;
   try {
-    target = raw ? resolvePath(raw) : homedir();
+    // Default the mobile picker to the agent workspace area rather than the
+    // service HOME. HOME also contains pi auth/session internals; the useful
+    // place for humans is where repos are cloned.
+    target = raw ? resolvePath(raw) : resolvePath(process.env.PI_WORKSPACES_DIR ?? homedir());
   } catch {
     return c.json({ error: "invalid_path" }, 400);
   }
