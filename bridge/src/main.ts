@@ -161,28 +161,17 @@ app.delete("/sessions/:id", async (c) => {
 /* ── slash commands ──────────────────────────────────────────────────── */
 
 /**
- * Pi's built-in slash commands (hand-curated from pi 0.65+ docs). We
- * surface only the commands a mobile user can plausibly act on; commands
- * like /hotkeys that are TUI-specific are omitted.
+ * Built-in TUI slash commands (/tree, /model, /settings, etc.) are not
+ * executable through the pi SDK prompt path — the model sees them as literal
+ * text. Only prompt templates, skills, and extension commands should be shown
+ * in the mobile insertion palette until we implement native mobile actions for
+ * specific commands.
  */
 const BUILTIN_COMMANDS: Array<{
   name: string;
   description: string;
   takesArgs?: boolean;
-}> = [
-  { name: "new", description: "Start a new session" },
-  { name: "resume", description: "Browse and resume a past session" },
-  { name: "fork", description: "Fork the current session at this point" },
-  { name: "clone", description: "Duplicate the active branch" },
-  { name: "tree", description: "Show the session tree" },
-  { name: "compact", description: "Summarize older messages", takesArgs: true },
-  { name: "model", description: "Pick a different model" },
-  { name: "login", description: "Authenticate with a provider" },
-  { name: "settings", description: "Open settings" },
-  { name: "export", description: "Export session to HTML", takesArgs: true },
-  { name: "share", description: "Share session as a gist" },
-  { name: "rename", description: "Rename the session", takesArgs: true },
-];
+}> = [];
 
 interface CommandEntry {
   kind: "builtin" | "prompt" | "skill";
