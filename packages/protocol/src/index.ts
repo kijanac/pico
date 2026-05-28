@@ -6,7 +6,7 @@
  */
 import * as v from "valibot";
 
-export const PRODUCT_VERSION = "0.2.1";
+export const PRODUCT_VERSION = "0.2.2";
 export const PROTOCOL_VERSION = 1;
 export const MIN_MOBILE_VERSION = "0.2.1";
 export const RECOMMENDED_MOBILE_VERSION = PRODUCT_VERSION;
