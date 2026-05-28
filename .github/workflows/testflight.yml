@@ -48,7 +48,7 @@ jobs:
           if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             echo "MARKETING_VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
           else
-            echo "MARKETING_VERSION=1.0.0" >> "$GITHUB_ENV"
+            echo "MARKETING_VERSION=0.1.0" >> "$GITHUB_ENV"
           fi
           echo "BUILD_NUMBER=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 

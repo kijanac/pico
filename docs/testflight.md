@@ -62,7 +62,7 @@ git push origin v1.0.0
 ```
 
 Tags matching `vX.Y.Z` set the marketing version to `X.Y.Z`. Untagged manual
-runs use `1.0.0`. The TestFlight build number is the GitHub Actions run number.
+runs use `0.1.0`. The TestFlight build number is the GitHub Actions run number.
 
 ## Phone-only loop
 
