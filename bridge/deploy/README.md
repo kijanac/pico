@@ -30,6 +30,24 @@ providing the HTTPS endpoint the mobile app talks to.
 - SSH key auth set up (the install + deploy scripts assume `ssh` Just
   Works for the target host).
 
+## Self-service cloud-init install
+
+The mobile app can generate a cloud-init payload under Settings →
+"generate cloud-init bridge setup". Paste in a **single-use,
+preauthorized** Tailscale auth key, choose a bridge hostname, then paste
+the generated cloud-init into your cloud provider's user-data field.
+
+On first boot it will:
+
+1. Clone this repo.
+2. Run `bridge/deploy/install.sh` with `TS_AUTHKEY`, `BRIDGE_HOSTNAME`,
+   `TAILSCALE_SERVE=1`, and `PI_BRIDGE_AUTO_DEPLOY=1`.
+3. Join the VPS to your tailnet, install pi-bridge, install production
+   dependencies, start the systemd service, and run `tailscale serve`.
+
+Use a tagged auth key for `tag:pi-bridge` if your tailnet ACL requires it.
+The auth key may appear in cloud-init logs, so keep it single-use and short-lived.
+
 ## First-time install — on the server
 
 ```sh

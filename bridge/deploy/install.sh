@@ -7,11 +7,12 @@
 #   - drops the systemd unit
 #   - seeds /etc/pi-bridge/env from env.example (only if it doesn't exist;
 #     existing secrets are preserved across re-runs)
+#   - optionally joins Tailscale when TS_AUTHKEY is provided
+#   - optionally copies this checkout, installs prod deps, starts the bridge,
+#     and configures tailscale serve when PI_BRIDGE_AUTO_DEPLOY=1
 #
-# What it does NOT do:
-#   - copy source files (deploy.sh handles that)
-#   - start the service (run `systemctl start pi-bridge` after deploy.sh)
-#   - configure `tailscale serve` (see deploy/README.md for that step)
+# For self-service cloud-init installs, clone this repo and run with:
+#   TS_AUTHKEY=... BRIDGE_HOSTNAME=... TAILSCALE_SERVE=1 PI_BRIDGE_AUTO_DEPLOY=1 ./bridge/deploy/install.sh
 
 set -euo pipefail
 
@@ -26,6 +27,9 @@ INSTALL_DIR=/opt/pi-mobile-workspace
 DATA_DIR=/var/lib/pi-bridge
 WORKSPACES_DIR=/var/lib/pi-bridge/workspaces
 ETC_DIR=/etc/pi-bridge
+TAILSCALE_TAG="${TAILSCALE_TAG:-tag:pi-bridge}"
+TAILSCALE_SERVE="${TAILSCALE_SERVE:-0}"
+PI_BRIDGE_AUTO_DEPLOY="${PI_BRIDGE_AUTO_DEPLOY:-0}"
 
 step() { printf '\n\033[1;36m== %s ==\033[0m\n' "$1"; }
 
@@ -95,7 +99,7 @@ step "systemd unit"
 install -o root -g root -m 0644 "$HERE/pi-bridge.service" /etc/systemd/system/pi-bridge.service
 systemctl daemon-reload
 systemctl enable pi-bridge >/dev/null
-echo "  installed + enabled (not started yet — run deploy.sh first)"
+echo "  installed + enabled"
 
 step "env file"
 if [[ ! -f "$ETC_DIR/env" ]]; then
@@ -105,9 +109,54 @@ if [[ ! -f "$ETC_DIR/env" ]]; then
 else
   echo "  $ETC_DIR/env already exists (preserved)"
 fi
+if [[ -n "${TS_AUTHKEY:-}" ]]; then
+  step "tailscale up"
+  systemctl enable --now tailscaled >/dev/null 2>&1 || true
+  up_args=(--auth-key="$TS_AUTHKEY" --advertise-tags="$TAILSCALE_TAG")
+  if [[ -n "${BRIDGE_HOSTNAME:-}" ]]; then
+    up_args+=(--hostname="$BRIDGE_HOSTNAME")
+  fi
+  tailscale up "${up_args[@]}"
+  echo "  joined tailnet${BRIDGE_HOSTNAME:+ as $BRIDGE_HOSTNAME}"
+fi
+
+if [[ "$PI_BRIDGE_AUTO_DEPLOY" == "1" ]]; then
+  step "copy source"
+  ROOT="$(cd "$HERE/../.." && pwd)"
+  rm -rf "$INSTALL_DIR/bridge" "$INSTALL_DIR/packages"
+  install -d -o "$USER_NAME" -g "$USER_NAME" -m 0755 "$INSTALL_DIR"
+  cp -a "$ROOT/package.json" "$ROOT/pnpm-lock.yaml" "$ROOT/pnpm-workspace.yaml" "$INSTALL_DIR/"
+  cp -a "$ROOT/bridge" "$ROOT/packages" "$INSTALL_DIR/"
+  chown -R "$USER_NAME:$USER_NAME" "$INSTALL_DIR"
+  echo "  copied workspace pieces from $ROOT"
+
+  step "pnpm install (prod)"
+  cd "$INSTALL_DIR"
+  pnpm --filter pi-bridge... install --prod --frozen-lockfile
+  chown -R "$USER_NAME:$USER_NAME" "$INSTALL_DIR"
+
+  step "start bridge"
+  systemctl restart pi-bridge
+  sleep 2
+  systemctl is-active pi-bridge
+
+  if [[ "$TAILSCALE_SERVE" == "1" ]]; then
+    step "tailscale serve"
+    tailscale serve --bg --https=443 http://localhost:7777
+    tailscale serve status || true
+  fi
+fi
 
 step "done"
-cat <<'EOF'
+if [[ "$PI_BRIDGE_AUTO_DEPLOY" == "1" ]]; then
+  cat <<'EOF'
+
+Bridge install complete.
+  - Check logs with: journalctl -u pi-bridge -f
+  - In pi-mobile Settings, use the Tailscale HTTPS URL for this hostname.
+EOF
+else
+  cat <<'EOF'
 
 Next steps:
   1. From your laptop, run bridge/deploy/deploy.sh to push the workspace
@@ -123,3 +172,4 @@ Next steps:
   7. Open the mobile app → Settings → set the bridge URL to your tailnet
      HTTPS URL (e.g. https://<host>.<tailnet>.ts.net)
 EOF
+fi
