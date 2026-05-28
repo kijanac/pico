@@ -48,9 +48,16 @@ import {
   type PermissionChoice,
   type ModelSummary,
   type PermissionRequest,
+  type QueueMode,
   type SessionMeta,
+  type SessionSettings,
+  type SessionSettingsPatch,
+  type SessionStats,
   type SessionStatus,
+  type SessionTree,
+  type ThinkingLevel,
   type ToolCallMessage,
+  type TreeEntry,
 } from "@pi-mobile/protocol";
 import { SessionNotFound } from "./errors.ts";
 import { setupFauxIfEnabled } from "./pi-faux.ts";
@@ -123,6 +130,11 @@ export interface PiSession {
   readonly listModels: () => Effect.Effect<{ current?: ModelSummary; models: ModelSummary[] }, PiError>;
   readonly setModel: (provider: string, modelId: string) => Effect.Effect<void, PiError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiError>;
+  readonly getSettings: () => Effect.Effect<SessionSettings, PiError>;
+  readonly patchSettings: (patch: SessionSettingsPatch) => Effect.Effect<SessionSettings, PiError>;
+  readonly getStats: () => Effect.Effect<SessionStats, PiError>;
+  readonly getTree: () => Effect.Effect<SessionTree, PiError>;
+  readonly navigateTree: (entryId: string, summarize?: boolean) => Effect.Effect<void, PiError>;
   readonly close: () => Effect.Effect<void>;
 }
 
@@ -152,6 +164,80 @@ const nextId = (() => {
   return (prefix: string) =>
     `${prefix}_${++n}_${Math.random().toString(36).slice(2, 6)}`;
 })();
+
+const textFromContent = (content: unknown): string => {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (part && typeof part === "object" && "text" in part) {
+        return String((part as { text?: unknown }).text ?? "");
+      }
+      if (part && typeof part === "object" && "type" in part) {
+        return `[${String((part as { type?: unknown }).type)}]`;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join(" ");
+};
+
+const sessionSettings = (piSession: AgentSession): SessionSettings => ({
+  thinkingLevel: piSession.thinkingLevel as ThinkingLevel,
+  availableThinkingLevels: piSession.getAvailableThinkingLevels() as ThinkingLevel[],
+  steeringMode: piSession.steeringMode as QueueMode,
+  followUpMode: piSession.followUpMode as QueueMode,
+  autoCompaction: piSession.autoCompactionEnabled,
+  autoRetry: piSession.autoRetryEnabled,
+});
+
+const flattenSessionTree = (piSession: AgentSession): SessionTree => {
+  const roots = piSession.sessionManager.getTree();
+  const currentId = piSession.sessionManager.getLeafId();
+  const byId = new Map<string, { parentId: string | null }>();
+  const currentPath = new Set<string>();
+  const scan = (nodes: typeof roots) => {
+    for (const node of nodes) {
+      byId.set(node.entry.id, { parentId: node.entry.parentId });
+      scan(node.children);
+    }
+  };
+  scan(roots);
+  for (let id = currentId; id;) {
+    currentPath.add(id);
+    id = byId.get(id)?.parentId ?? null;
+  }
+
+  const entries: TreeEntry[] = [];
+  const visit = (nodes: typeof roots, depth: number) => {
+    for (const node of nodes) {
+      const entry = node.entry as { id: string; parentId: string | null; type: string; timestamp: string; message?: { role?: string; content?: unknown }; summary?: string; thinkingLevel?: string; provider?: string; modelId?: string };
+      const role = entry.message?.role;
+      let text = "";
+      if (entry.type === "message") text = textFromContent(entry.message?.content);
+      else if (entry.type === "branch_summary" || entry.type === "compaction") text = entry.summary ?? "";
+      else if (entry.type === "thinking_level_change") text = `thinking ${entry.thinkingLevel ?? ""}`;
+      else if (entry.type === "model_change") text = `${entry.provider ?? ""}/${entry.modelId ?? ""}`;
+      entries.push({
+        id: entry.id,
+        parentId: entry.parentId,
+        type: entry.type,
+        ...(role ? { role } : {}),
+        text: text.trim().slice(0, 500),
+        timestamp: entry.timestamp,
+        depth,
+        current: entry.id === currentId,
+        onCurrentPath: currentPath.has(entry.id),
+        ...(node.label ? { label: node.label } : {}),
+        childCount: node.children.length,
+      });
+      visit(node.children, depth + 1);
+    }
+  };
+  visit(roots, 0);
+  return { currentId, entries };
+};
 
 /**
  * Usage shape on AssistantMessage from `@earendil-works/pi-ai`.
@@ -536,6 +622,25 @@ const wirePiSession = (
             await piSession.compact(instructions?.trim() || undefined);
           },
           catch: (e) => new PiError(`compact failed: ${String(e)}`),
+        }),
+      getSettings: () => Effect.sync(() => sessionSettings(piSession)),
+      patchSettings: (patch) =>
+        Effect.sync(() => {
+          if (patch.thinkingLevel) piSession.setThinkingLevel(patch.thinkingLevel);
+          if (patch.steeringMode) piSession.setSteeringMode(patch.steeringMode);
+          if (patch.followUpMode) piSession.setFollowUpMode(patch.followUpMode);
+          if (patch.autoCompaction !== undefined) piSession.setAutoCompactionEnabled(patch.autoCompaction);
+          if (patch.autoRetry !== undefined) piSession.setAutoRetryEnabled(patch.autoRetry);
+          return sessionSettings(piSession);
+        }),
+      getStats: () => Effect.sync(() => piSession.getSessionStats() as SessionStats),
+      getTree: () => Effect.sync(() => flattenSessionTree(piSession)),
+      navigateTree: (entryId, summarize) =>
+        Effect.tryPromise({
+          try: async () => {
+            await piSession.navigateTree(entryId, { summarize });
+          },
+          catch: (e) => new PiError(`navigateTree failed: ${String(e)}`),
         }),
       close: () =>
         Effect.sync(() => {

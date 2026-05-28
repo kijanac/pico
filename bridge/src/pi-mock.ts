@@ -210,6 +210,37 @@ const makeMockSession = (opts: {
         }),
       setModel: () => Effect.void,
       compact: () => Effect.void,
+      getSettings: () =>
+        Effect.succeed({
+          thinkingLevel: "off",
+          availableThinkingLevels: ["off", "low", "medium", "high"],
+          steeringMode: "one-at-a-time",
+          followUpMode: "one-at-a-time",
+          autoCompaction: true,
+          autoRetry: true,
+        }),
+      patchSettings: () =>
+        Effect.succeed({
+          thinkingLevel: "off",
+          availableThinkingLevels: ["off", "low", "medium", "high"],
+          steeringMode: "one-at-a-time",
+          followUpMode: "one-at-a-time",
+          autoCompaction: true,
+          autoRetry: true,
+        }),
+      getStats: () =>
+        Effect.succeed({
+          sessionId: meta.id,
+          userMessages: 0,
+          assistantMessages: 0,
+          toolCalls: 0,
+          toolResults: 0,
+          totalMessages: 0,
+          tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          cost: 0,
+        }),
+      getTree: () => Effect.succeed({ currentId: null, entries: [] }),
+      navigateTree: () => Effect.void,
       close: () =>
         Effect.gen(function* () {
           const prev = yield* Ref.get(currentFiber);

@@ -4,6 +4,10 @@ import type {
   ClientEvent,
   SessionMeta,
   SessionModelState,
+  SessionSettings,
+  SessionSettingsPatch,
+  SessionStats,
+  SessionTree,
   SystemInfo,
   WireEvent,
 } from "@pi-mobile/protocol";
@@ -89,6 +93,38 @@ export const compactSession = (
     sessionUrl(baseUrl, id, "/compact"),
     jsonInit("POST", { instructions: instructions?.trim() || undefined }),
   );
+
+export const getSessionSettings = (
+  baseUrl: string,
+  id: string,
+): Promise<SessionSettings> =>
+  requestJson("getSessionSettings", sessionUrl(baseUrl, id, "/settings"));
+
+export const patchSessionSettings = (
+  baseUrl: string,
+  id: string,
+  patch: SessionSettingsPatch,
+): Promise<SessionSettings> =>
+  requestJson("patchSessionSettings", sessionUrl(baseUrl, id, "/settings"), jsonInit("PATCH", patch));
+
+export const getSessionStats = (
+  baseUrl: string,
+  id: string,
+): Promise<SessionStats> =>
+  requestJson("getSessionStats", sessionUrl(baseUrl, id, "/stats"));
+
+export const getSessionTree = (
+  baseUrl: string,
+  id: string,
+): Promise<SessionTree> =>
+  requestJson("getSessionTree", sessionUrl(baseUrl, id, "/tree"));
+
+export const navigateSessionTree = (
+  baseUrl: string,
+  id: string,
+  opts: { entryId: string; summarize?: boolean },
+): Promise<void> =>
+  requestVoid("navigateSessionTree", sessionUrl(baseUrl, id, "/tree/jump"), jsonInit("POST", opts));
 
 export interface FsListing {
   path: string;

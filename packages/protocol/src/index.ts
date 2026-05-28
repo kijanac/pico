@@ -280,6 +280,71 @@ export const SessionModelState = v.object({
 });
 export type SessionModelState = v.InferOutput<typeof SessionModelState>;
 
+export const ThinkingLevel = v.picklist(["off", "low", "medium", "high"]);
+export type ThinkingLevel = v.InferOutput<typeof ThinkingLevel>;
+
+export const QueueMode = v.picklist(["all", "one-at-a-time"]);
+export type QueueMode = v.InferOutput<typeof QueueMode>;
+
+export const SessionSettings = v.object({
+  thinkingLevel: ThinkingLevel,
+  availableThinkingLevels: v.array(ThinkingLevel),
+  steeringMode: QueueMode,
+  followUpMode: QueueMode,
+  autoCompaction: v.boolean(),
+  autoRetry: v.boolean(),
+});
+export type SessionSettings = v.InferOutput<typeof SessionSettings>;
+
+export const SessionSettingsPatch = v.object({
+  thinkingLevel: v.optional(ThinkingLevel),
+  steeringMode: v.optional(QueueMode),
+  followUpMode: v.optional(QueueMode),
+  autoCompaction: v.optional(v.boolean()),
+  autoRetry: v.optional(v.boolean()),
+});
+export type SessionSettingsPatch = v.InferOutput<typeof SessionSettingsPatch>;
+
+export const SessionStats = v.object({
+  sessionFile: v.optional(v.string()),
+  sessionId: v.string(),
+  userMessages: v.number(),
+  assistantMessages: v.number(),
+  toolCalls: v.number(),
+  toolResults: v.number(),
+  totalMessages: v.number(),
+  tokens: v.object({
+    input: v.number(),
+    output: v.number(),
+    cacheRead: v.number(),
+    cacheWrite: v.number(),
+    total: v.number(),
+  }),
+  cost: v.number(),
+});
+export type SessionStats = v.InferOutput<typeof SessionStats>;
+
+export const TreeEntry = v.object({
+  id: v.string(),
+  parentId: v.nullable(v.string()),
+  type: v.string(),
+  role: v.optional(v.string()),
+  text: v.string(),
+  timestamp: v.string(),
+  depth: v.number(),
+  current: v.boolean(),
+  onCurrentPath: v.boolean(),
+  label: v.optional(v.string()),
+  childCount: v.number(),
+});
+export type TreeEntry = v.InferOutput<typeof TreeEntry>;
+
+export const SessionTree = v.object({
+  currentId: v.nullable(v.string()),
+  entries: v.array(TreeEntry),
+});
+export type SessionTree = v.InferOutput<typeof SessionTree>;
+
 export const SystemInfo = v.object({
   bridgeVersion: v.string(),
   protocolVersion: v.number(),

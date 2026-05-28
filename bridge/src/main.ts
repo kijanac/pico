@@ -20,6 +20,7 @@ import {
   PRODUCT_VERSION,
   PROTOCOL_VERSION,
   RECOMMENDED_MOBILE_VERSION,
+  SessionSettingsPatch,
 } from "@pi-mobile/protocol";
 import { PiClientFromEnv } from "./pi-env.ts";
 import { SessionManager, SessionManagerLive } from "./session.ts";
@@ -73,6 +74,11 @@ const SetModelBody = v.object({
 
 const CompactBody = v.object({
   instructions: v.optional(v.string()),
+});
+
+const TreeJumpBody = v.object({
+  entryId: v.string(),
+  summarize: v.optional(v.boolean()),
 });
 
 const app = new Hono();
@@ -226,6 +232,71 @@ app.post("/sessions/:id/compact", async (c) => {
   );
   if (result._tag === "Failure") {
     return c.json({ error: "compact_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json({ ok: true });
+});
+
+app.get("/sessions/:id/settings", async (c) => {
+  const id = c.req.param("id");
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) => m.getSettings(id)),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "settings_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json(result.value);
+});
+
+app.patch("/sessions/:id/settings", async (c) => {
+  const id = c.req.param("id");
+  const body = v.safeParse(SessionSettingsPatch, await c.req.json().catch(() => null));
+  if (!body.success) {
+    return c.json({ error: "invalid_body", issues: body.issues }, 400);
+  }
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) => m.patchSettings(id, body.output)),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "settings_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json(result.value);
+});
+
+app.get("/sessions/:id/stats", async (c) => {
+  const id = c.req.param("id");
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) => m.getStats(id)),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "stats_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json(result.value);
+});
+
+app.get("/sessions/:id/tree", async (c) => {
+  const id = c.req.param("id");
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) => m.getTree(id)),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "tree_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json(result.value);
+});
+
+app.post("/sessions/:id/tree/jump", async (c) => {
+  const id = c.req.param("id");
+  const body = v.safeParse(TreeJumpBody, await c.req.json().catch(() => null));
+  if (!body.success) {
+    return c.json({ error: "invalid_body", issues: body.issues }, 400);
+  }
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) =>
+      m.navigateTree(id, body.output.entryId, body.output.summarize),
+    ),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "tree_jump_failed", detail: String(result.cause) }, 500);
   }
   return c.json({ ok: true });
 });

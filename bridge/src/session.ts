@@ -30,6 +30,10 @@ import type {
   ModelSummary,
   PermissionChoice,
   SessionMeta,
+  SessionSettings,
+  SessionSettingsPatch,
+  SessionStats,
+  SessionTree,
   WireEvent,
 } from "@pi-mobile/protocol";
 import { Store } from "./store.ts";
@@ -91,6 +95,18 @@ export class SessionManager extends Context.Tag("SessionManager")<
     readonly compact: (
       id: string,
       instructions?: string,
+    ) => Effect.Effect<void, PiError | SessionNotFound>;
+    readonly getSettings: (id: string) => Effect.Effect<SessionSettings, PiError | SessionNotFound>;
+    readonly patchSettings: (
+      id: string,
+      patch: SessionSettingsPatch,
+    ) => Effect.Effect<SessionSettings, PiError | SessionNotFound>;
+    readonly getStats: (id: string) => Effect.Effect<SessionStats, PiError | SessionNotFound>;
+    readonly getTree: (id: string) => Effect.Effect<SessionTree, PiError | SessionNotFound>;
+    readonly navigateTree: (
+      id: string,
+      entryId: string,
+      summarize?: boolean,
     ) => Effect.Effect<void, PiError | SessionNotFound>;
     /** Partial update — title and/or archived state. Returns the new meta. */
     readonly patch: (
@@ -416,6 +432,21 @@ const make = Effect.gen(function* () {
   const compact = (id: string, instructions?: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.compact(instructions));
 
+  const getSettings = (id: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getSettings());
+
+  const patchSettings = (id: string, patch: SessionSettingsPatch) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.patchSettings(patch));
+
+  const getStats = (id: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getStats());
+
+  const getTree = (id: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getTree());
+
+  const navigateTree = (id: string, entryId: string, summarize?: boolean) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.navigateTree(entryId, summarize));
+
   /**
    * Apply a partial update to the persisted SessionMeta and, when the
    * session is currently live, mirror the change into the in-process
@@ -483,6 +514,11 @@ const make = Effect.gen(function* () {
     listModels,
     setModel,
     compact,
+    getSettings,
+    patchSettings,
+    getStats,
+    getTree,
+    navigateTree,
     patch,
     remove,
   });
