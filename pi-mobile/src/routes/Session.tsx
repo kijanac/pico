@@ -10,6 +10,7 @@ import SessionAgentActions from "~/components/chat/SessionAgentActions";
 import {
   activeStatus,
   applyWireEvent,
+  cursor,
   resetActiveLog,
   useSession,
   setSessions,
@@ -44,7 +45,7 @@ export default function Session(): JSX.Element {
           const baseUrl = await getBridgeUrl();
           if (closed) return;
 
-          const stream = connectStream(baseUrl, id, 0, {
+          const stream = connectStream(baseUrl, id, cursor, {
             onOpen: () => setConnState("connected"),
             onClose: (_code, _reason, terminal) => {
               if (terminal) {

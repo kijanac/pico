@@ -137,11 +137,13 @@ export interface StreamHandle {
 export function connectStream(
   baseUrl: string,
   sessionId: string,
-  cursor: number,
+  cursor: number | (() => number),
   handlers: StreamHandlers,
 ): StreamHandle {
   const wsBase = baseUrl.replace(/^http/, "ws");
-  const url = `${wsBase}/ws?session=${encodeURIComponent(sessionId)}&cursor=${cursor}`;
+  const currentCursor = () => (typeof cursor === "function" ? cursor() : cursor);
+  const url = () =>
+    `${wsBase}/ws?session=${encodeURIComponent(sessionId)}&cursor=${currentCursor()}`;
 
   const ws = new ReconnectingWS(url, [], {
     minReconnectionDelay: 500,
