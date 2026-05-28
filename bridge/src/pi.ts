@@ -39,11 +39,15 @@ import {
   type WriteToolInput,
 } from "@earendil-works/pi-coding-agent";
 import * as v from "valibot";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { Readable } from "node:stream";
 import {
   BashToolArgs,
   CustomToolArgs,
   type AuthLoginJob,
   type AuthProvider,
+  type Commands,
   EditToolArgs,
   ReadToolArgs,
   WriteToolArgs,
@@ -51,6 +55,7 @@ import {
   type ModelSummary,
   type PermissionRequest,
   type QueueMode,
+  type QueueState,
   type SessionMeta,
   type SessionSettings,
   type SessionSettingsPatch,
@@ -116,6 +121,11 @@ export interface SendImage {
   mimeType: string;
 }
 
+export interface ExportedHtml {
+  readonly stream: ReadableStream<Uint8Array>;
+  readonly size?: number;
+}
+
 export interface PiSession {
   readonly meta: SessionMeta;
   readonly events: Stream.Stream<PiEmission, PiError>;
@@ -132,12 +142,17 @@ export interface PiSession {
   readonly listModels: () => Effect.Effect<{ current?: ModelSummary; models: ModelSummary[] }, PiError>;
   readonly setModel: (provider: string, modelId: string) => Effect.Effect<void, PiError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiError>;
+  readonly exportHtml: () => Effect.Effect<ExportedHtml, PiError>;
+  readonly listCommands: () => Effect.Effect<Commands, PiError>;
+  readonly getQueue: () => Effect.Effect<QueueState, PiError>;
+  readonly clearQueue: () => Effect.Effect<QueueState, PiError>;
   readonly listAuthProviders: () => Effect.Effect<{ providers: AuthProvider[] }, PiError>;
   readonly startAuthLogin: (providerId: string) => Effect.Effect<AuthLoginJob, PiError>;
   readonly getAuthLogin: (jobId: string) => Effect.Effect<AuthLoginJob, PiError>;
   readonly submitAuthLoginInput: (jobId: string, value: string) => Effect.Effect<AuthLoginJob, PiError>;
   readonly cancelAuthLogin: (jobId: string) => Effect.Effect<void, PiError>;
   readonly getSettings: () => Effect.Effect<SessionSettings, PiError>;
+  readonly patchSession: (patch: { title?: string }) => Effect.Effect<void, PiError>;
   readonly patchSettings: (patch: SessionSettingsPatch) => Effect.Effect<SessionSettings, PiError>;
   readonly getStats: () => Effect.Effect<SessionStats, PiError>;
   readonly getTree: () => Effect.Effect<SessionTree, PiError>;
@@ -261,6 +276,9 @@ const flattenSessionTree = (piSession: AgentSession): SessionTree => {
 interface PiUsage {
   input?: number;
   output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  totalTokens?: number;
   cost?: { total?: number };
 }
 
@@ -428,17 +446,33 @@ const wirePiSession = (
             id,
             ...(msg.stopReason ? { stopReason: msg.stopReason } : {}),
             ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
+            ...(msg.usage
+              ? {
+                  usage: {
+                    input: msg.usage.input ?? 0,
+                    output: msg.usage.output ?? 0,
+                    cacheRead: msg.usage.cacheRead ?? 0,
+                    cacheWrite: msg.usage.cacheWrite ?? 0,
+                    total:
+                      msg.usage.totalTokens ??
+                      (msg.usage.input ?? 0) +
+                        (msg.usage.output ?? 0) +
+                        (msg.usage.cacheRead ?? 0) +
+                        (msg.usage.cacheWrite ?? 0),
+                    cost: msg.usage.cost?.total ?? 0,
+                  },
+                }
+              : {}),
           });
           assistantId = null;
 
-          if (msg.usage) {
-            Queue.unsafeOffer(q, {
-              t: "cost",
-              tokensIn: msg.usage.input ?? 0,
-              tokensOut: msg.usage.output ?? 0,
-              costUsd: msg.usage.cost?.total ?? 0,
-            });
-          }
+          const stats = piSession.getSessionStats();
+          Queue.unsafeOffer(q, {
+            t: "cost",
+            tokensIn: stats.tokens.input,
+            tokensOut: stats.tokens.output,
+            costUsd: stats.cost,
+          });
           return;
         }
 
@@ -637,6 +671,42 @@ const wirePiSession = (
           },
           catch: (e) => new PiError(`compact failed: ${String(e)}`),
         }),
+      exportHtml: () =>
+        Effect.tryPromise({
+          try: async () => {
+            const path = await piSession.exportToHtml();
+            const info = await stat(path).catch(() => undefined);
+            return {
+              stream: Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>,
+              ...(info ? { size: info.size } : {}),
+            };
+          },
+          catch: (e) => new PiError(`exportHtml failed: ${String(e)}`),
+        }),
+      listCommands: () =>
+        Effect.sync(() => ({
+          builtins: [],
+          prompts: piSession.resourceLoader.getPrompts().prompts.map((p) => ({
+            kind: "prompt" as const,
+            name: p.name,
+            description: p.description,
+            takesArgs: true,
+            source: p.filePath,
+          })),
+          skills: piSession.resourceLoader.getSkills().skills.map((s) => ({
+            kind: "skill" as const,
+            name: `skill:${s.name}`,
+            description: s.description,
+            takesArgs: true,
+            source: s.filePath,
+          })),
+        })),
+      getQueue: () =>
+        Effect.sync(() => ({
+          steering: [...piSession.getSteeringMessages()],
+          followUp: [...piSession.getFollowUpMessages()],
+        })),
+      clearQueue: () => Effect.sync(() => piSession.clearQueue()),
       listAuthProviders: () =>
         Effect.sync(() => ({
           providers: piSession.modelRegistry.authStorage.getOAuthProviders().map((p) => {
@@ -712,6 +782,10 @@ const wirePiSession = (
           state.job = { ...state.job, status: "cancelled" };
         }),
       getSettings: () => Effect.sync(() => sessionSettings(piSession)),
+      patchSession: (patch) =>
+        Effect.sync(() => {
+          if (patch.title !== undefined) piSession.setSessionName(patch.title);
+        }),
       patchSettings: (patch) =>
         Effect.sync(() => {
           if (patch.thinkingLevel) piSession.setThinkingLevel(patch.thinkingLevel);

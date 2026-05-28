@@ -210,11 +210,22 @@ const makeMockSession = (opts: {
         }),
       setModel: () => Effect.void,
       compact: () => Effect.void,
+      exportHtml: () => {
+        const html = "<!doctype html><title>Mock session</title><p>Mock session</p>";
+        return Effect.succeed({
+          stream: new Blob([html], { type: "text/html; charset=utf-8" }).stream(),
+          size: new TextEncoder().encode(html).byteLength,
+        });
+      },
+      listCommands: () => Effect.succeed({ builtins: [], prompts: [], skills: [] }),
+      getQueue: () => Effect.succeed({ steering: [], followUp: [] }),
+      clearQueue: () => Effect.succeed({ steering: [], followUp: [] }),
       listAuthProviders: () => Effect.succeed({ providers: [] }),
       startAuthLogin: () => Effect.fail(new PiError("mock auth login unavailable")),
       getAuthLogin: () => Effect.fail(new PiError("mock auth job not found")),
       submitAuthLoginInput: () => Effect.fail(new PiError("mock auth job not found")),
       cancelAuthLogin: () => Effect.void,
+      patchSession: () => Effect.void,
       getSettings: () =>
         Effect.succeed({
           thinkingLevel: "off",

@@ -3,7 +3,7 @@ import type { Hono } from "hono";
 import * as v from "valibot";
 import { SessionManager } from "../session.ts";
 import { CompactBody, SessionSettingsPatch, SetModelBody, TreeJumpBody } from "./schemas.ts";
-import { runJson } from "./run.ts";
+import { runJson, runResponse } from "./run.ts";
 
 export function mountSessionActionRoutes(app: Hono, runtime: ManagedRuntime.ManagedRuntime<any, never>): void {
   app.get("/sessions/:id/models", async (c) => {
@@ -39,6 +39,36 @@ export function mountSessionActionRoutes(app: Hono, runtime: ManagedRuntime.Mana
       ),
       "compact_failed",
     );
+  });
+
+  app.get("/sessions/:id/export.html", async (c) => {
+    const id = c.req.param("id");
+    return runResponse(
+      runtime,
+      c,
+      Effect.flatMap(SessionManager, (m) => m.exportHtml(id)),
+      (html) =>
+        c.body(html.stream, 200, {
+          "content-type": "text/html; charset=utf-8",
+          ...(html.size !== undefined ? { "content-length": String(html.size) } : {}),
+        }),
+      "export_failed",
+    );
+  });
+
+  app.get("/sessions/:id/commands", async (c) => {
+    const id = c.req.param("id");
+    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.listCommands(id)), "commands_failed");
+  });
+
+  app.get("/sessions/:id/queue", async (c) => {
+    const id = c.req.param("id");
+    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.getQueue(id)), "queue_failed");
+  });
+
+  app.delete("/sessions/:id/queue", async (c) => {
+    const id = c.req.param("id");
+    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.clearQueue(id)), "queue_failed");
   });
 
   app.get("/sessions/:id/settings", async (c) => {

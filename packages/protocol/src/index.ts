@@ -71,6 +71,16 @@ export const StopReason = v.picklist([
 ]);
 export type StopReason = v.InferOutput<typeof StopReason>;
 
+export const MessageUsage = v.object({
+  input: v.number(),
+  output: v.number(),
+  cacheRead: v.number(),
+  cacheWrite: v.number(),
+  total: v.number(),
+  cost: v.number(),
+});
+export type MessageUsage = v.InferOutput<typeof MessageUsage>;
+
 export const AssistantMessage = v.object({
   kind: v.literal("assistant"),
   ...Base,
@@ -80,6 +90,8 @@ export const AssistantMessage = v.object({
   stopReason: v.optional(StopReason),
   /** Set when stopReason is "error" or "aborted"; explains the failure. */
   errorMessage: v.optional(v.string()),
+  /** Per-message usage/cost for this assistant response. */
+  usage: v.optional(MessageUsage),
 });
 export type AssistantMessage = v.InferOutput<typeof AssistantMessage>;
 
@@ -333,6 +345,13 @@ export const AuthLoginJob = v.object({
 });
 export type AuthLoginJob = v.InferOutput<typeof AuthLoginJob>;
 
+export const ContextUsage = v.object({
+  tokens: v.nullable(v.number()),
+  contextWindow: v.number(),
+  percent: v.nullable(v.number()),
+});
+export type ContextUsage = v.InferOutput<typeof ContextUsage>;
+
 export const SessionStats = v.object({
   sessionFile: v.optional(v.string()),
   sessionId: v.string(),
@@ -349,8 +368,55 @@ export const SessionStats = v.object({
     total: v.number(),
   }),
   cost: v.number(),
+  contextUsage: v.optional(ContextUsage),
 });
 export type SessionStats = v.InferOutput<typeof SessionStats>;
+
+export const BuiltinCommandEntry = v.object({
+  kind: v.literal("builtin"),
+  name: v.string(),
+  description: v.string(),
+  takesArgs: v.optional(v.boolean()),
+});
+export type BuiltinCommandEntry = v.InferOutput<typeof BuiltinCommandEntry>;
+
+export const PromptCommandEntry = v.object({
+  kind: v.literal("prompt"),
+  name: v.string(),
+  description: v.string(),
+  takesArgs: v.optional(v.boolean()),
+  source: v.optional(v.string()),
+});
+export type PromptCommandEntry = v.InferOutput<typeof PromptCommandEntry>;
+
+export const SkillCommandEntry = v.object({
+  kind: v.literal("skill"),
+  name: v.string(),
+  description: v.string(),
+  takesArgs: v.optional(v.boolean()),
+  source: v.optional(v.string()),
+});
+export type SkillCommandEntry = v.InferOutput<typeof SkillCommandEntry>;
+
+export const CommandEntry = v.variant("kind", [
+  BuiltinCommandEntry,
+  PromptCommandEntry,
+  SkillCommandEntry,
+]);
+export type CommandEntry = v.InferOutput<typeof CommandEntry>;
+
+export const Commands = v.object({
+  builtins: v.array(BuiltinCommandEntry),
+  prompts: v.array(PromptCommandEntry),
+  skills: v.array(SkillCommandEntry),
+});
+export type Commands = v.InferOutput<typeof Commands>;
+
+export const QueueState = v.object({
+  steering: v.array(v.string()),
+  followUp: v.array(v.string()),
+});
+export type QueueState = v.InferOutput<typeof QueueState>;
 
 export const TreeEntry = v.object({
   id: v.string(),
@@ -416,6 +482,8 @@ export const WireEvent = v.variant("t", [
     /** Provider/network/internal error explanation. Set when
      *  stopReason is "error" or "aborted". */
     errorMessage: v.optional(v.string()),
+    /** Per-message usage/cost for this assistant response. */
+    usage: v.optional(MessageUsage),
   }),
   v.object({ t: v.literal("tool_call"), ...Seq, entry: ToolCallMessage }),
   v.object({
@@ -500,5 +568,14 @@ export const parseWireEvent = (raw: unknown): WireEvent => v.parse(WireEvent, ra
 export const decodeSessionMeta = (raw: unknown) => v.safeParse(SessionMeta, raw);
 export const parseSessionMeta = (raw: unknown): SessionMeta =>
   v.parse(SessionMeta, raw);
+
+export const parseSessionStats = (raw: unknown): SessionStats =>
+  v.parse(SessionStats, raw);
+
+export const parseCommands = (raw: unknown): Commands =>
+  v.parse(Commands, raw);
+
+export const parseQueueState = (raw: unknown): QueueState =>
+  v.parse(QueueState, raw);
 
 export const encodeWireEvent = (e: WireEvent): string => JSON.stringify(e);

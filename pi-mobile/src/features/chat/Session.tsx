@@ -7,6 +7,7 @@ import RetryBanner from "~/features/chat/components/RetryBanner";
 import MessageList from "~/features/chat/components/MessageList";
 import InputBar from "~/features/chat/components/InputBar";
 import SessionAgentActions from "~/features/chat/components/SessionAgentActions";
+import SessionsPreview from "~/features/sessions/components/SessionsPreview";
 import {
   activeStatus,
   applyWireEvent,
@@ -39,6 +40,7 @@ export default function Session(): JSX.Element {
         setConnState("connecting");
 
         let closed = false;
+        let replayBoundary = 0;
         let handle: { reconnect: () => void; close: () => void } | null = null;
 
         const start = async () => {
@@ -59,6 +61,7 @@ export default function Session(): JSX.Element {
             onError: () => setConnState("error"),
             onEvent: (e: WireEvent) => {
               if (e.t === "hello") {
+                replayBoundary = e.cursor;
                 setSessions((list) => {
                   const exists = list.some((s) => s.id === e.session.id);
                   return exists
@@ -68,7 +71,7 @@ export default function Session(): JSX.Element {
                     : [e.session, ...list];
                 });
               }
-              if (e.t === "cost") {
+              if (e.t === "cost" && e.seq > replayBoundary) {
                 setSessions((list) =>
                   list.map((s) =>
                     s.id === id
@@ -113,7 +116,7 @@ export default function Session(): JSX.Element {
   );
 
   return (
-    <EdgeSwipeBack href="/">
+    <EdgeSwipeBack href="/" preview={<SessionsPreview />}>
       <div class="flex h-dvh min-h-0 flex-col overflow-hidden">
         <Header
           back="/"
@@ -165,7 +168,7 @@ export default function Session(): JSX.Element {
           fallback={<SessionGonePane />}
         >
           <MessageList />
-          <InputBar />
+          <InputBar sessionId={params.id} />
         </Show>
       </div>
     </EdgeSwipeBack>

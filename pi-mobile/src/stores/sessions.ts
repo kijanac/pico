@@ -9,6 +9,7 @@
 import { createSignal, createMemo, type Accessor } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import type {
+  AssistantMessage,
   LogEntry,
   SessionMeta,
   WireEvent,
@@ -75,6 +76,30 @@ export function resetActiveLog() {
 const mutate = (fn: (arr: LogEntry[]) => void): void =>
   setLog("entries", produce(fn));
 
+type AssistantEndEvent = Extract<WireEvent, { t: "assistant_end" }>;
+
+function applyAssistantEnd(
+  message: AssistantMessage,
+  event: AssistantEndEvent,
+): void {
+  message.streaming = false;
+  if (event.stopReason) message.stopReason = event.stopReason;
+  if (event.errorMessage) message.errorMessage = event.errorMessage;
+  if (event.usage) message.usage = event.usage;
+}
+
+function assistantFromEnd(event: AssistantEndEvent): AssistantMessage {
+  const message: AssistantMessage = {
+    kind: "assistant",
+    id: event.id,
+    at: Date.now(),
+    text: "",
+    streaming: false,
+  };
+  applyAssistantEnd(message, event);
+  return message;
+}
+
 /**
  * Single ingestion point for the wire protocol. Used by the real WS client
  * and any test/mock streams. Pure with respect to the network.
@@ -124,22 +149,10 @@ export function applyWireEvent(e: WireEvent): void {
           // so we never saw an assistant_delta to mint the entry from.
           // Push one now so the user sees the failure surfaced rather
           // than a silent thinking→idle transition.
-          arr.push({
-            kind: "assistant",
-            id: e.id,
-            at: Date.now(),
-            text: "",
-            streaming: false,
-            ...(e.stopReason ? { stopReason: e.stopReason } : {}),
-            ...(e.errorMessage ? { errorMessage: e.errorMessage } : {}),
-          });
+          arr.push(assistantFromEnd(e));
           return;
         }
-        if (m.kind === "assistant") {
-          m.streaming = false;
-          if (e.stopReason) m.stopReason = e.stopReason;
-          if (e.errorMessage) m.errorMessage = e.errorMessage;
-        }
+        if (m.kind === "assistant") applyAssistantEnd(m, e);
       });
 
     case "tool_call":

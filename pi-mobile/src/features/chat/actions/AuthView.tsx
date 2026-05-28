@@ -4,6 +4,8 @@ import type { AuthLoginJob, AuthProvider } from "@pi-mobile/protocol";
 import { cancelAuthLogin, getAuthLoginJob, listAuthProviders, startAuthLogin, submitAuthLoginInput } from "~/lib/api";
 import { getBridgeUrl } from "~/lib/settings";
 import { haptic } from "~/lib/haptics";
+import { Button } from "~/components/ui/button";
+import { TextField, TextFieldLabel, TextFieldTextArea } from "~/components/ui/text-field";
 import { InfoRow } from "./shared";
 import type { ActionErrorHandler } from "./types";
 
@@ -98,11 +100,17 @@ export default function AuthView(props: { sessionId: string; onError: ActionErro
             <Show when={j().progress}><p class="text-[11px] text-[color:var(--color-fg-muted)]">{j().progress}</p></Show>
             <Show when={j().error}><p class="text-[11px] text-[color:var(--color-danger)]">{j().error}</p></Show>
             <Show when={j().status === "prompt" || j().status === "manual"}>
-              <label class="block">
-                <div class="label mb-1.5">{j().promptMessage ?? "input"}</div>
-                <textarea rows="3" value={input()} onInput={(e) => setInput(e.currentTarget.value)} placeholder={j().promptPlaceholder ?? "paste code or redirect URL"} class="w-full rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[12px]" />
-              </label>
-              <button type="button" onClick={submit} class="flex h-10 w-full items-center justify-center rounded-[var(--radius-md)] bg-[color:var(--color-accent)] text-[12px] font-medium text-[color:var(--color-bg)]">submit</button>
+              <TextField>
+                <TextFieldLabel>{j().promptMessage ?? "input"}</TextFieldLabel>
+                <TextFieldTextArea
+                  rows="3"
+                  value={input()}
+                  onInput={(e) => setInput(e.currentTarget.value)}
+                  placeholder={j().promptPlaceholder ?? "paste code or redirect URL"}
+                  class="min-h-0 text-[12px]"
+                />
+              </TextField>
+              <Button type="button" variant="accent" onClick={submit} class="w-full">submit</Button>
             </Show>
             <button type="button" onClick={refreshJob} class="h-9 w-full rounded-[var(--radius-md)] border border-[color:var(--color-border)] text-[12px]">refresh</button>
             <button type="button" onClick={cancel} class="h-9 w-full rounded-[var(--radius-md)] border border-[color:var(--color-border)] text-[12px] text-[color:var(--color-fg-muted)]">cancel</button>

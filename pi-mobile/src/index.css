@@ -112,9 +112,21 @@
   }
 
   /* Route wrapper used by the interactive edge-swipe gesture. */
+  .edge-swipe-root {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+
   .edge-swipe-page {
     min-height: 100dvh;
     touch-action: pan-y;
+  }
+
+  .edge-swipe-preview {
+    transform: translate3d(-24px, 0, 0) scale(0.985);
+    opacity: 0.74;
+    transform-origin: left center;
   }
 
   .edge-swipe-dragging,
@@ -123,8 +135,16 @@
     box-shadow: -18px 0 34px rgba(0, 0, 0, 0.34);
   }
 
+  .edge-swipe-preview.edge-swipe-dragging,
+  .edge-swipe-preview.edge-swipe-settling {
+    will-change: transform, opacity;
+    box-shadow: none;
+  }
+
   .edge-swipe-settling {
-    transition: transform 170ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition:
+      transform 170ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 170ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .edge-swipe-shade {
@@ -132,7 +152,8 @@
     transition: opacity 170ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .edge-swipe-dragging .edge-swipe-shade {
+  .edge-swipe-preview.edge-swipe-dragging,
+  .edge-swipe-preview.edge-swipe-dragging .edge-swipe-shade {
     transition: none;
   }
 

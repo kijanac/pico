@@ -24,14 +24,16 @@ import {
   Option,
   pipe,
 } from "effect";
-import { PiClient, type PiSession, type PiEmission, PiError } from "./pi.ts";
+import { PiClient, type PiSession, type PiEmission, type ExportedHtml, PiError } from "./pi.ts";
 import { parseWireEvent } from "@pi-mobile/protocol";
 import type {
   AuthLoginJob,
   AuthProvider,
+  Commands,
   ModelSummary,
   PermissionChoice,
   SessionMeta,
+  QueueState,
   SessionSettings,
   SessionSettingsPatch,
   SessionStats,
@@ -98,6 +100,10 @@ export class SessionManager extends Context.Tag("SessionManager")<
       id: string,
       instructions?: string,
     ) => Effect.Effect<void, PiError | SessionNotFound>;
+    readonly exportHtml: (id: string) => Effect.Effect<ExportedHtml, PiError | SessionNotFound>;
+    readonly listCommands: (id: string) => Effect.Effect<Commands, PiError | SessionNotFound>;
+    readonly getQueue: (id: string) => Effect.Effect<QueueState, PiError | SessionNotFound>;
+    readonly clearQueue: (id: string) => Effect.Effect<QueueState, PiError | SessionNotFound>;
     readonly listAuthProviders: (id: string) => Effect.Effect<{ providers: AuthProvider[] }, PiError | SessionNotFound>;
     readonly startAuthLogin: (id: string, providerId: string) => Effect.Effect<AuthLoginJob, PiError | SessionNotFound>;
     readonly getAuthLogin: (id: string, jobId: string) => Effect.Effect<AuthLoginJob, PiError | SessionNotFound>;
@@ -298,6 +304,7 @@ const make = Effect.gen(function* () {
       const storedMeta = storedOpt.value;
 
       const piSession = yield* pi.resume(storedMeta);
+      yield* Effect.ignoreLogged(piSession.patchSession({ title: storedMeta.title }));
       const ms = yield* buildManagedSession(id, piSession);
       yield* Ref.update(sessions, HashMap.set(id, ms));
       return ms;
@@ -439,6 +446,18 @@ const make = Effect.gen(function* () {
   const compact = (id: string, instructions?: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.compact(instructions));
 
+  const exportHtml = (id: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.exportHtml());
+
+  const listCommands = (id: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.listCommands());
+
+  const getQueue = (id: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getQueue());
+
+  const clearQueue = (id: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.clearQueue());
+
   const listAuthProviders = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.listAuthProviders());
 
@@ -499,6 +518,9 @@ const make = Effect.gen(function* () {
       const live = HashMap.get(map, id);
       if (Option.isSome(live)) {
         yield* Ref.set(live.value.meta, next);
+        if (p.title !== undefined) {
+          yield* Effect.ignoreLogged(live.value.pi.patchSession({ title: p.title }));
+        }
       }
       return next;
     });
@@ -536,6 +558,10 @@ const make = Effect.gen(function* () {
     listModels,
     setModel,
     compact,
+    exportHtml,
+    listCommands,
+    getQueue,
+    clearQueue,
     listAuthProviders,
     startAuthLogin,
     getAuthLogin,

@@ -1,9 +1,16 @@
 import { WebSocket as ReconnectingWS } from "partysocket";
-import { decodeWireEvent } from "@pi-mobile/protocol";
+import {
+  decodeWireEvent,
+  parseCommands,
+  parseQueueState,
+  parseSessionStats,
+} from "@pi-mobile/protocol";
 import type {
   AuthLoginJob,
   AuthProviders,
   ClientEvent,
+  Commands,
+  QueueState,
   SessionMeta,
   SessionModelState,
   SessionSettings,
@@ -96,6 +103,17 @@ export const compactSession = (
     jsonInit("POST", { instructions: instructions?.trim() || undefined }),
   );
 
+export const sessionExportHtmlUrl = (baseUrl: string, id: string): string =>
+  sessionUrl(baseUrl, id, "/export.html");
+
+export const getSessionQueue = async (baseUrl: string, id: string): Promise<QueueState> =>
+  parseQueueState(await requestJson("getSessionQueue", sessionUrl(baseUrl, id, "/queue")));
+
+export const clearSessionQueue = async (baseUrl: string, id: string): Promise<QueueState> =>
+  parseQueueState(
+    await requestJson("clearSessionQueue", sessionUrl(baseUrl, id, "/queue"), { method: "DELETE" }),
+  );
+
 export const listAuthProviders = (
   baseUrl: string,
   id: string,
@@ -140,11 +158,11 @@ export const patchSessionSettings = (
 ): Promise<SessionSettings> =>
   requestJson("patchSessionSettings", sessionUrl(baseUrl, id, "/settings"), jsonInit("PATCH", patch));
 
-export const getSessionStats = (
+export const getSessionStats = async (
   baseUrl: string,
   id: string,
 ): Promise<SessionStats> =>
-  requestJson("getSessionStats", sessionUrl(baseUrl, id, "/stats"));
+  parseSessionStats(await requestJson("getSessionStats", sessionUrl(baseUrl, id, "/stats")));
 
 export const getSessionTree = (
   baseUrl: string,
@@ -172,21 +190,17 @@ export function lsFs(baseUrl: string, path?: string): Promise<FsListing> {
   return requestJson("lsFs", url);
 }
 
-export interface CommandEntry {
-  kind: "builtin" | "prompt" | "skill";
-  name: string;
-  description: string;
-  takesArgs?: boolean;
-}
+export type { CommandEntry, Commands, QueueState } from "@pi-mobile/protocol";
 
-export interface Commands {
-  builtins: CommandEntry[];
-  prompts: CommandEntry[];
-  skills: CommandEntry[];
-}
-
-export const listCommands = (baseUrl: string): Promise<Commands> =>
-  requestJson("listCommands", `${baseUrl}/commands`);
+export const listCommands = async (baseUrl: string, sessionId?: string): Promise<Commands> =>
+  parseCommands(
+    await requestJson(
+      "listCommands",
+      sessionId === undefined
+        ? `${baseUrl}/commands`
+        : sessionUrl(baseUrl, sessionId, "/commands"),
+    ),
+  );
 
 const TERMINAL_CLOSE_CODES = new Set<number>([4004]);
 

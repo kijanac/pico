@@ -8,8 +8,9 @@ import {
   onCleanup,
   type JSX,
 } from "solid-js";
-import { Portal } from "solid-js/web";
-import { Search, X, Hash, FileText, Sparkles } from "lucide-solid";
+import { Search, Hash, FileText, Sparkles } from "lucide-solid";
+import BottomSheet from "~/components/BottomSheet";
+import { TextField, TextFieldInput } from "~/components/ui/text-field";
 import { listCommands, type CommandEntry, type Commands } from "~/lib/api";
 import { getBridgeUrl } from "~/lib/settings";
 
@@ -32,6 +33,7 @@ import { getBridgeUrl } from "~/lib/settings";
  */
 interface Props {
   open: boolean;
+  sessionId: string;
   onCancel: () => void;
   onPick: (text: string) => void;
 }
@@ -53,24 +55,23 @@ function commandInsertion(c: CommandEntry): string {
 export default function SlashPalette(props: Props): JSX.Element {
   const [query, setQuery] = createSignal("");
 
-  // Fetch commands when the sheet first opens. Re-fetch when re-opened
-  // in case the user added new prompts/skills externally.
-  const [commands, { refetch }] = createResource<Commands | null, boolean>(
-    () => props.open,
-    async (open) => {
-      if (!open) return null;
+  const [loadToken, setLoadToken] = createSignal(0);
+
+  // Fetch commands when the sheet opens. Bump a token on every open so
+  // prompts/skills added outside the app are picked up next time.
+  const [commands] = createResource<Commands | null, number>(
+    loadToken,
+    async (token) => {
+      if (token === 0) return null;
       const baseUrl = await getBridgeUrl();
-      return listCommands(baseUrl);
+      return listCommands(baseUrl, props.sessionId);
     },
   );
 
-  // Refetch + clear query each time the sheet opens.
   createEffect(() => {
-    if (props.open) {
-      setQuery("");
-      // Trigger re-fetch if we already have stale data
-      if (commands()) void refetch();
-    }
+    if (!props.open) return;
+    setQuery("");
+    setLoadToken((n) => n + 1);
   });
 
   /* ── filter ──────────────────────────────────────────────────────── */
@@ -104,94 +105,51 @@ export default function SlashPalette(props: Props): JSX.Element {
 
   return (
     <Show when={props.open}>
-      <Portal>
-        <div
-          class="fixed inset-0 z-[100] bg-[color:var(--color-bg)]/60 backdrop-blur-sm"
-          onPointerDown={(e) => {
-            if (e.currentTarget === e.target) props.onCancel();
-          }}
-        >
-        <div
-          class="absolute inset-x-0 bottom-0 flex max-h-[80dvh] flex-col rounded-t-[12px] border-t border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)]"
-          style={{
-            "padding-bottom": "calc(env(safe-area-inset-bottom) + 0.5rem)",
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          {/* drag handle */}
-          <div class="flex justify-center py-2">
-            <div class="h-1 w-9 rounded-full bg-[color:var(--color-border-strong)]" />
-          </div>
-
-          {/* header + search */}
-          <div class="hairline-b px-2 pb-2">
-            <div class="flex items-center justify-between pb-2">
-              <span class="text-[13px] font-medium">commands</span>
-              <button
-                type="button"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  props.onCancel();
-                }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  props.onCancel();
-                }}
-                class="flex h-10 w-10 items-center justify-center text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
-                aria-label="Close"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <div class="flex items-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2.5 py-2 focus-within:border-[color:var(--color-border-strong)]">
-              <Search
-                size={12}
-                class="shrink-0 text-[color:var(--color-fg-muted)]"
-              />
-              <input
+      <BottomSheet open title="commands" onClose={props.onCancel} maxHeightClass="max-h-[80dvh]">
+        <div class="hairline-b px-2 pb-2">
+          <div class="flex items-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2.5 py-2 focus-within:border-[color:var(--color-border-strong)]">
+            <Search size={12} class="shrink-0 text-[color:var(--color-fg-muted)]" />
+            <TextField>
+              <TextFieldInput
                 autofocus
                 type="text"
                 value={query()}
                 onInput={(e) => setQuery(e.currentTarget.value)}
                 placeholder="search…"
-                class="w-full bg-transparent text-[12.5px] text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] focus:outline-none"
+                class="border-0 bg-transparent px-0 py-0 focus:border-0 focus-visible:border-0"
               />
+            </TextField>
+          </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto">
+          <Show when={commands.loading}>
+            <div class="px-3 py-3 text-[12px] text-[color:var(--color-fg-faint)]">
+              loading…
             </div>
-          </div>
+          </Show>
+          <Show when={commands.error}>
+            <div class="px-3 py-3 text-[12px] text-[color:var(--color-danger)]">
+              {String(commands.error)}
+            </div>
+          </Show>
 
-          {/* list */}
-          <div class="flex-1 overflow-y-auto">
-            <Show when={commands.loading}>
-              <div class="px-3 py-3 text-[12px] text-[color:var(--color-fg-faint)]">
-                loading…
-              </div>
-            </Show>
-            <Show when={commands.error}>
-              <div class="px-3 py-3 text-[12px] text-[color:var(--color-danger)]">
-                {String(commands.error)}
-              </div>
-            </Show>
-
-            <Show
-              when={commands() && total() > 0}
-              fallback={
-                <Show when={commands() && total() === 0}>
-                  <div class="px-3 py-6 text-center text-[12px] text-[color:var(--color-fg-faint)]">
-                    no matches
-                  </div>
-                </Show>
-              }
-            >
-              <Section label="built-in" icon={<Hash size={11} />} entries={builtins()} onPick={pick} />
-              <Section label="prompts" icon={<FileText size={11} />} entries={prompts()} onPick={pick} />
-              <Section label="skills" icon={<Sparkles size={11} />} entries={skills()} onPick={pick} />
-            </Show>
-          </div>
+          <Show
+            when={commands() && total() > 0}
+            fallback={
+              <Show when={commands() && total() === 0}>
+                <div class="px-3 py-6 text-center text-[12px] text-[color:var(--color-fg-faint)]">
+                  no matches
+                </div>
+              </Show>
+            }
+          >
+            <Section label="built-in" icon={<Hash size={11} />} entries={builtins()} onPick={pick} />
+            <Section label="prompts" icon={<FileText size={11} />} entries={prompts()} onPick={pick} />
+            <Section label="skills" icon={<Sparkles size={11} />} entries={skills()} onPick={pick} />
+          </Show>
         </div>
-        </div>
-      </Portal>
+      </BottomSheet>
     </Show>
   );
 }

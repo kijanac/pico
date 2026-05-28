@@ -9,6 +9,9 @@ export type ApiErrorCode =
   | "models_failed"
   | "set_model_failed"
   | "compact_failed"
+  | "commands_failed"
+  | "export_failed"
+  | "queue_failed"
   | "auth_providers_failed"
   | "auth_login_failed"
   | "auth_job_failed"
@@ -64,6 +67,18 @@ export async function runJson<E, A>(
 ): Promise<Response> {
   const result = await runtime.runPromiseExit(effect);
   if (result._tag === "Success") return c.json(result.value);
+  return failureJson(c, errorCode, result.cause);
+}
+
+export async function runResponse<E, A>(
+  runtime: ManagedRuntime.ManagedRuntime<any, never>,
+  c: HonoContext,
+  effect: Effect.Effect<A, E, any>,
+  toResponse: (value: A) => Response,
+  errorCode: ApiErrorCode,
+): Promise<Response> {
+  const result = await runtime.runPromiseExit(effect);
+  if (result._tag === "Success") return toResponse(result.value);
   return failureJson(c, errorCode, result.cause);
 }
 

@@ -173,9 +173,6 @@ export default function Sessions(): JSX.Element {
         }
       >
         <div class="flex items-baseline gap-2">
-          <span class="font-bold tracking-tight text-[color:var(--color-accent)]">
-            π
-          </span>
           <span class="text-[13px] font-medium">sessions</span>
           <span class="label">{sessions().length}</span>
         </div>
