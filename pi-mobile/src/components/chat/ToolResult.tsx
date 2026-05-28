@@ -94,6 +94,39 @@ function RawResult(props: { text: string }): JSX.Element {
   return <pre class={RAW_CLASS}>{props.text}</pre>;
 }
 
+function unwrapContentEnvelope(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return text;
+
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && "content" in parsed) {
+      const content = (parsed as { content?: unknown }).content;
+      if (Array.isArray(content)) {
+        const parts = content
+          .map((part) => {
+            if (typeof part === "string") return part;
+            if (
+              part &&
+              typeof part === "object" &&
+              "text" in part &&
+              typeof (part as { text?: unknown }).text === "string"
+            ) {
+              return (part as { text: string }).text;
+            }
+            return "";
+          })
+          .filter(Boolean);
+        if (parts.length > 0) return parts.join("\n");
+      }
+    }
+  } catch {
+    // Not JSON — render the original text.
+  }
+
+  return text;
+}
+
 /* ── dispatcher ───────────────────────────────────────────────────── */
 
 export default function ToolResult(props: {
@@ -102,29 +135,30 @@ export default function ToolResult(props: {
   // Error results are best shown raw and red — syntax-highlighting an
   // error trace or partial output just adds noise.
   const isError = () => props.msg.status === "error";
+  const result = () => unwrapContentEnvelope(props.msg.result ?? "");
 
   return (
-    <Show when={!isError()} fallback={<RawResult text={props.msg.result ?? ""} />}>
+    <Show when={!isError()} fallback={<RawResult text={result()} />}>
       <Show
         when={props.msg.tool === "bash"}
         fallback={
           <Show
             when={props.msg.tool === "read" || props.msg.tool === "write"}
-            fallback={<RawResult text={props.msg.result ?? ""} />}
+            fallback={<RawResult text={result()} />}
           >
             <HighlightedResult
               text={
                 props.msg.tool === "write"
                   ? (String(props.msg.args.content ?? "") ||
-                    (props.msg.result ?? ""))
-                  : (props.msg.result ?? "")
+                    result())
+                  : result()
               }
               path={String(props.msg.args.path ?? "")}
             />
           </Show>
         }
       >
-        <BashResult result={props.msg.result ?? ""} />
+        <BashResult result={result()} />
       </Show>
     </Show>
   );

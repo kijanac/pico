@@ -407,13 +407,11 @@ const wirePiSession = (
           const start = toolStarts.get(event.toolCallId);
           toolStarts.delete(event.toolCallId);
 
-          // Pi packs the model-visible string into `result` and a richer
-          // `details` object onto the ToolResultMessage that arrives in
-          // message_end. For the tool_result emission we just stringify.
-          const resultText =
-            typeof event.result === "string"
-              ? event.result
-              : JSON.stringify(event.result ?? "");
+          // Pi/tool adapters may return either a plain model-visible string
+          // or an OpenAI-style content envelope:
+          //   { content: [{ type: "text", text: "..." }] }
+          // The mobile UI should render the text, not the transport JSON.
+          const resultText = toolResultToText(event.result);
 
           Queue.unsafeOffer(q, {
             t: "tool_result",
@@ -789,6 +787,35 @@ export function verifyToken(token: string) {
     algorithms: ["RS256"],
   });
 }`;
+
+function toolResultToText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (result == null) return "";
+
+  if (typeof result === "object" && "content" in result) {
+    const content = (result as { content?: unknown }).content;
+    if (Array.isArray(content)) {
+      const text = content
+        .map((part) => {
+          if (typeof part === "string") return part;
+          if (
+            part &&
+            typeof part === "object" &&
+            "text" in part &&
+            typeof (part as { text?: unknown }).text === "string"
+          ) {
+            return (part as { text: string }).text;
+          }
+          return "";
+        })
+        .filter(Boolean)
+        .join("\n");
+      if (text) return text;
+    }
+  }
+
+  return JSON.stringify(result);
+}
 
 const scriptedFlow = (q: Queue.Queue<PiEmission>, userText: string) =>
   Effect.gen(function* () {

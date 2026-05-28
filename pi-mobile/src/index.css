@@ -110,6 +110,38 @@
   .scroll-momentum {
     -webkit-overflow-scrolling: touch;
   }
+
+  /* Route wrapper used by the interactive edge-swipe gesture. */
+  .edge-swipe-page {
+    min-height: 100dvh;
+    touch-action: pan-y;
+  }
+
+  .edge-swipe-dragging,
+  .edge-swipe-settling {
+    will-change: transform;
+    box-shadow: -18px 0 34px rgba(0, 0, 0, 0.34);
+  }
+
+  .edge-swipe-settling {
+    transition: transform 170ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .edge-swipe-shade {
+    background: #000;
+    transition: opacity 170ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .edge-swipe-dragging .edge-swipe-shade {
+    transition: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .edge-swipe-settling,
+    .edge-swipe-shade {
+      transition: none;
+    }
+  }
 }
 
 @layer utilities {

@@ -1,5 +1,6 @@
 import { createSignal, onMount, Show, type JSX } from "solid-js";
 import { Check, X, Loader2 } from "lucide-solid";
+import EdgeSwipeBack from "~/components/EdgeSwipeBack";
 import Header from "~/components/Header";
 import { getBridgeUrl, setBridgeUrl } from "~/lib/settings";
 import { healthcheck } from "~/lib/api";
@@ -28,10 +29,11 @@ export default function Settings(): JSX.Element {
   }
 
   return (
-    <div class="flex min-h-dvh flex-col">
-      <Header back="/" title="settings" />
+    <EdgeSwipeBack href="/">
+      <div class="flex min-h-dvh flex-col">
+        <Header back="/" title="settings" />
 
-      <div class="flex-1 px-3 py-4">
+        <div class="flex-1 px-3 py-4">
         <label class="label mb-1.5 block" for="bridge_url">
           bridge url
         </label>
@@ -98,7 +100,8 @@ export default function Settings(): JSX.Element {
         >
           {saved() ? "saved ✓" : "save"}
         </button>
+        </div>
       </div>
-    </div>
+    </EdgeSwipeBack>
   );
 }

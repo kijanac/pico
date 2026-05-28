@@ -1,5 +1,6 @@
 import { createEffect, on, onCleanup, Show, type JSX } from "solid-js";
 import { useParams, A } from "@solidjs/router";
+import EdgeSwipeBack from "~/components/EdgeSwipeBack";
 import Header from "~/components/Header";
 import StatusDot from "~/components/StatusDot";
 import RetryBanner from "~/components/chat/RetryBanner";
@@ -134,60 +135,62 @@ export default function Session(): JSX.Element {
   );
 
   return (
-    <div class="flex h-dvh min-h-0 flex-col overflow-hidden">
-      <Header
-        back="/"
-        trailing={<SessionAgentActions sessionId={params.id} />}
-      >
-        <Show when={session()}>
-          {(s) => (
-            <div class="flex min-w-0 items-center gap-2">
-              <StatusDot status={activeStatus()} />
-              <div class="min-w-0 flex-1">
-                <div class="truncate text-[13px] font-medium leading-tight">
-                  {s().title}
-                </div>
-                <div class="truncate text-[10px] text-[color:var(--color-fg-faint)]">
-                  {shortPath(s().cwd, 2)}
-                  {s().branch ? ` · ${s().branch}` : ""}
+    <EdgeSwipeBack href="/">
+      <div class="flex h-dvh min-h-0 flex-col overflow-hidden">
+        <Header
+          back="/"
+          trailing={<SessionAgentActions sessionId={params.id} />}
+        >
+          <Show when={session()}>
+            {(s) => (
+              <div class="flex min-w-0 items-center gap-2">
+                <StatusDot status={activeStatus()} />
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-[13px] font-medium leading-tight">
+                    {s().title}
+                  </div>
+                  <div class="truncate text-[10px] text-[color:var(--color-fg-faint)]">
+                    {shortPath(s().cwd, 2)}
+                    {s().branch ? ` · ${s().branch}` : ""}
+                  </div>
                 </div>
               </div>
+            )}
+          </Show>
+        </Header>
+
+        <Show when={session()}>
+          {(s) => (
+            <div class="hairline-b flex items-center gap-3 px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">
+              <span>
+                in{" "}
+                <span class="text-[color:var(--color-fg-muted)] tabular-nums">
+                  {formatTokens(s().tokens.in)}
+                </span>
+              </span>
+              <span>
+                out{" "}
+                <span class="text-[color:var(--color-fg-muted)] tabular-nums">
+                  {formatTokens(s().tokens.out)}
+                </span>
+              </span>
+              <span class="ml-auto text-[color:var(--color-fg-muted)] tabular-nums">
+                {formatCost(s().costUsd)}
+              </span>
             </div>
           )}
         </Show>
-      </Header>
 
-      <Show when={session()}>
-        {(s) => (
-          <div class="hairline-b flex items-center gap-3 px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">
-            <span>
-              in{" "}
-              <span class="text-[color:var(--color-fg-muted)] tabular-nums">
-                {formatTokens(s().tokens.in)}
-              </span>
-            </span>
-            <span>
-              out{" "}
-              <span class="text-[color:var(--color-fg-muted)] tabular-nums">
-                {formatTokens(s().tokens.out)}
-              </span>
-            </span>
-            <span class="ml-auto text-[color:var(--color-fg-muted)] tabular-nums">
-              {formatCost(s().costUsd)}
-            </span>
-          </div>
-        )}
-      </Show>
-
-      <RetryBanner />
-      <Show
-        when={connState() !== "gone"}
-        fallback={<SessionGonePane />}
-      >
-        <MessageList />
-        <InputBar />
-      </Show>
-    </div>
+        <RetryBanner />
+        <Show
+          when={connState() !== "gone"}
+          fallback={<SessionGonePane />}
+        >
+          <MessageList />
+          <InputBar />
+        </Show>
+      </div>
+    </EdgeSwipeBack>
   );
 }
 
