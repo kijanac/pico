@@ -8,7 +8,7 @@ import {
   type JSX,
 } from "solid-js";
 import { Portal } from "solid-js/web";
-import { Check, ChevronLeft, GitBranch, Info, Loader2, MoreHorizontal, Settings, X, Zap } from "lucide-solid";
+import { Check, ChevronLeft, Info, ListTree, Loader2, MoreHorizontal, Settings, X, Zap } from "lucide-solid";
 import type { AuthLoginJob, AuthProvider, ModelSummary, QueueMode, SessionSettings, ThinkingLevel, TreeEntry } from "@pi-mobile/protocol";
 import {
   cancelAuthLogin,
@@ -98,7 +98,7 @@ export default function SessionAgentActions(props: Props): JSX.Element {
                       : view() === "settings"
                         ? "session settings"
                         : view() === "tree"
-                          ? "branches"
+                          ? "tree"
                           : view() === "auth"
                             ? "provider sign-in"
                             : view() === "info"
@@ -187,7 +187,7 @@ function MenuView(props: {
       <MenuButton title="provider sign-in" description="configure model provider auth from the phone" onClick={props.onAuth} />
       <MenuButton title="model" description="choose the model for this session" onClick={props.onModels} />
       <MenuButton title="compact context" description="summarize older context for future turns" onClick={props.onCompact} />
-      <MenuButton title="branches" description="jump to an earlier node in the session tree" onClick={props.onTree} icon={<GitBranch size={13} />} />
+      <MenuButton title="tree" description="jump to an earlier node in this conversation" onClick={props.onTree} icon={<ListTree size={13} />} />
       <MenuButton title="session settings" description="thinking, queueing, compaction, and retry behavior" onClick={props.onSettings} icon={<Settings size={13} />} />
       <MenuButton title="session info" description="file, tokens, cost, and message counts" onClick={props.onInfo} icon={<Info size={13} />} />
     </div>
@@ -609,7 +609,7 @@ function TreeView(props: { sessionId: string; onDone: () => void; onError: (mess
       <div class="px-3 pb-2">
         <ToggleRow label="summarize abandoned branch" checked={summarize()} disabled={jumping() !== null} onChange={setSummarize} />
       </div>
-      <Show when={tree.loading}><div class="px-3 py-3 text-[12px] text-[color:var(--color-fg-faint)]">loading branches…</div></Show>
+      <Show when={tree.loading}><div class="px-3 py-3 text-[12px] text-[color:var(--color-fg-faint)]">loading tree…</div></Show>
       <Show when={(tree()?.entries.length ?? 0) === 0 && !tree.loading}>
         <div class="px-3 py-6 text-center text-[12px] text-[color:var(--color-fg-faint)]">no persisted tree entries yet</div>
       </Show>
