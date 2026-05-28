@@ -88,29 +88,6 @@ jobs:
           echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
 
-      - name: Configure app signing
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
-        run: |
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-
-          path = Path("pi-mobile/ios/App/App.xcodeproj/project.pbxproj")
-          text = path.read_text()
-
-          text = text.replace("DEVELOPMENT_TEAM = 489S8NPVP6;", f"DEVELOPMENT_TEAM = {os.environ['APPLE_TEAM_ID']};")
-          text = text.replace("PRODUCT_BUNDLE_IDENTIFIER = dev.pi.mobile;", f"PRODUCT_BUNDLE_IDENTIFIER = {os.environ['IOS_BUNDLE_ID']};")
-          text = text.replace("CODE_SIGN_STYLE = Automatic;", "CODE_SIGN_STYLE = Manual;")
-          text = text.replace(
-              "CODE_SIGN_STYLE = Manual;\n\t\t\t\tCURRENT_PROJECT_VERSION",
-              f"CODE_SIGN_IDENTITY = \"Apple Distribution\";\n\t\t\t\tCODE_SIGN_STYLE = Manual;\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = \"{os.environ['PROFILE_NAME']}\";\n\t\t\t\tCURRENT_PROJECT_VERSION",
-          )
-
-          path.write_text(text)
-          PY
-
       - name: Build xcarchive
         working-directory: pi-mobile/ios/App
         run: |
@@ -120,6 +97,9 @@ jobs:
             -destination "generic/platform=iOS" \
             -archivePath "$RUNNER_TEMP/PiMobile.xcarchive" \
             -configuration Release \
+            DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
+            PRODUCT_BUNDLE_IDENTIFIER=${{ secrets.IOS_BUNDLE_ID }} \
+            APP_PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             MARKETING_VERSION="$MARKETING_VERSION" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
