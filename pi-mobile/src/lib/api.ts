@@ -7,6 +7,7 @@
  * app backgrounds.
  */
 import { WebSocket as ReconnectingWS } from "partysocket";
+import { decodeWireEvent } from "@pi-mobile/protocol";
 import type {
   ClientEvent,
   SessionMeta,
@@ -252,8 +253,13 @@ export function connectStream(
   ws.addEventListener("error", () => handlers.onError?.());
   ws.addEventListener("message", (e) => {
     try {
-      const event = JSON.parse((e as MessageEvent).data as string) as WireEvent;
-      handlers.onEvent(event);
+      const parsed = JSON.parse((e as MessageEvent).data as string);
+      const result = decodeWireEvent(parsed);
+      if (!result.success) {
+        console.error("invalid wire event:", result.issues);
+        return;
+      }
+      handlers.onEvent(result.output);
     } catch (err) {
       console.error("invalid wire event:", err);
     }

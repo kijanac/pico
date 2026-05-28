@@ -17,7 +17,10 @@ export const SessionStatus = v.picklist([
 ]);
 export type SessionStatus = v.InferOutput<typeof SessionStatus>;
 
-export const ToolName = v.picklist(["read", "write", "edit", "bash"]);
+export const BuiltinToolName = v.picklist(["read", "write", "edit", "bash"]);
+export type BuiltinToolName = v.InferOutput<typeof BuiltinToolName>;
+
+export const ToolName = v.string();
 export type ToolName = v.InferOutput<typeof ToolName>;
 
 export const PermissionChoice = v.picklist([
@@ -75,28 +78,158 @@ export const AssistantMessage = v.object({
 });
 export type AssistantMessage = v.InferOutput<typeof AssistantMessage>;
 
-export const ToolCallMessage = v.object({
+/* ── tool arguments ─────────────────────────────────────────────────── */
+
+export const ReadToolArgs = v.object({
+  path: v.string(),
+  offset: v.optional(v.number()),
+  limit: v.optional(v.number()),
+});
+export type ReadToolArgs = v.InferOutput<typeof ReadToolArgs>;
+
+export const WriteToolArgs = v.object({
+  path: v.string(),
+  content: v.string(),
+});
+export type WriteToolArgs = v.InferOutput<typeof WriteToolArgs>;
+
+export const EditToolArgs = v.object({
+  path: v.string(),
+  edits: v.array(
+    v.object({
+      oldText: v.string(),
+      newText: v.string(),
+    }),
+  ),
+});
+export type EditToolArgs = v.InferOutput<typeof EditToolArgs>;
+
+export const BashToolArgs = v.object({
+  command: v.string(),
+  timeout: v.optional(v.number()),
+});
+export type BashToolArgs = v.InferOutput<typeof BashToolArgs>;
+
+export const CustomToolArgs = v.record(v.string(), v.unknown());
+export type CustomToolArgs = v.InferOutput<typeof CustomToolArgs>;
+
+const ToolStatus = v.picklist(["pending", "running", "ok", "error"]);
+const BuiltinToolCallBase = {
   kind: v.literal("tool_call"),
+  toolKind: v.literal("builtin"),
   ...Base,
-  tool: ToolName,
-  args: v.record(v.string(), v.unknown()),
-  status: v.picklist(["pending", "running", "ok", "error"]),
+  status: ToolStatus,
+  result: v.optional(v.string()),
+  durationMs: v.optional(v.number()),
+} as const;
+
+export const ReadToolCallMessage = v.object({
+  ...BuiltinToolCallBase,
+  tool: v.literal("read"),
+  args: ReadToolArgs,
+});
+export type ReadToolCallMessage = v.InferOutput<typeof ReadToolCallMessage>;
+
+export const WriteToolCallMessage = v.object({
+  ...BuiltinToolCallBase,
+  tool: v.literal("write"),
+  args: WriteToolArgs,
+});
+export type WriteToolCallMessage = v.InferOutput<typeof WriteToolCallMessage>;
+
+export const EditToolCallMessage = v.object({
+  ...BuiltinToolCallBase,
+  tool: v.literal("edit"),
+  args: EditToolArgs,
+});
+export type EditToolCallMessage = v.InferOutput<typeof EditToolCallMessage>;
+
+export const BashToolCallMessage = v.object({
+  ...BuiltinToolCallBase,
+  tool: v.literal("bash"),
+  args: BashToolArgs,
+});
+export type BashToolCallMessage = v.InferOutput<typeof BashToolCallMessage>;
+
+export const BuiltinToolCallMessage = v.variant("tool", [
+  ReadToolCallMessage,
+  WriteToolCallMessage,
+  EditToolCallMessage,
+  BashToolCallMessage,
+]);
+export type BuiltinToolCallMessage = v.InferOutput<typeof BuiltinToolCallMessage>;
+
+export const CustomToolCallMessage = v.object({
+  kind: v.literal("tool_call"),
+  toolKind: v.literal("custom"),
+  ...Base,
+  tool: v.string(),
+  args: CustomToolArgs,
+  status: ToolStatus,
   result: v.optional(v.string()),
   durationMs: v.optional(v.number()),
 });
+export type CustomToolCallMessage = v.InferOutput<typeof CustomToolCallMessage>;
+
+export const ToolCallMessage = v.variant("toolKind", [
+  BuiltinToolCallMessage,
+  CustomToolCallMessage,
+]);
 export type ToolCallMessage = v.InferOutput<typeof ToolCallMessage>;
 
-export const PermissionRequest = v.object({
+const BuiltinPermissionBase = {
   kind: v.literal("permission"),
+  toolKind: v.literal("builtin"),
   ...Base,
-  tool: ToolName,
-  args: v.record(v.string(), v.unknown()),
+  rationale: v.optional(v.string()),
+  resolved: v.optional(PermissionChoice),
+} as const;
+
+export const ReadPermissionRequest = v.object({
+  ...BuiltinPermissionBase,
+  tool: v.literal("read"),
+  args: ReadToolArgs,
+});
+export const WritePermissionRequest = v.object({
+  ...BuiltinPermissionBase,
+  tool: v.literal("write"),
+  args: WriteToolArgs,
+});
+export const EditPermissionRequest = v.object({
+  ...BuiltinPermissionBase,
+  tool: v.literal("edit"),
+  args: EditToolArgs,
+});
+export const BashPermissionRequest = v.object({
+  ...BuiltinPermissionBase,
+  tool: v.literal("bash"),
+  args: BashToolArgs,
+});
+
+export const BuiltinPermissionRequest = v.variant("tool", [
+  ReadPermissionRequest,
+  WritePermissionRequest,
+  EditPermissionRequest,
+  BashPermissionRequest,
+]);
+
+export const CustomPermissionRequest = v.object({
+  kind: v.literal("permission"),
+  toolKind: v.literal("custom"),
+  ...Base,
+  tool: v.string(),
+  args: CustomToolArgs,
   rationale: v.optional(v.string()),
   resolved: v.optional(PermissionChoice),
 });
+
+export const PermissionRequest = v.variant("toolKind", [
+  BuiltinPermissionRequest,
+  CustomPermissionRequest,
+]);
 export type PermissionRequest = v.InferOutput<typeof PermissionRequest>;
 
-export const LogEntry = v.variant("kind", [
+export const LogEntry = v.union([
   UserMessage,
   AssistantMessage,
   ToolCallMessage,
@@ -231,7 +364,7 @@ export const ClientEvent = v.variant("t", [
     t: v.literal("send"),
     text: v.string(),
     // When the agent is streaming, mode picks how to deliver:
-    //   "steer"     → after the current turn's tool calls finish (default)
+    //   "steer"     → after the current turn's tools finish (default)
     //   "follow_up" → after the agent finishes all queued work
     // Ignored when the agent is idle.
     mode: v.optional(v.picklist(["steer", "follow_up"])),
@@ -257,5 +390,12 @@ export type ClientEvent = v.InferOutput<typeof ClientEvent>;
 
 export const decodeClientEvent = (raw: unknown) =>
   v.safeParse(ClientEvent, raw);
+
+export const decodeWireEvent = (raw: unknown) => v.safeParse(WireEvent, raw);
+export const parseWireEvent = (raw: unknown): WireEvent => v.parse(WireEvent, raw);
+
+export const decodeSessionMeta = (raw: unknown) => v.safeParse(SessionMeta, raw);
+export const parseSessionMeta = (raw: unknown): SessionMeta =>
+  v.parse(SessionMeta, raw);
 
 export const encodeWireEvent = (e: WireEvent): string => JSON.stringify(e);

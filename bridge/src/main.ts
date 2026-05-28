@@ -15,7 +15,7 @@ import { WebSocketServer } from "ws";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import * as v from "valibot";
-import { PiClientFromEnv } from "./pi.ts";
+import { PiClientFromEnv } from "./pi-env.ts";
 import { SessionManager, SessionManagerLive } from "./session.ts";
 import { StoreLive } from "./store.ts";
 import { makeConnectionHandler, type WsBindings } from "./ws.ts";

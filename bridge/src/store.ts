@@ -21,7 +21,12 @@
  */
 import { Context, Effect, Layer, Option } from "effect";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import type { SessionMeta, WireEvent } from "@pi-mobile/protocol";
+import {
+  parseSessionMeta,
+  parseWireEvent,
+  type SessionMeta,
+  type WireEvent,
+} from "@pi-mobile/protocol";
 
 /* ── tag ─────────────────────────────────────────────────────────────── */
 
@@ -115,17 +120,18 @@ type SqlRow = Record<string, SqlValue>;
  * narrowings (SqlValue → constituent type), so no `as unknown` is
  * needed and call sites don't have to cast at all.
  */
-const rowToMeta = (r: SqlRow): SessionMeta => ({
-  id: r.id as string,
-  title: r.title as string,
-  cwd: r.cwd as string,
-  branch: ((r.branch as string | null) ?? undefined) as string | undefined,
-  status: r.status as SessionMeta["status"],
-  updatedAt: r.updated_at as number,
-  tokens: { in: r.tokens_in as number, out: r.tokens_out as number },
-  costUsd: r.cost_usd as number,
-  archived: (r.archived as number) === 1,
-});
+const rowToMeta = (r: SqlRow): SessionMeta =>
+  parseSessionMeta({
+    id: r.id,
+    title: r.title,
+    cwd: r.cwd,
+    branch: r.branch ?? undefined,
+    status: r.status,
+    updatedAt: r.updated_at,
+    tokens: { in: r.tokens_in, out: r.tokens_out },
+    costUsd: r.cost_usd,
+    archived: r.archived === 1,
+  });
 
 /* ── implementation ─────────────────────────────────────────────────── */
 
@@ -218,10 +224,10 @@ const make = (dbPath: string) =>
         }),
 
       listSessions: () =>
-        Effect.sync(
-          () =>
-            stmtListSessions.all().map(rowToMeta) as ReadonlyArray<SessionMeta>,
-        ),
+        Effect.sync(() => {
+          const rows = stmtListSessions.all() as SqlRow[];
+          return rows.map(rowToMeta) as ReadonlyArray<SessionMeta>;
+        }),
 
       updateSession: (id, patch) =>
         Effect.sync(() => {
@@ -276,7 +282,7 @@ const make = (dbPath: string) =>
           const rows = stmtLoadEventsAfter.all(sessionId, afterSeq) as Array<{
             payload: string;
           }>;
-          return rows.map((r) => JSON.parse(r.payload) as WireEvent);
+          return rows.map((r) => parseWireEvent(JSON.parse(r.payload)));
         }),
 
       maxSeq: (sessionId) =>

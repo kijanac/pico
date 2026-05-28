@@ -2,6 +2,7 @@ import {
   For,
   Show,
   createEffect,
+  createMemo,
   createSignal,
   on,
   onCleanup,
@@ -9,7 +10,7 @@ import {
   type JSX,
 } from "solid-js";
 import { ArrowDown } from "lucide-solid";
-import { entries } from "~/stores/sessions";
+import { activeRetry, activeStatus, entries } from "~/stores/sessions";
 import { ensureKeyboardTracking, keyboardHeight } from "~/lib/keyboard";
 import UserMessageView from "./UserMessage";
 import AssistantMessageView from "./AssistantMessage";
@@ -23,6 +24,7 @@ export default function MessageList(): JSX.Element {
   let scroller!: HTMLDivElement;
   const [stuckToBottom, setStuckToBottom] = createSignal(true);
   const [hasNewActivity, setHasNewActivity] = createSignal(false);
+  const [showWorkingPlaceholder, setShowWorkingPlaceholder] = createSignal(false);
 
   ensureKeyboardTracking();
 
@@ -56,13 +58,43 @@ export default function MessageList(): JSX.Element {
     let n = entries().length;
     for (const e of entries()) {
       if (e.kind === "assistant") n += e.text.length;
+      if (e.kind === "tool_call") n += e.result?.length ?? 0;
     }
     return n;
   };
 
+  const hasVisibleRunningEntry = createMemo(() =>
+    entries().some((e) => {
+      if (e.kind === "assistant") return e.streaming === true;
+      if (e.kind === "tool_call") return e.status === "running";
+      if (e.kind === "permission") return !e.resolved;
+      return false;
+    }),
+  );
+
+  const shouldShowWorkingPlaceholder = createMemo(
+    () =>
+      (activeStatus() === "thinking" || activeStatus() === "tool") &&
+      !activeRetry() &&
+      !hasVisibleRunningEntry(),
+  );
+
+  createEffect(() => {
+    if (!shouldShowWorkingPlaceholder()) {
+      setShowWorkingPlaceholder(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(
+      () => setShowWorkingPlaceholder(true),
+      600,
+    );
+    onCleanup(() => window.clearTimeout(timeout));
+  });
+
   createEffect(
     on(
-      contentLength,
+      () => `${contentLength()}:${showWorkingPlaceholder()}`,
       () => {
         if (stuckToBottom()) {
           scrollToLatest("auto");
@@ -95,6 +127,15 @@ export default function MessageList(): JSX.Element {
             }
           }}
         </For>
+
+        <Show when={showWorkingPlaceholder()}>
+          <div class="px-3 py-1" aria-live="polite">
+            <div class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2.5 py-1.5 text-[12px] text-[color:var(--color-fg-muted)]">
+              <span class="pulse-accent h-1.5 w-1.5 rounded-full bg-[color:var(--color-accent)]" />
+              <span>working…</span>
+            </div>
+          </div>
+        </Show>
       </div>
 
       <Show when={!stuckToBottom()}>

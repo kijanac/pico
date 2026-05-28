@@ -1,12 +1,8 @@
 /**
  * pi.dev integration boundary.
  *
- * Two implementations of the same `PiClient` Tag:
- *
- *   PiClientLive  →  the real @earendil-works/pi-coding-agent SDK
- *   PiClientMock  →  scripted in-process flow for dev without API keys
- *
- * Toggle via $PI_USE_MOCK=1.
+ * Live implementation of the `PiClient` Tag backed by the real
+ * @earendil-works/pi-coding-agent SDK.
  *
  * The real SDK shape (mid-2026):
  *
@@ -29,9 +25,6 @@ import {
   Layer,
   Stream,
   Queue,
-  Ref,
-  Random,
-  Fiber,
 } from "effect";
 import {
   AuthStorage,
@@ -40,21 +33,27 @@ import {
   SessionManager as PiSessionManager,
   type AgentSession,
   type AgentSessionEvent,
+  type BashToolInput,
+  type EditToolInput,
+  type ReadToolInput,
+  type WriteToolInput,
 } from "@earendil-works/pi-coding-agent";
+import * as v from "valibot";
 import {
-  fauxAssistantMessage,
-  fauxText,
-  registerFauxProvider,
-} from "@earendil-works/pi-ai";
-import type {
-  PermissionChoice,
-  ModelSummary,
-  PermissionRequest,
-  SessionMeta,
-  SessionStatus,
-  ToolCallMessage,
+  BashToolArgs,
+  CustomToolArgs,
+  EditToolArgs,
+  ReadToolArgs,
+  WriteToolArgs,
+  type PermissionChoice,
+  type ModelSummary,
+  type PermissionRequest,
+  type SessionMeta,
+  type SessionStatus,
+  type ToolCallMessage,
 } from "@pi-mobile/protocol";
 import { SessionNotFound } from "./errors.ts";
+import { setupFauxIfEnabled } from "./pi-faux.ts";
 
 /* ── public types ────────────────────────────────────────────────────── */
 
@@ -166,77 +165,62 @@ interface PiUsage {
   cost?: { total?: number };
 }
 
+const toolCallBase = (id: string) => ({
+  kind: "tool_call" as const,
+  id,
+  at: Date.now(),
+  status: "running" as const,
+});
+
 /**
- * Register pi-ai's faux provider with a small set of scripted responses
- * and return the model object suitable for `session.setModel(...)`.
- *
- * Used for shaking down the real pi pipeline end-to-end without API
- * keys. The faux provider's `setResponses` is called after registration
- * so each prompt() picks the next response in sequence (cycling once
- * exhausted via `appendResponses`).
- *
- * Idempotent across calls: if a faux provider is already registered
- * under the same provider/model id, pi-ai reuses it.
+ * Pi's public event type exposes `args: any`, even though its built-in tool
+ * definitions have typed TypeBox inputs. Normalize that loose SDK boundary into
+ * our Valibot-validated wire protocol before storing or sending to mobile.
  */
-let fauxRegistration: ReturnType<typeof registerFauxProvider> | null = null;
-const registerFaux = () => {
-  if (!fauxRegistration) {
-    fauxRegistration = registerFauxProvider({
-      provider: "shakedown",
-      // Unique api id so we don't collide with pi-ai's built-in
-      // providers (anthropic-messages, openai-chat, etc.). pi-coding-agent
-      // re-registers the built-ins during ModelRegistry.create, which
-      // would otherwise overwrite our faux entry on a shared api key.
-      api: "faux",
-      models: [
-        {
-          id: "shakedown-1",
-          name: "Faux Shakedown",
-          input: ["text"],
-          contextWindow: 100_000,
-          maxTokens: 4096,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        },
-      ],
-      // Slow it down a bit so we can observe streaming events.
-      tokensPerSecond: 40,
-      tokenSize: { min: 3, max: 7 },
-    });
+const normalizeToolCall = (
+  id: string,
+  toolName: string,
+  rawArgs: unknown,
+): ToolCallMessage => {
+  const base = toolCallBase(id);
+
+  switch (toolName) {
+    case "read": {
+      const args: ReadToolInput = v.parse(ReadToolArgs, rawArgs);
+      return { ...base, toolKind: "builtin", tool: "read", args };
+    }
+    case "write": {
+      const args: WriteToolInput = v.parse(WriteToolArgs, rawArgs);
+      return { ...base, toolKind: "builtin", tool: "write", args };
+    }
+    case "edit": {
+      const raw = v.parse(CustomToolArgs, rawArgs);
+      const legacyEdits =
+        typeof raw.oldText === "string" || typeof raw.newText === "string"
+          ? [{ oldText: raw.oldText ?? "", newText: raw.newText ?? "" }]
+          : undefined;
+      const args: EditToolInput = v.parse(EditToolArgs, {
+        ...raw,
+        edits: raw.edits ?? legacyEdits,
+      });
+      return { ...base, toolKind: "builtin", tool: "edit", args };
+    }
+    case "bash": {
+      const raw = v.parse(CustomToolArgs, rawArgs);
+      const args: BashToolInput = v.parse(BashToolArgs, {
+        ...raw,
+        command: raw.command ?? raw.cmd,
+      });
+      return { ...base, toolKind: "builtin", tool: "bash", args };
+    }
+    default:
+      return {
+        ...base,
+        toolKind: "custom",
+        tool: toolName,
+        args: v.parse(CustomToolArgs, rawArgs),
+      };
   }
-  // Each call seeds a fresh canned response. Two modes:
-  //   PI_FAUX=1 alone:               normal stopReason:"stop" success path
-  //   PI_FAUX=1 + PI_FAUX_ERROR=1:   stopReason:"error" with errorMessage,
-  //                                  for exercising the error-surfacing
-  //                                  pipeline (mobile bubble banner)
-  // Both modes share the same registration; only the canned response
-  // differs.
-  if (process.env.PI_FAUX_ERROR === "1") {
-    fauxRegistration.setResponses([
-      fauxAssistantMessage(
-        // Empty content mirrors what pi-ai actually emits when the
-        // provider fails before any tokens stream (auth/network/etc.).
-        // The mobile must surface this as a failed turn even with no
-        // streamed text.
-        fauxText(""),
-        {
-          stopReason: "error",
-          errorMessage:
-            "Connection error. (faux: simulated provider failure)",
-        },
-      ),
-    ]);
-  } else {
-    fauxRegistration.setResponses([
-      fauxAssistantMessage(
-        fauxText(
-          "Acknowledged. Running a quick shakedown of the live pi event pipeline. " +
-            "If you can read this in the chat, **streaming markdown** works.",
-        ),
-        { stopReason: "stop" },
-      ),
-    ]);
-  }
-  return fauxRegistration.getModel();
 };
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -247,24 +231,6 @@ const registerFaux = () => {
    Effect runtimes. See the `mapEvent` switch below for the exact event
    shapes (typed from @earendil-works/pi-coding-agent imports).
    ────────────────────────────────────────────────────────────────────── */
-
-/**
- * If PI_FAUX=1 is set, register the deterministic faux provider and
- * stash a fake auth credential. Returns the faux model (so caller can
- * pin it on the session) or null when not in faux mode. Idempotent;
- * see {@link registerFaux} for the underlying registration cache.
- */
-const setupFauxIfEnabled = (
-  authStorage: ReturnType<typeof AuthStorage.create>,
-): ReturnType<typeof registerFaux> | null => {
-  if (process.env.PI_FAUX !== "1") return null;
-  const fauxModel = registerFaux();
-  // The faux provider doesn't need real auth, but pi's model selection
-  // enforces that AuthStorage has *something* for the provider.
-  // setRuntimeApiKey stores in-memory only — never hits the auth file.
-  authStorage.setRuntimeApiKey("shakedown", "faux");
-  return fauxModel;
-};
 
 /**
  * Given a live pi AgentSession and a session meta, build the full
@@ -381,24 +347,9 @@ const wirePiSession = (
           const id = event.toolCallId;
           toolStarts.set(id, { startedAt: Date.now() });
 
-          const tool = (
-            ["read", "write", "edit", "bash"].includes(event.toolName)
-              ? event.toolName
-              : "bash"
-          ) as ToolCallMessage["tool"];
-
           Queue.unsafeOffer(q, {
             t: "tool_call",
-            entry: {
-              kind: "tool_call",
-              id,
-              at: Date.now(),
-              tool,
-              // `event.args` is `any` in pi's types; we accept whatever
-              // shape and let the mobile renderer pattern-match on tool.
-              args: (event.args as Record<string, unknown>) ?? {},
-              status: "running",
-            },
+            entry: normalizeToolCall(id, event.toolName, event.args),
           });
           return;
         }
@@ -411,7 +362,10 @@ const wirePiSession = (
           // or an OpenAI-style content envelope:
           //   { content: [{ type: "text", text: "..." }] }
           // The mobile UI should render the text, not the transport JSON.
-          const resultText = toolResultToText(event.result);
+          const resultText =
+            typeof event.result === "string"
+              ? event.result
+              : JSON.stringify(event.result ?? "");
 
           Queue.unsafeOffer(q, {
             t: "tool_result",
@@ -733,266 +687,8 @@ const makeResumedSession = (
 
 /* ── Pi service tag, extended with `resume` ───────────────────────── */
 
-const PiClientLive = Layer.succeed(PiClient, {
+export const PiClientLive = Layer.succeed(PiClient, {
   create: (opts) => makeLiveSession(opts),
   resume: (storedMeta) => makeResumedSession(storedMeta),
 });
 
-/* ──────────────────────────────────────────────────────────────────────
-   MOCK — scripted in-process flow, no API keys required.
-   ────────────────────────────────────────────────────────────────────── */
-
-const sleepRand = (minMs: number, spreadMs: number) =>
-  Effect.flatMap(Random.next, (r) =>
-    Effect.sleep(`${minMs + Math.floor(r * spreadMs)} millis`),
-  );
-
-function* chunks(s: string, min: number, max: number): Generator<string> {
-  let i = 0;
-  while (i < s.length) {
-    const n = min + Math.floor(Math.random() * (max - min + 1));
-    yield s.slice(i, i + n);
-    i += n;
-  }
-}
-
-const SCRIPT_REPLY_1 =
-  "Looking at the auth middleware first to understand the current shape.";
-const SCRIPT_REPLY_2 =
-  "Three call sites. I'll swap the algorithm in `lib/jwt.ts`, load the public key from `KEYS_DIR/public.pem`, and update the test fixture to sign with RS256.";
-
-/* Realistic edit demo — HS256 → RS256 in a JWT verifier. Picked because
-   it exercises every diff-viewer code path: removed lines, added lines,
-   surrounding context, all in a single segment. */
-const EDIT_OLD = `import jwt from "jsonwebtoken";
-
-export function verifyToken(token: string) {
-  return jwt.verify(token, process.env.JWT_SECRET!, {
-    algorithms: ["HS256"],
-  });
-}`;
-
-const EDIT_NEW = `import jwt from "jsonwebtoken";
-import { readFileSync } from "node:fs";
-
-const PUBLIC_KEY = readFileSync(
-  \`\${process.env.KEYS_DIR}/public.pem\`,
-  "utf8",
-);
-
-export function verifyToken(token: string) {
-  return jwt.verify(token, PUBLIC_KEY, {
-    algorithms: ["RS256"],
-  });
-}`;
-
-function toolResultToText(result: unknown): string {
-  if (typeof result === "string") return result;
-  if (result == null) return "";
-
-  if (typeof result === "object" && "content" in result) {
-    const content = (result as { content?: unknown }).content;
-    if (Array.isArray(content)) {
-      const text = content
-        .map((part) => {
-          if (typeof part === "string") return part;
-          if (
-            part &&
-            typeof part === "object" &&
-            "text" in part &&
-            typeof (part as { text?: unknown }).text === "string"
-          ) {
-            return (part as { text: string }).text;
-          }
-          return "";
-        })
-        .filter(Boolean)
-        .join("\n");
-      if (text) return text;
-    }
-  }
-
-  return JSON.stringify(result);
-}
-
-const scriptedFlow = (q: Queue.Queue<PiEmission>, userText: string) =>
-  Effect.gen(function* () {
-    yield* Queue.offer(q, { t: "status", status: "thinking" });
-    yield* Effect.sleep("400 millis");
-
-    const id1 = nextId("m");
-    for (const chunk of chunks(SCRIPT_REPLY_1, 3, 5)) {
-      yield* Queue.offer(q, { t: "assistant_delta", id: id1, text: chunk });
-      yield* sleepRand(25, 60);
-    }
-    yield* Queue.offer(q, { t: "assistant_end", id: id1 });
-
-    const tcId = nextId("t");
-    yield* Queue.offer(q, {
-      t: "tool_call",
-      entry: {
-        kind: "tool_call",
-        id: tcId,
-        at: Date.now(),
-        tool: "read",
-        args: { path: "src/middleware/auth.ts" },
-        status: "running",
-      },
-    });
-    yield* sleepRand(60, 80);
-    yield* Queue.offer(q, {
-      t: "tool_result",
-      id: tcId,
-      result: "42 lines",
-      status: "ok",
-      durationMs: 14,
-    });
-
-    const id2 = nextId("m");
-    for (const chunk of chunks(SCRIPT_REPLY_2, 3, 5)) {
-      yield* Queue.offer(q, { t: "assistant_delta", id: id2, text: chunk });
-      yield* sleepRand(20, 50);
-    }
-    yield* Queue.offer(q, { t: "assistant_end", id: id2 });
-
-    /* edit tool call — demonstrates the diff viewer */
-    const editId = nextId("t");
-    yield* Queue.offer(q, {
-      t: "tool_call",
-      entry: {
-        kind: "tool_call",
-        id: editId,
-        at: Date.now(),
-        tool: "edit",
-        args: {
-          path: "lib/jwt.ts",
-          oldText: EDIT_OLD,
-          newText: EDIT_NEW,
-        },
-        status: "running",
-      },
-    });
-    yield* sleepRand(80, 120);
-    yield* Queue.offer(q, {
-      t: "tool_result",
-      id: editId,
-      result: "Edited lib/jwt.ts (1 replacement, +5 -1 lines)",
-      status: "ok",
-      durationMs: 31,
-    });
-
-    yield* Queue.offer(q, {
-      t: "permission",
-      entry: {
-        kind: "permission",
-        id: nextId("p"),
-        at: Date.now(),
-        tool: "bash",
-        args: { cmd: "openssl genrsa -out keys/private.pem 2048" },
-        rationale: `Need an RSA key for the test fixture (echoing your prompt: "${userText.slice(0, 40)}").`,
-      },
-    });
-    yield* Queue.offer(q, { t: "status", status: "waiting" });
-  }).pipe(Effect.catchAll((e) => Effect.fail(new PiError(String(e)))));
-
-const makeMockSession = (opts: {
-  cwd: string;
-  title?: string;
-  branch?: string;
-}): Effect.Effect<PiSession, PiError> =>
-  Effect.gen(function* () {
-    const q = yield* Queue.unbounded<PiEmission>();
-    const currentFiber = yield* Ref.make<Fiber.RuntimeFiber<
-      void,
-      PiError
-    > | null>(null);
-
-    const meta: SessionMeta = {
-      id: nextId("s"),
-      title: opts.title ?? "untitled session",
-      cwd: opts.cwd,
-      branch: opts.branch,
-      status: "idle",
-      updatedAt: Date.now(),
-      tokens: { in: 0, out: 0 },
-      costUsd: 0,
-    };
-
-    return {
-      meta,
-      events: Stream.fromQueue(q),
-      send: (text, _mode) =>
-        Effect.gen(function* () {
-          const prev = yield* Ref.get(currentFiber);
-          if (prev) yield* Fiber.interrupt(prev);
-          const f = yield* Effect.forkDaemon(scriptedFlow(q, text));
-          yield* Ref.set(currentFiber, f);
-        }),
-      interrupt: () =>
-        Effect.gen(function* () {
-          const prev = yield* Ref.get(currentFiber);
-          if (prev) yield* Fiber.interrupt(prev);
-          yield* Queue.offer(q, { t: "status", status: "idle" });
-        }),
-      approve: (id) =>
-        Effect.gen(function* () {
-          yield* Queue.offer(q, { t: "status", status: "thinking" });
-          yield* sleepRand(120, 80);
-          yield* Queue.offer(q, {
-            t: "tool_result",
-            id,
-            result: "Generating RSA private key, 2048 bit long modulus",
-            status: "ok",
-            durationMs: 240,
-          });
-          yield* Queue.offer(q, { t: "status", status: "idle" });
-        }),
-      listModels: () =>
-        Effect.succeed({
-          current: {
-            provider: "mock",
-            id: "mock-1",
-            name: "Mock Model",
-            reasoning: false,
-            input: ["text"],
-            contextWindow: 100_000,
-            maxTokens: 4096,
-            current: true,
-            usingOAuth: false,
-          },
-          models: [
-            {
-              provider: "mock",
-              id: "mock-1",
-              name: "Mock Model",
-              reasoning: false,
-              input: ["text"],
-              contextWindow: 100_000,
-              maxTokens: 4096,
-              current: true,
-              usingOAuth: false,
-            },
-          ],
-        }),
-      setModel: () => Effect.void,
-      compact: () => Effect.void,
-      close: () =>
-        Effect.gen(function* () {
-          const prev = yield* Ref.get(currentFiber);
-          if (prev) yield* Fiber.interrupt(prev);
-          yield* Queue.shutdown(q);
-        }),
-    };
-  });
-
-const PiClientMock = Layer.succeed(PiClient, {
-  create: (opts) => makeMockSession(opts),
-  // The mock has no persistence — a bridge restart loses all state.
-  // We surface that honestly rather than fabricating a fake session.
-  resume: (storedMeta) =>
-    Effect.fail(new SessionNotFound(storedMeta.id)),
-});
-
-/** Pick the impl based on $PI_USE_MOCK. */
-export const PiClientFromEnv =
-  process.env.PI_USE_MOCK === "1" ? PiClientMock : PiClientLive;

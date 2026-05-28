@@ -355,4 +355,21 @@
   .streaming-md pre.shiki .line {
     display: block;
   }
+
+  /* Tool read/write code blocks: keep syntax highlighting but wrap long
+     lines so a single token cannot make the mobile viewport horizontally
+     scroll. Bash keeps its own terminal-style renderer. */
+  .code-wrap pre.shiki {
+    margin: 0;
+    overflow-x: hidden;
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .code-wrap pre.shiki code,
+  .code-wrap pre.shiki .line {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
 }

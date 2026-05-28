@@ -67,7 +67,9 @@ const LANG_ALIASES: Record<string, string> = {
  * The bundler can only emit chunks for `import("@shikijs/langs/<literal>")`
  * — a fully-dynamic `import(`@shikijs/langs/${var}`)` is opaque to it.
  */
-const LANG_IMPORTS: Record<string, () => Promise<unknown>> = {
+type LanguageRegistration = Parameters<HighlighterCore["loadLanguage"]>[0];
+
+const LANG_IMPORTS: Record<string, () => Promise<{ default: LanguageRegistration }>> = {
   typescript: () => import("@shikijs/langs/typescript"),
   tsx: () => import("@shikijs/langs/tsx"),
   javascript: () => import("@shikijs/langs/javascript"),
@@ -143,8 +145,8 @@ async function ensureLang(lang: string): Promise<boolean> {
   if (!p) {
     p = (async () => {
       const hl = await getHighlighter();
-      const mod = (await importer()) as { default: unknown };
-      await hl.loadLanguage(mod.default as never);
+      const mod = await importer();
+      await hl.loadLanguage(mod.default);
       loadedLangs.add(lang);
     })();
     loadingLangs.set(lang, p);

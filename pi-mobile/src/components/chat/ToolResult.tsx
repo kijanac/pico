@@ -12,26 +12,17 @@ import { highlightToHtml, inferLangFromPath } from "~/lib/highlighter";
  * Per-tool result renderers.
  *
  *   bash   — ANSI escapes converted to inline-styled HTML via anser.
- *            Preserves color and decoration from `ls --color`, error
- *            traces with red, etc.
- *   read   — Shiki-highlighted file content, language inferred from
- *            the file extension in args.path.
- *   write  — Same as read but rendering the content that was written.
- *            Pi puts the written body in args.content, not result, so
- *            we prefer that source.
- *   edit   — Handled by EditDiff at the ToolCall level; this file is
- *            never asked to render an edit's result.
- *   other  — Raw <pre> fallback (glob, grep, custom tools, etc).
- *
- * All viewers are guarded against missing data and gracefully degrade
- * to the raw text view if syntax detection fails.
+ *   read   — Shiki-highlighted file content, language inferred from args.path.
+ *   write  — Same as read but rendering args.content when available.
+ *   edit   — Handled by EditDiff at the ToolCall level.
+ *   custom — Raw result text.
  */
 
 const BASH_CLASS =
   "mt-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[#0d1117] p-2 font-mono text-[11px] leading-[1.5] text-[#e6edf3] whitespace-pre-wrap break-words";
 
 const CODE_BLOCK_CLASS =
-  "mt-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[color:var(--color-border)] p-2 text-[11px] leading-[1.5]";
+  "code-wrap mt-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[color:var(--color-border)] p-2 text-[11px] leading-[1.5]";
 
 const RAW_CLASS =
   "mt-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-2 text-[11px] leading-[1.5] text-[color:var(--color-fg-muted)] whitespace-pre-wrap break-words";
@@ -139,27 +130,32 @@ export default function ToolResult(props: {
 
   return (
     <Show when={!isError()} fallback={<RawResult text={result()} />}>
-      <Show
-        when={props.msg.tool === "bash"}
-        fallback={
-          <Show
-            when={props.msg.tool === "read" || props.msg.tool === "write"}
-            fallback={<RawResult text={result()} />}
-          >
-            <HighlightedResult
-              text={
-                props.msg.tool === "write"
-                  ? (String(props.msg.args.content ?? "") ||
-                    result())
-                  : result()
-              }
-              path={String(props.msg.args.path ?? "")}
-            />
-          </Show>
-        }
-      >
-        <BashResult result={result()} />
-      </Show>
+      <ToolResultContent msg={props.msg} result={result()} />
     </Show>
   );
+}
+
+function ToolResultContent(props: {
+  msg: ToolCallMessage;
+  result: string;
+}): JSX.Element {
+  if (props.msg.toolKind === "custom") {
+    return <RawResult text={props.result} />;
+  }
+
+  switch (props.msg.tool) {
+    case "bash":
+      return <BashResult result={props.result} />;
+    case "read":
+      return <HighlightedResult text={props.result} path={props.msg.args.path} />;
+    case "write":
+      return (
+        <HighlightedResult
+          text={props.msg.args.content || props.result}
+          path={props.msg.args.path}
+        />
+      );
+    case "edit":
+      return <RawResult text={props.result} />;
+  }
 }

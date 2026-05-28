@@ -8,6 +8,13 @@ interface Props {
   req: PermissionRequest;
 }
 
+function formatArgs(req: PermissionRequest): string {
+  if (req.toolKind === "builtin" && req.tool === "bash") {
+    return req.args.command;
+  }
+  return JSON.stringify(req.args, null, 2);
+}
+
 export default function PermissionGate(props: Props): JSX.Element {
   const resolved = () => props.req.resolved !== undefined;
 
@@ -41,7 +48,7 @@ export default function PermissionGate(props: Props): JSX.Element {
             <span class="label">{props.req.tool}</span>
           </div>
           <pre class="mb-3 overflow-x-auto rounded-[var(--radius-sm)] bg-[color:var(--color-bg)] p-2 text-[12px] leading-[1.5]">
-            {String(props.req.args.cmd ?? JSON.stringify(props.req.args, null, 2))}
+            {formatArgs(props.req)}
           </pre>
           <Show when={props.req.rationale}>
             <p class="mb-3 text-[12px] leading-[1.55] text-[color:var(--color-fg-muted)]">

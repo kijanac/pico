@@ -25,6 +25,7 @@ import {
   pipe,
 } from "effect";
 import { PiClient, type PiSession, type PiEmission, PiError } from "./pi.ts";
+import { parseWireEvent } from "@pi-mobile/protocol";
 import type {
   ModelSummary,
   PermissionChoice,
@@ -158,7 +159,7 @@ const make = Effect.gen(function* () {
       Stream.runForEach((emission: PiEmission) =>
         Effect.gen(function* () {
           const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
-          const event = { ...emission, seq } as WireEvent;
+          const event = parseWireEvent({ ...emission, seq });
 
           // ── meta reflection ────────────────────────────────────────────
           if (event.t === "status") {

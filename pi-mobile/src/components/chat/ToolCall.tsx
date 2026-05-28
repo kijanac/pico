@@ -8,12 +8,12 @@ import {
   X,
   Loader2,
 } from "lucide-solid";
-import type { ToolCallMessage, ToolName } from "@pi-mobile/protocol";
+import type { BuiltinToolName, ToolCallMessage } from "@pi-mobile/protocol";
 import { shortPath } from "~/lib/format";
 import EditDiff from "./EditDiff";
 import ToolResult from "./ToolResult";
 
-const ICONS: Record<ToolName, (p: { size: number }) => JSX.Element> = {
+const ICONS: Record<BuiltinToolName, (p: { size: number }) => JSX.Element> = {
   read: (p) => <FileText size={p.size} />,
   write: (p) => <PlusSquare size={p.size} />,
   edit: (p) => <Pencil size={p.size} />,
@@ -21,36 +21,43 @@ const ICONS: Record<ToolName, (p: { size: number }) => JSX.Element> = {
 };
 
 function summary(msg: ToolCallMessage): string {
+  if (msg.toolKind === "custom") return JSON.stringify(msg.args);
+
   switch (msg.tool) {
     case "read":
     case "write":
     case "edit":
-      return shortPath(String(msg.args.path ?? ""), 2);
+      return shortPath(msg.args.path, 2);
     case "bash":
-      return String(msg.args.cmd ?? "");
+      return msg.args.command;
   }
 }
 
 /**
  * Expanded view dispatcher.
  *
- *   edit  — unified diff (args contains old/new text or an edits array).
+ *   edit  — unified diff.
  *   else  — ToolResult picks the right per-tool renderer (bash ANSI,
  *           read/write syntax highlighting, raw pre fallback).
  */
 function ExpandedView(props: { msg: ToolCallMessage }): JSX.Element {
-  return (
-    <Show
-      when={props.msg.tool === "edit"}
-      fallback={
-        <Show when={props.msg.result || props.msg.args.content}>
-          <ToolResult msg={props.msg} />
-        </Show>
-      }
-    >
+  if (props.msg.toolKind === "builtin" && props.msg.tool === "edit") {
+    return (
       <div class="mt-1">
         <EditDiff args={props.msg.args} />
       </div>
+    );
+  }
+
+  const hasContent = () =>
+    !!props.msg.result ||
+    (props.msg.toolKind === "builtin" &&
+      props.msg.tool === "write" &&
+      props.msg.args.content.length > 0);
+
+  return (
+    <Show when={hasContent()}>
+      <ToolResult msg={props.msg} />
     </Show>
   );
 }
@@ -60,8 +67,11 @@ export default function ToolCallView(props: {
 }): JSX.Element {
   // Edit blocks expand by default — the diff is the point. Other tools
   // stay collapsed until tapped so the chat doesn't get noisy.
-  const [open, setOpen] = createSignal(props.msg.tool === "edit");
-  const Icon = ICONS[props.msg.tool];
+  const [open, setOpen] = createSignal(
+    props.msg.toolKind === "builtin" && props.msg.tool === "edit",
+  );
+  const Icon =
+    props.msg.toolKind === "builtin" ? ICONS[props.msg.tool] : Terminal;
 
   return (
     <div class="px-3 py-1">

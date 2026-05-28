@@ -1,51 +1,28 @@
 import { createResource, For, Show, type JSX } from "solid-js";
 import { diffLines } from "diff";
 import { highlightLines, inferLangFromPath } from "~/lib/highlighter";
+import type { EditToolArgs } from "@pi-mobile/protocol";
 
 /**
- * Pi's `edit` tool accepts either:
- *   - { path, oldText, newText }              — single replacement
- *   - { path, edits: [{ oldText, newText }] } — atomic multi-edit
- *
- * We normalize both to an array of {oldText, newText} segments and render
- * each as its own unified diff block. Segments share the file's inferred
- * language so syntax highlighting matches the actual code.
+ * Pi's `edit` tool accepts `{ path, edits: [{ oldText, newText }] }`.
+ * The bridge normalizes and validates that shape before it reaches mobile.
  */
-interface EditInput {
-  path?: string;
-  oldText?: string;
-  newText?: string;
-  edits?: Array<{ oldText?: string; newText?: string }>;
-}
 
 interface Segment {
   oldText: string;
   newText: string;
 }
 
-function normalize(args: Record<string, unknown>): {
+function normalize(args: EditToolArgs): {
   path: string;
   segments: Segment[];
 } {
-  const input = args as EditInput;
-  const path = typeof input.path === "string" ? input.path : "";
-
-  if (Array.isArray(input.edits) && input.edits.length > 0) {
-    const segments = input.edits
-      .map((e) => ({
-        oldText: typeof e.oldText === "string" ? e.oldText : "",
-        newText: typeof e.newText === "string" ? e.newText : "",
-      }))
-      .filter((s) => s.oldText.length > 0 || s.newText.length > 0);
-    return { path, segments };
-  }
-
-  const oldText = typeof input.oldText === "string" ? input.oldText : "";
-  const newText = typeof input.newText === "string" ? input.newText : "";
-  if (oldText.length === 0 && newText.length === 0) {
-    return { path, segments: [] };
-  }
-  return { path, segments: [{ oldText, newText }] };
+  return {
+    path: args.path,
+    segments: args.edits.filter(
+      (s) => s.oldText.length > 0 || s.newText.length > 0,
+    ),
+  };
 }
 
 /* ── Diff lines ──────────────────────────────────────────────────────── */
@@ -157,7 +134,7 @@ function collapseContext(lines: DiffLine[]): CollapsedSegment[] {
 /* ── Component ───────────────────────────────────────────────────────── */
 
 interface Props {
-  args: Record<string, unknown>;
+  args: EditToolArgs;
 }
 
 export default function EditDiff(props: Props): JSX.Element {
@@ -282,13 +259,13 @@ function DiffLineRow(props: {
       <Show
         when={content()}
         fallback={
-          <span class="min-w-0 flex-1 whitespace-pre overflow-x-auto text-[color:var(--color-fg)]">
+          <span class="min-w-0 flex-1 whitespace-pre-wrap break-words text-[color:var(--color-fg)]">
             {props.line.text || " "}
           </span>
         }
       >
         <span
-          class="min-w-0 flex-1 whitespace-pre overflow-x-auto"
+          class="min-w-0 flex-1 whitespace-pre-wrap break-words"
           // eslint-disable-next-line solid/no-innerhtml
           innerHTML={content() || "&nbsp;"}
         />
