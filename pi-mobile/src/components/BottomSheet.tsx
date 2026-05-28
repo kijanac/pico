@@ -8,7 +8,7 @@ import {
 } from "~/components/ui/drawer";
 import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/cn";
-import { keyboardHeight } from "~/lib/keyboard";
+import { useKeyboardInset } from "~/lib/keyboard";
 
 export default function BottomSheet(props: {
   open: boolean;
@@ -21,7 +21,10 @@ export default function BottomSheet(props: {
   children: JSX.Element;
   headerTrailing?: JSX.Element;
   contentClass?: string;
+  avoidKeyboard?: boolean;
 }): JSX.Element {
+  const keyboardInset = useKeyboardInset({ enabled: () => props.avoidKeyboard ?? true });
+
   const setOpen = (open: boolean) => {
     props.onOpenChange?.(open);
     if (!open) props.onClose();
@@ -38,7 +41,7 @@ export default function BottomSheet(props: {
             props.contentClass,
           )}
           style={{
-            "padding-bottom": `calc(env(safe-area-inset-bottom) + ${keyboardHeight()}px + 0.5rem)`,
+            "padding-bottom": `calc(env(safe-area-inset-bottom) + ${keyboardInset()}px + 0.5rem)`,
           }}
         >
           <div class="mt-2 h-1 w-10 shrink-0 self-center rounded-full bg-[color:var(--color-border-strong)]" />

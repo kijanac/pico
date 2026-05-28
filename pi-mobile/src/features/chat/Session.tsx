@@ -24,6 +24,7 @@ import {
 import { connectStream } from "~/lib/api";
 import { getBridgeUrl } from "~/lib/settings";
 import { resumeTick } from "~/lib/lifecycle";
+import { KeyboardAvoidance } from "~/lib/keyboard";
 import { formatCost, formatTokens, shortPath } from "~/lib/format";
 import type { WireEvent } from "@pi-mobile/protocol";
 
@@ -117,7 +118,8 @@ export default function Session(): JSX.Element {
 
   return (
     <EdgeSwipeBack href="/" preview={<SessionsPreview />}>
-      <div class="flex h-dvh min-h-0 flex-col overflow-hidden">
+      <KeyboardAvoidance mode="manual">
+        <div class="flex h-dvh min-h-0 flex-col overflow-hidden">
         <Header
           back="/"
           trailing={<SessionAgentActions sessionId={params.id} />}
@@ -170,7 +172,8 @@ export default function Session(): JSX.Element {
           <MessageList />
           <InputBar sessionId={params.id} />
         </Show>
-      </div>
+        </div>
+      </KeyboardAvoidance>
     </EdgeSwipeBack>
   );
 }
