@@ -100,7 +100,6 @@ jobs:
 
           builds = api("/builds", {
               "filter[app]": app_id,
-              "filter[version]": marketing_version,
               "filter[platform]": "IOS",
               "fields[builds]": "version",
               "limit": "200",
