@@ -43,14 +43,80 @@ jobs:
         working-directory: pi-mobile
         run: pnpm exec cap sync ios
 
-      - name: Resolve build version
+      - name: Resolve marketing version
         run: |
           if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             echo "MARKETING_VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
           else
-            echo "MARKETING_VERSION=0.1.0" >> "$GITHUB_ENV"
+            node -e "console.log('MARKETING_VERSION='+require('./package.json').version)" >> "$GITHUB_ENV"
           fi
-          echo "BUILD_NUMBER=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Resolve next TestFlight build number
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import subprocess
+          import time
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
+
+          key_id = os.environ["ASC_KEY_ID"]
+          issuer_id = os.environ["ASC_ISSUER_ID"]
+          private_key = os.environ["ASC_PRIVATE_KEY"]
+          bundle_id = os.environ["IOS_BUNDLE_ID"]
+          marketing_version = os.environ["MARKETING_VERSION"]
+
+          def b64url(data: bytes) -> str:
+              return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+          header = {"alg": "ES256", "kid": key_id, "typ": "JWT"}
+          now = int(time.time())
+          payload = {"iss": issuer_id, "iat": now, "exp": now + 20 * 60, "aud": "appstoreconnect-v1"}
+          signing_input = f"{b64url(json.dumps(header, separators=(',', ':')).encode())}.{b64url(json.dumps(payload, separators=(',', ':')).encode())}"
+          key_path = Path(os.environ["RUNNER_TEMP"]) / "asc_api_key.p8"
+          sig_path = Path(os.environ["RUNNER_TEMP"]) / "asc_api_sig.bin"
+          key_path.write_text(private_key)
+          subprocess.run(["openssl", "dgst", "-sha256", "-sign", str(key_path), "-out", str(sig_path)], input=signing_input.encode(), check=True)
+          token = f"{signing_input}.{b64url(sig_path.read_bytes())}"
+
+          def api(path: str, params: dict[str, str]) -> dict:
+              url = "https://api.appstoreconnect.apple.com/v1" + path + "?" + urllib.parse.urlencode(params)
+              req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+              with urllib.request.urlopen(req, timeout=30) as res:
+                  return json.load(res)
+
+          apps = api("/apps", {"filter[bundleId]": bundle_id, "limit": "1"})["data"]
+          if not apps:
+              raise SystemExit(f"No App Store Connect app found for bundle id {bundle_id}")
+          app_id = apps[0]["id"]
+
+          builds = api("/builds", {
+              "filter[app]": app_id,
+              "filter[version]": marketing_version,
+              "filter[platform]": "IOS",
+              "fields[builds]": "version",
+              "limit": "200",
+          })["data"]
+          nums = []
+          for build in builds:
+              version = build.get("attributes", {}).get("version", "0")
+              try:
+                  nums.append(int(version.split(".")[0]))
+              except ValueError:
+                  pass
+          next_build = max(nums, default=0) + 1
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"BUILD_NUMBER={next_build}\n")
+          print(f"MARKETING_VERSION={marketing_version} BUILD_NUMBER={next_build}")
+          PY
 
       - name: Install signing certificate
         env:
