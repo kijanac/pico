@@ -27,6 +27,8 @@ import {
 import { PiClient, type PiSession, type PiEmission, PiError } from "./pi.ts";
 import { parseWireEvent } from "@pi-mobile/protocol";
 import type {
+  AuthLoginJob,
+  AuthProvider,
   ModelSummary,
   PermissionChoice,
   SessionMeta,
@@ -96,6 +98,11 @@ export class SessionManager extends Context.Tag("SessionManager")<
       id: string,
       instructions?: string,
     ) => Effect.Effect<void, PiError | SessionNotFound>;
+    readonly listAuthProviders: (id: string) => Effect.Effect<{ providers: AuthProvider[] }, PiError | SessionNotFound>;
+    readonly startAuthLogin: (id: string, providerId: string) => Effect.Effect<AuthLoginJob, PiError | SessionNotFound>;
+    readonly getAuthLogin: (id: string, jobId: string) => Effect.Effect<AuthLoginJob, PiError | SessionNotFound>;
+    readonly submitAuthLoginInput: (id: string, jobId: string, value: string) => Effect.Effect<AuthLoginJob, PiError | SessionNotFound>;
+    readonly cancelAuthLogin: (id: string, jobId: string) => Effect.Effect<void, PiError | SessionNotFound>;
     readonly getSettings: (id: string) => Effect.Effect<SessionSettings, PiError | SessionNotFound>;
     readonly patchSettings: (
       id: string,
@@ -432,6 +439,21 @@ const make = Effect.gen(function* () {
   const compact = (id: string, instructions?: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.compact(instructions));
 
+  const listAuthProviders = (id: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.listAuthProviders());
+
+  const startAuthLogin = (id: string, providerId: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.startAuthLogin(providerId));
+
+  const getAuthLogin = (id: string, jobId: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getAuthLogin(jobId));
+
+  const submitAuthLoginInput = (id: string, jobId: string, value: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.submitAuthLoginInput(jobId, value));
+
+  const cancelAuthLogin = (id: string, jobId: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.cancelAuthLogin(jobId));
+
   const getSettings = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getSettings());
 
@@ -514,6 +536,11 @@ const make = Effect.gen(function* () {
     listModels,
     setModel,
     compact,
+    listAuthProviders,
+    startAuthLogin,
+    getAuthLogin,
+    submitAuthLoginInput,
+    cancelAuthLogin,
     getSettings,
     patchSettings,
     getStats,

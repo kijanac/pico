@@ -42,6 +42,8 @@ import * as v from "valibot";
 import {
   BashToolArgs,
   CustomToolArgs,
+  type AuthLoginJob,
+  type AuthProvider,
   EditToolArgs,
   ReadToolArgs,
   WriteToolArgs,
@@ -130,6 +132,11 @@ export interface PiSession {
   readonly listModels: () => Effect.Effect<{ current?: ModelSummary; models: ModelSummary[] }, PiError>;
   readonly setModel: (provider: string, modelId: string) => Effect.Effect<void, PiError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiError>;
+  readonly listAuthProviders: () => Effect.Effect<{ providers: AuthProvider[] }, PiError>;
+  readonly startAuthLogin: (providerId: string) => Effect.Effect<AuthLoginJob, PiError>;
+  readonly getAuthLogin: (jobId: string) => Effect.Effect<AuthLoginJob, PiError>;
+  readonly submitAuthLoginInput: (jobId: string, value: string) => Effect.Effect<AuthLoginJob, PiError>;
+  readonly cancelAuthLogin: (jobId: string) => Effect.Effect<void, PiError>;
   readonly getSettings: () => Effect.Effect<SessionSettings, PiError>;
   readonly patchSettings: (patch: SessionSettingsPatch) => Effect.Effect<SessionSettings, PiError>;
   readonly getStats: () => Effect.Effect<SessionStats, PiError>;
@@ -191,6 +198,12 @@ const sessionSettings = (piSession: AgentSession): SessionSettings => ({
   autoCompaction: piSession.autoCompactionEnabled,
   autoRetry: piSession.autoRetryEnabled,
 });
+
+interface AuthJobState {
+  job: AuthLoginJob;
+  abort: AbortController;
+  resolveInput?: (value: string) => void;
+}
 
 const flattenSessionTree = (piSession: AgentSession): SessionTree => {
   const roots = piSession.sessionManager.getTree();
@@ -505,6 +518,7 @@ const wirePiSession = (
     // Wire pi → our queue. The subscribe callback is synchronous now,
     // so no catch needed — mapEvent doesn't throw.
     const unsub = piSession.subscribe(mapEvent);
+    const authJobs = new Map<string, AuthJobState>();
 
     return {
       meta,
@@ -622,6 +636,80 @@ const wirePiSession = (
             await piSession.compact(instructions?.trim() || undefined);
           },
           catch: (e) => new PiError(`compact failed: ${String(e)}`),
+        }),
+      listAuthProviders: () =>
+        Effect.sync(() => ({
+          providers: piSession.modelRegistry.authStorage.getOAuthProviders().map((p) => {
+            const status = piSession.modelRegistry.authStorage.getAuthStatus(p.id);
+            return {
+              id: p.id,
+              name: p.name,
+              configured: status.configured,
+              ...(status.source ? { source: status.source } : {}),
+              ...(status.label ? { label: status.label } : {}),
+            };
+          }),
+        })),
+      startAuthLogin: (providerId) =>
+        Effect.sync(() => {
+          const provider = piSession.modelRegistry.authStorage.getOAuthProviders().find((p) => p.id === providerId);
+          if (!provider) throw new PiError(`auth provider not found: ${providerId}`);
+          const id = nextId("auth");
+          const abort = new AbortController();
+          const state: AuthJobState = {
+            abort,
+            job: { id, providerId, providerName: provider.name, status: "starting" },
+          };
+          authJobs.set(id, state);
+          void piSession.modelRegistry.authStorage.login(providerId, {
+            signal: abort.signal,
+            onAuth: (info) => {
+              state.job = { ...state.job, status: "auth", authUrl: info.url, instructions: info.instructions };
+            },
+            onDeviceCode: (info) => {
+              state.job = { ...state.job, status: "device", userCode: info.userCode, verificationUri: info.verificationUri };
+            },
+            onProgress: (progress) => {
+              state.job = { ...state.job, status: "progress", progress };
+            },
+            onSelect: async () => providerId,
+            onPrompt: async (prompt) => {
+              state.job = { ...state.job, status: "prompt", promptMessage: prompt.message, promptPlaceholder: prompt.placeholder };
+              return await new Promise<string>((resolve) => { state.resolveInput = resolve; });
+            },
+            onManualCodeInput: async () => {
+              state.job = { ...state.job, status: "manual", promptMessage: "Paste the authorization code or final redirect URL" };
+              return await new Promise<string>((resolve) => { state.resolveInput = resolve; });
+            },
+          }).then(() => {
+            state.job = { ...state.job, status: "success" };
+          }).catch((e) => {
+            state.job = { ...state.job, status: abort.signal.aborted ? "cancelled" : "failed", error: String(e) };
+          });
+          return state.job;
+        }),
+      getAuthLogin: (jobId) =>
+        Effect.sync(() => {
+          const state = authJobs.get(jobId);
+          if (!state) throw new PiError(`auth job not found: ${jobId}`);
+          return state.job;
+        }),
+      submitAuthLoginInput: (jobId, value) =>
+        Effect.sync(() => {
+          const state = authJobs.get(jobId);
+          if (!state) throw new PiError(`auth job not found: ${jobId}`);
+          state.resolveInput?.(value);
+          state.resolveInput = undefined;
+          state.job = { ...state.job, status: "progress", progress: "Submitted authentication input…" };
+          return state.job;
+        }),
+      cancelAuthLogin: (jobId) =>
+        Effect.sync(() => {
+          const state = authJobs.get(jobId);
+          if (!state) throw new PiError(`auth job not found: ${jobId}`);
+          state.abort.abort();
+          state.resolveInput?.("");
+          state.job = { ...state.job, status: "cancelled" };
         }),
       getSettings: () => Effect.sync(() => sessionSettings(piSession)),
       patchSettings: (patch) =>

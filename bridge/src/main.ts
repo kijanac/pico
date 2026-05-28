@@ -81,6 +81,9 @@ const TreeJumpBody = v.object({
   summarize: v.optional(v.boolean()),
 });
 
+const AuthLoginBody = v.object({ providerId: v.string() });
+const AuthInputBody = v.object({ value: v.string() });
+
 const app = new Hono();
 
 // Capacitor serves the app from a custom origin such as
@@ -232,6 +235,68 @@ app.post("/sessions/:id/compact", async (c) => {
   );
   if (result._tag === "Failure") {
     return c.json({ error: "compact_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json({ ok: true });
+});
+
+app.get("/sessions/:id/auth/providers", async (c) => {
+  const id = c.req.param("id");
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) => m.listAuthProviders(id)),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "auth_providers_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json(result.value);
+});
+
+app.post("/sessions/:id/auth/login", async (c) => {
+  const id = c.req.param("id");
+  const body = v.safeParse(AuthLoginBody, await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "invalid_body", issues: body.issues }, 400);
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) => m.startAuthLogin(id, body.output.providerId)),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "auth_login_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json(result.value);
+});
+
+app.get("/sessions/:id/auth/login/:jobId", async (c) => {
+  const id = c.req.param("id");
+  const jobId = c.req.param("jobId");
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) => m.getAuthLogin(id, jobId)),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "auth_job_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json(result.value);
+});
+
+app.post("/sessions/:id/auth/login/:jobId/input", async (c) => {
+  const id = c.req.param("id");
+  const jobId = c.req.param("jobId");
+  const body = v.safeParse(AuthInputBody, await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "invalid_body", issues: body.issues }, 400);
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) => m.submitAuthLoginInput(id, jobId, body.output.value)),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "auth_input_failed", detail: String(result.cause) }, 500);
+  }
+  return c.json(result.value);
+});
+
+app.post("/sessions/:id/auth/login/:jobId/cancel", async (c) => {
+  const id = c.req.param("id");
+  const jobId = c.req.param("jobId");
+  const result = await runtime.runPromiseExit(
+    Effect.flatMap(SessionManager, (m) => m.cancelAuthLogin(id, jobId)),
+  );
+  if (result._tag === "Failure") {
+    return c.json({ error: "auth_cancel_failed", detail: String(result.cause) }, 500);
   }
   return c.json({ ok: true });
 });

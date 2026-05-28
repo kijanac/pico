@@ -305,6 +305,34 @@ export const SessionSettingsPatch = v.object({
 });
 export type SessionSettingsPatch = v.InferOutput<typeof SessionSettingsPatch>;
 
+export const AuthProvider = v.object({
+  id: v.string(),
+  name: v.string(),
+  configured: v.boolean(),
+  source: v.optional(v.string()),
+  label: v.optional(v.string()),
+});
+export type AuthProvider = v.InferOutput<typeof AuthProvider>;
+
+export const AuthProviders = v.object({ providers: v.array(AuthProvider) });
+export type AuthProviders = v.InferOutput<typeof AuthProviders>;
+
+export const AuthLoginJob = v.object({
+  id: v.string(),
+  providerId: v.string(),
+  status: v.picklist(["starting", "auth", "device", "prompt", "manual", "progress", "success", "failed", "cancelled"]),
+  providerName: v.optional(v.string()),
+  authUrl: v.optional(v.string()),
+  instructions: v.optional(v.string()),
+  userCode: v.optional(v.string()),
+  verificationUri: v.optional(v.string()),
+  promptMessage: v.optional(v.string()),
+  promptPlaceholder: v.optional(v.string()),
+  progress: v.optional(v.string()),
+  error: v.optional(v.string()),
+});
+export type AuthLoginJob = v.InferOutput<typeof AuthLoginJob>;
+
 export const SessionStats = v.object({
   sessionFile: v.optional(v.string()),
   sessionId: v.string(),

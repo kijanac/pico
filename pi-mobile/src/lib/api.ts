@@ -1,6 +1,8 @@
 import { WebSocket as ReconnectingWS } from "partysocket";
 import { decodeWireEvent } from "@pi-mobile/protocol";
 import type {
+  AuthLoginJob,
+  AuthProviders,
   ClientEvent,
   SessionMeta,
   SessionModelState,
@@ -93,6 +95,37 @@ export const compactSession = (
     sessionUrl(baseUrl, id, "/compact"),
     jsonInit("POST", { instructions: instructions?.trim() || undefined }),
   );
+
+export const listAuthProviders = (
+  baseUrl: string,
+  id: string,
+): Promise<AuthProviders> =>
+  requestJson("listAuthProviders", sessionUrl(baseUrl, id, "/auth/providers"));
+
+export const startAuthLogin = (
+  baseUrl: string,
+  id: string,
+  providerId: string,
+): Promise<AuthLoginJob> =>
+  requestJson("startAuthLogin", sessionUrl(baseUrl, id, "/auth/login"), jsonInit("POST", { providerId }));
+
+export const getAuthLoginJob = (baseUrl: string, id: string, jobId: string): Promise<AuthLoginJob> =>
+  requestJson("getAuthLoginJob", sessionUrl(baseUrl, id, `/auth/login/${encodeURIComponent(jobId)}`));
+
+export const submitAuthLoginInput = (
+  baseUrl: string,
+  id: string,
+  jobId: string,
+  value: string,
+): Promise<AuthLoginJob> =>
+  requestJson(
+    "submitAuthLoginInput",
+    sessionUrl(baseUrl, id, `/auth/login/${encodeURIComponent(jobId)}/input`),
+    jsonInit("POST", { value }),
+  );
+
+export const cancelAuthLogin = (baseUrl: string, id: string, jobId: string): Promise<void> =>
+  requestVoid("cancelAuthLogin", sessionUrl(baseUrl, id, `/auth/login/${encodeURIComponent(jobId)}/cancel`), jsonInit("POST"));
 
 export const getSessionSettings = (
   baseUrl: string,

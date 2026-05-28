@@ -210,6 +210,11 @@ const makeMockSession = (opts: {
         }),
       setModel: () => Effect.void,
       compact: () => Effect.void,
+      listAuthProviders: () => Effect.succeed({ providers: [] }),
+      startAuthLogin: () => Effect.fail(new PiError("mock auth login unavailable")),
+      getAuthLogin: () => Effect.fail(new PiError("mock auth job not found")),
+      submitAuthLoginInput: () => Effect.fail(new PiError("mock auth job not found")),
+      cancelAuthLogin: () => Effect.void,
       getSettings: () =>
         Effect.succeed({
           thinkingLevel: "off",
