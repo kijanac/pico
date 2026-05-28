@@ -28,6 +28,7 @@ import { StoreLive } from "./store.ts";
 import { makeConnectionHandler, type WsBindings } from "./ws.ts";
 import { loadCommands } from "./commands.ts";
 import { handleFsLs } from "./fs.ts";
+import { runJson, runNoContent } from "./http/run.ts";
 
 const PORT = Number(process.env.PORT ?? 7777);
 // 0.0.0.0 by convenience in dev (so you can open the bridge from your
@@ -185,24 +186,22 @@ app.patch("/sessions/:id", async (c) => {
  */
 app.delete("/sessions/:id", async (c) => {
   const id = c.req.param("id");
-  const result = await runtime.runPromiseExit(
+  return runNoContent(
+    runtime,
+    c,
     Effect.flatMap(SessionManager, (m) => m.remove(id)),
+    "not_found",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "not_found" }, 404);
-  }
-  return c.body(null, 204);
 });
 
 app.get("/sessions/:id/models", async (c) => {
   const id = c.req.param("id");
-  const result = await runtime.runPromiseExit(
+  return runJson(
+    runtime,
+    c,
     Effect.flatMap(SessionManager, (m) => m.listModels(id)),
+    "models_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "models_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json(result.value);
 });
 
 app.post("/sessions/:id/model", async (c) => {
@@ -211,15 +210,17 @@ app.post("/sessions/:id/model", async (c) => {
   if (!body.success) {
     return c.json({ error: "invalid_body", issues: body.issues }, 400);
   }
-  const result = await runtime.runPromiseExit(
-    Effect.flatMap(SessionManager, (m) =>
-      m.setModel(id, body.output.provider, body.output.modelId),
+  return runJson(
+    runtime,
+    c,
+    Effect.as(
+      Effect.flatMap(SessionManager, (m) =>
+        m.setModel(id, body.output.provider, body.output.modelId),
+      ),
+      { ok: true },
     ),
+    "set_model_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "set_model_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json({ ok: true });
 });
 
 app.post("/sessions/:id/compact", async (c) => {
@@ -228,51 +229,50 @@ app.post("/sessions/:id/compact", async (c) => {
   if (!body.success) {
     return c.json({ error: "invalid_body", issues: body.issues }, 400);
   }
-  const result = await runtime.runPromiseExit(
-    Effect.flatMap(SessionManager, (m) =>
-      m.compact(id, body.output.instructions),
+  return runJson(
+    runtime,
+    c,
+    Effect.as(
+      Effect.flatMap(SessionManager, (m) =>
+        m.compact(id, body.output.instructions),
+      ),
+      { ok: true },
     ),
+    "compact_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "compact_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json({ ok: true });
 });
 
 app.get("/sessions/:id/auth/providers", async (c) => {
   const id = c.req.param("id");
-  const result = await runtime.runPromiseExit(
+  return runJson(
+    runtime,
+    c,
     Effect.flatMap(SessionManager, (m) => m.listAuthProviders(id)),
+    "auth_providers_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "auth_providers_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json(result.value);
 });
 
 app.post("/sessions/:id/auth/login", async (c) => {
   const id = c.req.param("id");
   const body = v.safeParse(AuthLoginBody, await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "invalid_body", issues: body.issues }, 400);
-  const result = await runtime.runPromiseExit(
+  return runJson(
+    runtime,
+    c,
     Effect.flatMap(SessionManager, (m) => m.startAuthLogin(id, body.output.providerId)),
+    "auth_login_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "auth_login_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json(result.value);
 });
 
 app.get("/sessions/:id/auth/login/:jobId", async (c) => {
   const id = c.req.param("id");
   const jobId = c.req.param("jobId");
-  const result = await runtime.runPromiseExit(
+  return runJson(
+    runtime,
+    c,
     Effect.flatMap(SessionManager, (m) => m.getAuthLogin(id, jobId)),
+    "auth_job_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "auth_job_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json(result.value);
 });
 
 app.post("/sessions/:id/auth/login/:jobId/input", async (c) => {
@@ -280,36 +280,36 @@ app.post("/sessions/:id/auth/login/:jobId/input", async (c) => {
   const jobId = c.req.param("jobId");
   const body = v.safeParse(AuthInputBody, await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "invalid_body", issues: body.issues }, 400);
-  const result = await runtime.runPromiseExit(
+  return runJson(
+    runtime,
+    c,
     Effect.flatMap(SessionManager, (m) => m.submitAuthLoginInput(id, jobId, body.output.value)),
+    "auth_input_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "auth_input_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json(result.value);
 });
 
 app.post("/sessions/:id/auth/login/:jobId/cancel", async (c) => {
   const id = c.req.param("id");
   const jobId = c.req.param("jobId");
-  const result = await runtime.runPromiseExit(
-    Effect.flatMap(SessionManager, (m) => m.cancelAuthLogin(id, jobId)),
+  return runJson(
+    runtime,
+    c,
+    Effect.as(
+      Effect.flatMap(SessionManager, (m) => m.cancelAuthLogin(id, jobId)),
+      { ok: true },
+    ),
+    "auth_cancel_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "auth_cancel_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json({ ok: true });
 });
 
 app.get("/sessions/:id/settings", async (c) => {
   const id = c.req.param("id");
-  const result = await runtime.runPromiseExit(
+  return runJson(
+    runtime,
+    c,
     Effect.flatMap(SessionManager, (m) => m.getSettings(id)),
+    "settings_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "settings_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json(result.value);
 });
 
 app.patch("/sessions/:id/settings", async (c) => {
@@ -318,35 +318,32 @@ app.patch("/sessions/:id/settings", async (c) => {
   if (!body.success) {
     return c.json({ error: "invalid_body", issues: body.issues }, 400);
   }
-  const result = await runtime.runPromiseExit(
+  return runJson(
+    runtime,
+    c,
     Effect.flatMap(SessionManager, (m) => m.patchSettings(id, body.output)),
+    "settings_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "settings_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json(result.value);
 });
 
 app.get("/sessions/:id/stats", async (c) => {
   const id = c.req.param("id");
-  const result = await runtime.runPromiseExit(
+  return runJson(
+    runtime,
+    c,
     Effect.flatMap(SessionManager, (m) => m.getStats(id)),
+    "stats_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "stats_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json(result.value);
 });
 
 app.get("/sessions/:id/tree", async (c) => {
   const id = c.req.param("id");
-  const result = await runtime.runPromiseExit(
+  return runJson(
+    runtime,
+    c,
     Effect.flatMap(SessionManager, (m) => m.getTree(id)),
+    "tree_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "tree_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json(result.value);
 });
 
 app.post("/sessions/:id/tree/jump", async (c) => {
@@ -355,15 +352,17 @@ app.post("/sessions/:id/tree/jump", async (c) => {
   if (!body.success) {
     return c.json({ error: "invalid_body", issues: body.issues }, 400);
   }
-  const result = await runtime.runPromiseExit(
-    Effect.flatMap(SessionManager, (m) =>
-      m.navigateTree(id, body.output.entryId, body.output.summarize),
+  return runJson(
+    runtime,
+    c,
+    Effect.as(
+      Effect.flatMap(SessionManager, (m) =>
+        m.navigateTree(id, body.output.entryId, body.output.summarize),
+      ),
+      { ok: true },
     ),
+    "tree_jump_failed",
   );
-  if (result._tag === "Failure") {
-    return c.json({ error: "tree_jump_failed", detail: String(result.cause) }, 500);
-  }
-  return c.json({ ok: true });
 });
 
 app.get("/commands", (c) => c.json(loadCommands()));
