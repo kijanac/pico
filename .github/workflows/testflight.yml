@@ -51,67 +51,10 @@ jobs:
             node -e "console.log('MARKETING_VERSION='+require('./package.json').version)" >> "$GITHUB_ENV"
           fi
 
-      - name: Resolve next TestFlight build number
-        env:
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-          IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+      - name: Resolve TestFlight build number
         run: |
-          python3 -m pip install --quiet pyjwt cryptography
-          python3 - <<'PY'
-          import json
-          import os
-          import time
-          import urllib.parse
-          import urllib.request
-
-          import jwt
-
-          key_id = os.environ["ASC_KEY_ID"]
-          issuer_id = os.environ["ASC_ISSUER_ID"]
-          private_key = os.environ["ASC_PRIVATE_KEY"]
-          bundle_id = os.environ["IOS_BUNDLE_ID"]
-          marketing_version = os.environ["MARKETING_VERSION"]
-
-          now = int(time.time())
-          token = jwt.encode(
-              {"iss": issuer_id, "iat": now, "exp": now + 20 * 60, "aud": "appstoreconnect-v1"},
-              private_key,
-              algorithm="ES256",
-              headers={"kid": key_id, "typ": "JWT"},
-          )
-
-          def api(path: str, params: dict[str, str]) -> dict:
-              url = "https://api.appstoreconnect.apple.com/v1" + path + "?" + urllib.parse.urlencode(params)
-              req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-              with urllib.request.urlopen(req, timeout=30) as res:
-                  return json.load(res)
-
-          apps = api("/apps", {"filter[bundleId]": bundle_id, "limit": "1"})["data"]
-          if not apps:
-              raise SystemExit(f"No App Store Connect app found for bundle id {bundle_id}")
-          app_id = apps[0]["id"]
-
-          builds = api("/builds", {
-              "filter[app]": app_id,
-              "filter[version]": marketing_version,
-              "filter[platform]": "IOS",
-              "fields[builds]": "version",
-              "limit": "200",
-          })["data"]
-          nums = []
-          for build in builds:
-              version = build.get("attributes", {}).get("version", "0")
-              try:
-                  nums.append(int(version.split(".")[0]))
-              except ValueError:
-                  pass
-          next_build = max(nums, default=0) + 1
-          with open(os.environ["GITHUB_ENV"], "a") as f:
-              f.write(f"BUILD_NUMBER={next_build}\n")
-          print(f"MARKETING_VERSION={marketing_version} BUILD_NUMBER={next_build}")
-          PY
+          echo "BUILD_NUMBER=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          echo "MARKETING_VERSION=${MARKETING_VERSION} BUILD_NUMBER=${GITHUB_RUN_NUMBER}"
 
       - name: Install signing certificate
         env:
