@@ -33,7 +33,7 @@ import type {
 } from "@pi-mobile/protocol";
 import { Store } from "./store.ts";
 
-interface ManagedSession {
+interface ManagedSessionState {
   readonly meta: Ref.Ref<SessionMeta>;
   readonly pi: PiSession;
   readonly pubsub: PubSub.PubSub<WireEvent>;
@@ -45,6 +45,9 @@ interface ManagedSession {
    * still see the per-token deltas via the PubSub.
    */
   readonly deltaBuffers: Ref.Ref<Map<string, { text: string; seq: number }>>;
+}
+
+interface ManagedSession extends ManagedSessionState {
   readonly pumpFiber: Fiber.RuntimeFiber<void, PiError>;
 }
 
@@ -147,7 +150,7 @@ const make = Effect.gen(function* () {
    * partysocket reconnects in well under a second.
    */
   const startPump = (
-    ms: ManagedSession,
+    ms: ManagedSessionState,
     sessionId: string,
   ): Effect.Effect<void, PiError> =>
     pipe(
@@ -221,6 +224,24 @@ const make = Effect.gen(function* () {
       ),
     );
 
+  const buildManagedSession = (
+    sessionId: string,
+    piSession: PiSession,
+  ): Effect.Effect<ManagedSession, PiError> =>
+    Effect.gen(function* () {
+      const state: ManagedSessionState = {
+        meta: yield* Ref.make(piSession.meta),
+        pi: piSession,
+        pubsub: yield* PubSub.unbounded<WireEvent>(),
+        seq: yield* Ref.make(yield* store.maxSeq(sessionId)),
+        deltaBuffers: yield* Ref.make(
+          new Map<string, { text: string; seq: number }>(),
+        ),
+      };
+      const pumpFiber = yield* Effect.forkDaemon(startPump(state, sessionId));
+      return { ...state, pumpFiber };
+    });
+
   const create = (opts: { cwd: string; title?: string; branch?: string }) =>
     Effect.gen(function* () {
       const piSession = yield* pi.create(opts);
@@ -229,29 +250,15 @@ const make = Effect.gen(function* () {
       // Persist the session row before we start emitting events.
       yield* store.insertSession(meta);
 
-      // For a fresh session this is 0; for a re-attach (future feature) it
-      // would carry forward the seq from prior runs.
-      const seedSeq = yield* store.maxSeq(meta.id);
-
-      const ms: ManagedSession = {
-        meta: yield* Ref.make(meta),
-        pi: piSession,
-        pubsub: yield* PubSub.unbounded<WireEvent>(),
-        seq: yield* Ref.make(seedSeq),
-        deltaBuffers: yield* Ref.make(new Map<string, { text: string; seq: number }>()),
-        pumpFiber: undefined as never,
-      };
-      const fiber = yield* Effect.forkDaemon(startPump(ms, meta.id));
-      const finalMs = { ...ms, pumpFiber: fiber };
-      yield* Ref.update(sessions, HashMap.set(meta.id, finalMs));
+      const ms = yield* buildManagedSession(meta.id, piSession);
+      yield* Ref.update(sessions, HashMap.set(meta.id, ms));
       return meta;
     });
 
   /**
    * Build a fresh ManagedSession from a stored row. Used by reattach
-   * only — `create` has its own inline construction. Pulls the latest
-   * meta from the store, calls `pi.resume`, builds the in-memory
-   * scaffolding, forks the pump, and inserts into `sessions`.
+   * only. Pulls the latest meta from the store, calls `pi.resume`, builds
+   * the in-memory scaffolding, forks the pump, and inserts into `sessions`.
    *
    * Does not handle the leader/follower coordination — that's
    * `lookupOrReattach`'s job. Calling this directly without the lock
@@ -268,24 +275,9 @@ const make = Effect.gen(function* () {
       const storedMeta = storedOpt.value;
 
       const piSession = yield* pi.resume(storedMeta);
-      // seedSeq carries forward the highest event seq from prior runs
-      // so new pi emissions continue the monotonic sequence.
-      const seedSeq = yield* store.maxSeq(id);
-
-      const ms: ManagedSession = {
-        meta: yield* Ref.make(piSession.meta),
-        pi: piSession,
-        pubsub: yield* PubSub.unbounded<WireEvent>(),
-        seq: yield* Ref.make(seedSeq),
-        deltaBuffers: yield* Ref.make(
-          new Map<string, { text: string; seq: number }>(),
-        ),
-        pumpFiber: undefined as never,
-      };
-      const fiber = yield* Effect.forkDaemon(startPump(ms, id));
-      const finalMs = { ...ms, pumpFiber: fiber };
-      yield* Ref.update(sessions, HashMap.set(id, finalMs));
-      return finalMs;
+      const ms = yield* buildManagedSession(id, piSession);
+      yield* Ref.update(sessions, HashMap.set(id, ms));
+      return ms;
     });
 
   /**

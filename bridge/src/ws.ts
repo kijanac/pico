@@ -55,9 +55,7 @@ export const makeConnectionHandler =
         STATE.set(ws, { bindings, queue, fiber });
         yield* Effect.logInfo(`ws open session=${bindings.sessionId}`);
       }).pipe(
-        Effect.tapError((e) =>
-          Effect.sync(() => console.error("ws open failed:", e)),
-        ),
+        Effect.tapError((e) => Effect.logError("ws open failed", e)),
       ),
     );
 
@@ -100,7 +98,9 @@ export const makeConnectionHandler =
     });
 
     ws.on("error", (err) => {
-      console.error(`ws error session=${bindings.sessionId}:`, err);
+      runtime.runFork(
+        Effect.logError(`ws error session=${bindings.sessionId}`, err),
+      );
     });
   };
 

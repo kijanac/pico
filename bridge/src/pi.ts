@@ -510,9 +510,7 @@ const wirePiSession = (
                   Queue.offer(q, { t: "status", status: "idle" }),
                 ),
                 Effect.tapError((e) =>
-                  Effect.sync(() =>
-                    console.error("[pi] prompt error:", e),
-                  ),
+                  Effect.logError("[pi] prompt error", e),
                 ),
               ),
             );
