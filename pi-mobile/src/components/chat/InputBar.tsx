@@ -6,6 +6,7 @@ import { createSpeechRecognition } from "~/lib/speech";
 import { chooseFromGallery } from "~/lib/image-picker";
 import { haptic } from "~/lib/haptics";
 import { ensureKeyboardTracking, keyboardHeight } from "~/lib/keyboard";
+import { createLongPress } from "~/lib/long-press";
 import type { ImageAttachment } from "@pi-mobile/protocol";
 import SlashPalette from "./SlashPalette";
 import ImageTray from "./ImageTray";
@@ -122,43 +123,19 @@ export default function InputBar(): JSX.Element {
     queueMicrotask(() => ta?.focus());
   }
 
-  /* ── long-press machinery ──
-     onPointerDown starts a timer; if it fires before pointerup, we
-     submit follow_up and mark `longFired`. The subsequent click event
-     (synthesized from the touch) checks the flag and ignores. */
-  let pressTimer: number | undefined;
-  let longFired = false;
-
-  function pointerDown() {
-    if (!hasSendable() || !canSend()) return;
-    longFired = false;
-    setHolding(true);
-    pressTimer = window.setTimeout(() => {
-      longFired = true;
-      pressTimer = undefined;
-      setHolding(false);
-      // Medium thunk to signal the threshold crossed before the submit's
-      // light tap — produces a recognizable "ka-tap" pattern only the
-      // long-press path emits.
+  const sendPress = createLongPress({
+    delayMs: LONG_PRESS_MS,
+    enabled: () => hasSendable() && canSend(),
+    onStart: () => setHolding(true),
+    onCancel: () => setHolding(false),
+    onLongPress: () => {
       haptic.medium();
       submit("follow_up");
-    }, LONG_PRESS_MS);
-  }
-
-  function pointerEnd() {
-    setHolding(false);
-    if (pressTimer !== undefined) {
-      window.clearTimeout(pressTimer);
-      pressTimer = undefined;
-    }
-  }
+    },
+  });
 
   function handleClick() {
-    if (longFired) {
-      // Long-press already submitted; swallow the synthesized click.
-      longFired = false;
-      return;
-    }
+    if (sendPress.consumeClick()) return;
     submit("steer");
   }
 
@@ -195,7 +172,7 @@ export default function InputBar(): JSX.Element {
     >
       <ImageTray images={images()} onRemove={removeImage} />
 
-      <div class="flex items-end gap-1.5 px-2 py-2">
+      <div class="flex items-start gap-1.5 px-2 py-2">
         <button
           type="button"
           onClick={() => setPaletteOpen(true)}
@@ -221,7 +198,7 @@ export default function InputBar(): JSX.Element {
           <ImagePlus size={14} />
         </button>
 
-        <div class="flex-1 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] focus-within:border-[color:var(--color-border-strong)]">
+        <div class="min-h-9 flex-1 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] focus-within:border-[color:var(--color-border-strong)]">
           <textarea
             ref={ta}
             value={value()}
@@ -239,7 +216,7 @@ export default function InputBar(): JSX.Element {
             }}
             placeholder="message pi…"
             rows="1"
-            class="w-full resize-none bg-transparent px-3 py-2 text-[13px] leading-[1.5] text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] focus:outline-none"
+            class="w-full resize-none bg-transparent px-3 py-[7px] text-[13px] leading-[20px] text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] focus:outline-none"
           />
         </div>
 
@@ -301,10 +278,10 @@ export default function InputBar(): JSX.Element {
           <button
             type="button"
             onClick={handleClick}
-            onPointerDown={pointerDown}
-            onPointerUp={pointerEnd}
-            onPointerLeave={pointerEnd}
-            onPointerCancel={pointerEnd}
+            onPointerDown={(e) => sendPress.start(e)}
+            onPointerUp={sendPress.end}
+            onPointerLeave={sendPress.end}
+            onPointerCancel={sendPress.end}
             disabled={!canSend()}
             classList={{
               "scale-95": holding(),

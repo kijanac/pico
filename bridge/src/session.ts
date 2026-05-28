@@ -186,16 +186,14 @@ const make = Effect.gen(function* () {
 
           // ── persistence ────────────────────────────────────────────────
           if (event.t === "assistant_delta") {
-            // Accumulate; do not persist per-token.
             yield* Ref.update(ms.deltaBuffers, (m) => {
-              const cur = m.get(event.id);
-              if (cur) {
-                cur.text += event.text;
-                cur.seq = event.seq;
-              } else {
-                m.set(event.id, { text: event.text, seq: event.seq });
-              }
-              return m;
+              const next = new Map(m);
+              const cur = next.get(event.id);
+              next.set(event.id, {
+                text: cur ? cur.text + event.text : event.text,
+                seq: event.seq,
+              });
+              return next;
             });
           } else if (event.t === "assistant_end") {
             // Flush the buffer as one row, then persist the end.
@@ -210,8 +208,9 @@ const make = Effect.gen(function* () {
               };
               yield* store.appendEvent(sessionId, coalesced);
               yield* Ref.update(ms.deltaBuffers, (m) => {
-                m.delete(event.id);
-                return m;
+                const next = new Map(m);
+                next.delete(event.id);
+                return next;
               });
             }
             yield* store.appendEvent(sessionId, event);

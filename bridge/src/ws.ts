@@ -129,8 +129,6 @@ const connection = (
             return mgr.interrupt(bindings.sessionId);
           case "permission_reply":
             return mgr.approve(bindings.sessionId, evt.id, evt.choice);
-          case "resume":
-            return Effect.void;
         }
       }),
       Effect.forever,

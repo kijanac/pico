@@ -17,6 +17,7 @@ import {
 } from "~/lib/api";
 import { getBridgeUrl } from "~/lib/settings";
 import { haptic } from "~/lib/haptics";
+import { createLongPress } from "~/lib/long-press";
 import { relativeTime, shortPath, formatCost } from "~/lib/format";
 import type { SessionMeta } from "@pi-mobile/protocol";
 
@@ -116,9 +117,10 @@ export default function Sessions(): JSX.Element {
   async function handleDelete() {
     const target = actionSession();
     if (!target) return;
-    // No confirmation dialog yet — destructive feel comes from the
-    // bright-red label + heavy haptic. Worth revisiting if the user
-    // reports an accidental tap.
+    if (!window.confirm(`Delete “${target.title}”? This cannot be undone.`)) {
+      setActionSession(null);
+      return;
+    }
     try {
       const baseUrl = await getBridgeUrl();
       await deleteSession(baseUrl, target.id);
@@ -130,53 +132,31 @@ export default function Sessions(): JSX.Element {
     }
   }
 
-  /* ── long-press machinery ────────────────────────────────────────────
-     We track press start + a small move-cancellation budget. If the
-     finger drifts more than LONG_PRESS_MOVE_PX before the timer fires
-     we treat it as scrolling and bail. Click on the underlying <A> is
-     blocked when the long-press already opened the sheet. */
-  let pressTimer: number | undefined;
-  let pressOrigin: { x: number; y: number } | null = null;
-  let longFiredFor: string | null = null;
+  let pressTarget: SessionMeta | null = null;
+  const rowPress = createLongPress({
+    delayMs: LONG_PRESS_MS,
+    moveCancelPx: LONG_PRESS_MOVE_PX,
+    onLongPress: () => {
+      if (!pressTarget) return;
+      haptic.medium();
+      setActionSession(pressTarget);
+    },
+  });
 
   function onRowPointerDown(e: PointerEvent, s: SessionMeta) {
-    pressOrigin = { x: e.clientX, y: e.clientY };
-    longFiredFor = null;
-    if (pressTimer !== undefined) window.clearTimeout(pressTimer);
-    pressTimer = window.setTimeout(() => {
-      pressTimer = undefined;
-      longFiredFor = s.id;
-      haptic.medium();
-      setActionSession(s);
-    }, LONG_PRESS_MS);
-  }
-
-  function onRowPointerMove(e: PointerEvent) {
-    if (pressTimer === undefined || !pressOrigin) return;
-    const dx = e.clientX - pressOrigin.x;
-    const dy = e.clientY - pressOrigin.y;
-    if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_PX) {
-      window.clearTimeout(pressTimer);
-      pressTimer = undefined;
-    }
+    pressTarget = s;
+    rowPress.start(e);
   }
 
   function onRowPointerUp() {
-    if (pressTimer !== undefined) {
-      window.clearTimeout(pressTimer);
-      pressTimer = undefined;
-    }
-    pressOrigin = null;
+    rowPress.end();
+    pressTarget = null;
   }
 
-  function onRowClick(e: MouseEvent, s: SessionMeta) {
-    // The long-press fired the action sheet; swallow this click so we
-    // don't *also* navigate to the session.
-    if (longFiredFor === s.id) {
-      e.preventDefault();
-      e.stopPropagation();
-      longFiredFor = null;
-    }
+  function onRowClick(e: MouseEvent) {
+    if (!rowPress.consumeClick()) return;
+    e.preventDefault();
+    e.stopPropagation();
   }
 
   return (
@@ -237,10 +217,10 @@ export default function Sessions(): JSX.Element {
               <A
                 href={`/s/${s.id}`}
                 onPointerDown={(e) => onRowPointerDown(e, s)}
-                onPointerMove={onRowPointerMove}
+                onPointerMove={(e) => rowPress.move(e)}
                 onPointerUp={onRowPointerUp}
                 onPointerCancel={onRowPointerUp}
-                onClick={(e) => onRowClick(e, s)}
+                onClick={onRowClick}
                 class="hairline-b block px-3 py-3 active:bg-[color:var(--color-surface)]"
               >
                 <div class="mb-1 flex items-center gap-2">

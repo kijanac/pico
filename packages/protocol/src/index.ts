@@ -378,11 +378,6 @@ export const ClientEvent = v.variant("t", [
     choice: PermissionChoice,
   }),
   v.object({ t: v.literal("interrupt") }),
-  v.object({
-    t: v.literal("resume"),
-    sessionId: v.string(),
-    cursor: v.number(),
-  }),
 ]);
 export type ClientEvent = v.InferOutput<typeof ClientEvent>;
 

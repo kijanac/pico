@@ -94,7 +94,7 @@ export default function MessageList(): JSX.Element {
 
   createEffect(
     on(
-      () => `${contentLength()}:${showWorkingPlaceholder()}`,
+      contentLength,
       () => {
         if (stuckToBottom()) {
           scrollToLatest("auto");
@@ -128,15 +128,18 @@ export default function MessageList(): JSX.Element {
           }}
         </For>
 
-        <Show when={showWorkingPlaceholder()}>
-          <div class="px-3 py-1" aria-live="polite">
-            <div class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2.5 py-1.5 text-[12px] text-[color:var(--color-fg-muted)]">
-              <span class="pulse-accent h-1.5 w-1.5 rounded-full bg-[color:var(--color-accent)]" />
-              <span>working…</span>
-            </div>
-          </div>
-        </Show>
       </div>
+
+      <Show when={showWorkingPlaceholder()}>
+        <div
+          class="pointer-events-none absolute left-3 z-30 inline-flex items-center gap-2 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)]/95 px-2.5 py-1.5 text-[12px] text-[color:var(--color-fg-muted)] shadow-lg backdrop-blur-md"
+          style={{ bottom: `calc(${keyboardHeight()}px + 0.75rem)` }}
+          aria-live="polite"
+        >
+          <span class="pulse-accent h-1.5 w-1.5 rounded-full bg-[color:var(--color-accent)]" />
+          <span>{activeStatus() === "thinking" ? "thinking…" : "working…"}</span>
+        </div>
+      </Show>
 
       <Show when={!stuckToBottom()}>
         <button

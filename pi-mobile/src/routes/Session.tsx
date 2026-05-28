@@ -10,7 +10,6 @@ import SessionAgentActions from "~/components/chat/SessionAgentActions";
 import {
   activeStatus,
   applyWireEvent,
-  cursor,
   resetActiveLog,
   useSession,
   setSessions,
@@ -21,10 +20,7 @@ import {
   setActiveSend,
 } from "~/stores/connection";
 import { connectStream } from "~/lib/api";
-import {
-  getBridgeUrl,
-  setCursor as persistCursor,
-} from "~/lib/settings";
+import { getBridgeUrl } from "~/lib/settings";
 import { resumeTick } from "~/lib/lifecycle";
 import { formatCost, formatTokens, shortPath } from "~/lib/format";
 import type { WireEvent } from "@pi-mobile/protocol";
@@ -46,25 +42,14 @@ export default function Session(): JSX.Element {
 
         const start = async () => {
           const baseUrl = await getBridgeUrl();
-          // The mobile app does not persist the full message log locally. If
-          // we reconnect with a previously persisted high-water cursor after
-          // a cold screen mount, the bridge correctly sends only newer events
-          // and the screen appears empty. Always replay from zero; the reducer
-          // dedupes stale seqs during same-screen reconnects.
-          const startCursor = 0;
           if (closed) return;
 
-          const stream = connectStream(baseUrl, id, startCursor, {
+          const stream = connectStream(baseUrl, id, 0, {
             onOpen: () => setConnState("connected"),
             onClose: (_code, _reason, terminal) => {
               if (terminal) {
-                // Server signalled the session is irrecoverable
-                // (typically 4004: pi's on-disk file is missing).
-                // Stop pretending we can talk to it.
                 setConnState("gone");
                 setActiveSend(null);
-                // Also drop the stale row from the in-memory list
-                // so a bounce back to /sessions doesn't show it.
                 setSessions((list) => list.filter((s) => s.id !== id));
               } else {
                 setConnState("reconnecting");
@@ -72,7 +57,6 @@ export default function Session(): JSX.Element {
             },
             onError: () => setConnState("error"),
             onEvent: (e: WireEvent) => {
-              // hello carries fresh session meta — reflect it into the list
               if (e.t === "hello") {
                 setSessions((list) => {
                   const exists = list.some((s) => s.id === e.session.id);
@@ -83,7 +67,6 @@ export default function Session(): JSX.Element {
                     : [e.session, ...list];
                 });
               }
-              // cost updates the active session's token/cost row
               if (e.t === "cost") {
                 setSessions((list) =>
                   list.map((s) =>
@@ -107,9 +90,6 @@ export default function Session(): JSX.Element {
 
         void start();
 
-        // App-resume hook: if we get foregrounded after the OS silently
-        // killed our socket, force a fresh connection. Skip the initial
-        // signal value — we only want to react to *changes*.
         createEffect(
           on(
             resumeTick,
@@ -121,14 +101,11 @@ export default function Session(): JSX.Element {
           ),
         );
 
-        // Persist cursor whenever we leave the session.
         onCleanup(() => {
           closed = true;
           setActiveSend(null);
           setConnState("offline");
           handle?.close();
-          // Fire-and-forget; OK if it loses the last tick on hard kill.
-          void persistCursor(id, cursor());
         });
       },
     ),
