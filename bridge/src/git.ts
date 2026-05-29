@@ -9,12 +9,9 @@ import { PiError } from "./pi.ts";
 
 const execFileAsync = promisify(execFile);
 
-export interface GitBranchInfo {
-  name: string;
-  current: boolean;
-  kind: "local" | "remote";
-  remote?: string;
-}
+export type GitBranchInfo =
+  | { kind: "local"; name: string; current: boolean }
+  | { kind: "remote"; name: string; remote: string };
 
 export interface GitBranchesResult {
   isRepo: boolean;
@@ -25,7 +22,7 @@ export interface GitBranchesResult {
 
 export interface GitWorktree {
   repoRoot: string;
-  worktreeCwd: string;
+  worktreePath: string;
   branch: string;
 }
 
@@ -62,26 +59,19 @@ export const listGitBranches = (cwd: string): Effect.Effect<GitBranchesResult, P
       const seen = new Set<string>();
       const branches: GitBranchInfo[] = [];
       for (const line of lines) {
-        const [name, head, upstream] = line.split("\0");
+        const [name, head] = line.split("\0");
         if (!name || name.endsWith("/HEAD") || seen.has(name)) continue;
         seen.add(name);
-        const kind = name.includes("/") && !branches.some((b) => b.kind === "local" && b.name === name)
-          && !line.startsWith(`${name}\0*`)
-          && upstream === ""
-          && name !== current
-          ? "remote"
-          : "local";
         // refs/remotes and refs/heads are both emitted as short names; detect remotes by asking show-ref prefix shape.
         const isRemote = await git(root, ["show-ref", "--verify", `refs/remotes/${name}`]).then(() => true, () => false);
-        branches.push({
-          name,
-          current: head === "*" || name === current,
-          kind: isRemote ? "remote" : kind,
-          ...(isRemote ? { remote: name.split("/")[0] } : {}),
-        });
+        if (isRemote) {
+          branches.push({ kind: "remote", name, remote: name.split("/")[0] });
+        } else {
+          branches.push({ kind: "local", name, current: head === "*" || name === current });
+        }
       }
 
-      branches.sort((a, b) => Number(b.current) - Number(a.current) || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
+      branches.sort((a, b) => Number(b.kind === "local" && b.current) - Number(a.kind === "local" && a.current) || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
       return { isRepo: true, root, current: current || undefined, branches };
     },
     catch: (e) => new PiError(`git branches failed: ${String(e)}`),
@@ -102,21 +92,21 @@ export const createSessionWorktree = (opts: { cwd: string; branch?: string }): E
       if (!selected) throw new Error(`branch not found: ${branch}`);
 
       const root = info.root;
-      const worktreeCwd = join(homedir(), ".pi-mobile", "worktrees", `${slug(basename(root))}-${randomUUID().slice(0, 8)}`);
+      const worktreePath = join(homedir(), ".pi-mobile", "worktrees", `${slug(basename(root))}-${randomUUID().slice(0, 8)}`);
       await mkdir(join(homedir(), ".pi-mobile", "worktrees"), { recursive: true });
 
       if (selected.kind === "remote") {
         const localName = localNameForRemote(branch);
         if (info.branches.some((b) => b.kind === "local" && b.name === localName)) {
-          await git(root, ["worktree", "add", "-f", worktreeCwd, localName]);
-          return { repoRoot: root, worktreeCwd, branch: localName };
+          await git(root, ["worktree", "add", "-f", worktreePath, localName]);
+          return { repoRoot: root, worktreePath, branch: localName };
         }
-        await git(root, ["worktree", "add", "--track", "-b", localName, worktreeCwd, branch]);
-        return { repoRoot: root, worktreeCwd, branch: localName };
+        await git(root, ["worktree", "add", "--track", "-b", localName, worktreePath, branch]);
+        return { repoRoot: root, worktreePath, branch: localName };
       }
 
-      await git(root, ["worktree", "add", "-f", worktreeCwd, branch]);
-      return { repoRoot: root, worktreeCwd, branch };
+      await git(root, ["worktree", "add", "-f", worktreePath, branch]);
+      return { repoRoot: root, worktreePath, branch };
     },
     catch: (e) => new PiError(`create worktree failed: ${String(e)}`),
   });

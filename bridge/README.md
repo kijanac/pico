@@ -64,6 +64,20 @@ mobile WS ──▶ Node http upgrade ──▶ ws ───────┴─�
                                    • incoming: Queue<ClientEvent> → mgr.send / interrupt / approve
 ```
 
+## Compatibility and migrations
+
+Compatibility code should live at explicit boundaries, not in domain objects:
+
+- SQLite rows are normalized at bridge startup into the current `SessionRecord`
+  shape (`execution_cwd` + `workspace_json`). Legacy row adapters should stay
+  for one patch release, then be removed once released bridges have had a chance
+  to run the normalizer.
+- Upstream pi event/tool payload quirks are normalized in `src/pi.ts` before they
+  enter the shared protocol. Keep public protocol schemas canonical; add named
+  `Legacy*` schemas only at the adapter boundary.
+- Public protocol responses should not expose bridge runtime internals such as
+  worktree paths.
+
 ## Wiring real pi
 
 The default is already the real pi. `src/pi.ts` exports two Layers:

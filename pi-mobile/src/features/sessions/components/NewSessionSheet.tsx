@@ -214,7 +214,7 @@ function BranchPicker(props: {
                   class="hairline-b flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] active:bg-[color:var(--color-surface-2)]"
                 >
                   <span class="min-w-0 flex-1 truncate">{branchLabel(b)}</span>
-                  <Show when={b.current}>
+                  <Show when={b.kind === "local" && b.current}>
                     <span class="text-[11px] text-[color:var(--color-fg-faint)]">current</span>
                   </Show>
                   <Show when={props.value === b.name}>

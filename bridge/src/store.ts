@@ -1,22 +1,23 @@
 import { Context, Effect, Layer, Option } from "effect";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
+import * as v from "valibot";
 import {
-  parseSessionMeta,
   parseWireEvent,
-  type SessionMeta,
+  SessionStatus,
   type WireEvent,
 } from "@pi-mobile/protocol";
+import { parseWorkspaceBinding, type SessionRecord } from "./session-record.ts";
 
 
 export class Store extends Context.Tag("Store")<
   Store,
   {
-    readonly insertSession: (meta: SessionMeta) => Effect.Effect<void>;
-    readonly getSession: (id: string) => Effect.Effect<Option.Option<SessionMeta>>;
-    readonly listSessions: () => Effect.Effect<SessionMeta[]>;
+    readonly insertSession: (record: SessionRecord) => Effect.Effect<void>;
+    readonly getSession: (id: string) => Effect.Effect<Option.Option<SessionRecord>>;
+    readonly listSessions: () => Effect.Effect<SessionRecord[]>;
     readonly updateSession: (
       id: string,
-      patch: Partial<SessionMeta>,
+      patch: Partial<SessionRecord>,
     ) => Effect.Effect<void>;
     readonly deleteSession: (id: string) => Effect.Effect<void>;
 
@@ -43,6 +44,8 @@ const SCHEMA = `
     title       TEXT NOT NULL,
     cwd         TEXT NOT NULL,
     worktree_cwd TEXT,
+    execution_cwd TEXT,
+    workspace_json TEXT,
     branch      TEXT,
     status      TEXT NOT NULL,
     updated_at  INTEGER NOT NULL,
@@ -69,25 +72,69 @@ const SCHEMA = `
 const MIGRATIONS = [
   `ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE sessions ADD COLUMN worktree_cwd TEXT`,
+  `ALTER TABLE sessions ADD COLUMN execution_cwd TEXT`,
+  `ALTER TABLE sessions ADD COLUMN workspace_json TEXT`,
 ];
 
 
-type SqlValue = string | number | bigint | null | Uint8Array;
-type SqlRow = Record<string, SqlValue>;
+const SqlBool = v.pipe(v.number(), v.integer());
 
-const rowToMeta = (r: SqlRow): SessionMeta =>
-  parseSessionMeta({
+const SessionRow = v.object({
+  id: v.string(),
+  title: v.string(),
+  cwd: v.string(),
+  branch: v.nullable(v.string()),
+  status: SessionStatus,
+  updated_at: v.number(),
+  tokens_in: v.number(),
+  tokens_out: v.number(),
+  cost_usd: v.number(),
+  archived: SqlBool,
+  created_at: v.number(),
+  execution_cwd: v.string(),
+  workspace_json: v.string(),
+});
+type SessionRow = v.InferOutput<typeof SessionRow>;
+
+const LegacySessionRow = v.object({
+  id: v.string(),
+  cwd: v.string(),
+  branch: v.nullable(v.string()),
+  worktree_cwd: v.nullable(v.string()),
+  execution_cwd: v.nullable(v.string()),
+  workspace_json: v.nullable(v.string()),
+});
+type LegacySessionRow = v.InferOutput<typeof LegacySessionRow>;
+
+const workspaceFromLegacyRow = (row: LegacySessionRow) =>
+  row.worktree_cwd
+    ? {
+        kind: "git-worktree" as const,
+        repoRoot: row.cwd,
+        worktreePath: row.worktree_cwd,
+        branch: row.branch ?? "",
+        ownedBySession: true as const,
+      }
+    : { kind: "plain" as const };
+
+const rowToRecord = (raw: unknown): SessionRecord => {
+  const r = v.parse(SessionRow, raw);
+  return {
     id: r.id,
     title: r.title,
     cwd: r.cwd,
-    worktreeCwd: r.worktree_cwd ?? undefined,
     branch: r.branch ?? undefined,
     status: r.status,
-    updatedAt: r.updated_at,
+    updatedAtMs: r.updated_at,
     tokens: { in: r.tokens_in, out: r.tokens_out },
     costUsd: r.cost_usd,
     archived: r.archived === 1,
-  });
+    runtime: {
+      executionCwd: r.execution_cwd,
+      workspace: parseWorkspaceBinding(JSON.parse(r.workspace_json)),
+    },
+  };
+};
 
 
 const make = (dbPath: string) =>
@@ -104,14 +151,36 @@ const make = (dbPath: string) =>
         } catch {
         }
       }
+
+      const legacyRows = d.prepare(`
+        SELECT id, cwd, branch, worktree_cwd, execution_cwd, workspace_json
+        FROM sessions
+        WHERE execution_cwd IS NULL OR workspace_json IS NULL
+      `).all().map((row) => v.parse(LegacySessionRow, row));
+      if (legacyRows.length > 0) {
+        const stmtNormalize = d.prepare(`
+          UPDATE sessions
+          SET execution_cwd = ?, workspace_json = ?
+          WHERE id = ?
+        `);
+        for (const row of legacyRows) {
+          const workspace = workspaceFromLegacyRow(row);
+          stmtNormalize.run(
+            row.execution_cwd ?? row.worktree_cwd ?? row.cwd,
+            JSON.stringify(workspace),
+            row.id,
+          );
+        }
+      }
+
       return d;
     });
 
     const stmtUpsertSession: StatementSync = db.prepare(`
       INSERT OR REPLACE INTO sessions
-        (id, title, cwd, worktree_cwd, branch, status, updated_at,
+        (id, title, cwd, worktree_cwd, execution_cwd, workspace_json, branch, status, updated_at,
          tokens_in, tokens_out, cost_usd, created_at, archived)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const stmtGetSession: StatementSync = db.prepare(
@@ -146,50 +215,53 @@ const make = (dbPath: string) =>
     `);
 
     return Store.of({
-      insertSession: (meta) =>
+      insertSession: (record) =>
         Effect.sync(() => {
           const now = Date.now();
           stmtUpsertSession.run(
-            meta.id,
-            meta.title,
-            meta.cwd,
-            meta.worktreeCwd ?? null,
-            meta.branch ?? null,
-            meta.status,
-            meta.updatedAt,
-            meta.tokens.in,
-            meta.tokens.out,
-            meta.costUsd,
+            record.id,
+            record.title,
+            record.cwd,
+            record.runtime.workspace.kind === "git-worktree" ? record.runtime.workspace.worktreePath : null,
+            record.runtime.executionCwd,
+            JSON.stringify(record.runtime.workspace),
+            record.branch ?? null,
+            record.status,
+            record.updatedAtMs,
+            record.tokens.in,
+            record.tokens.out,
+            record.costUsd,
             now,
-            meta.archived ? 1 : 0,
+            record.archived ? 1 : 0,
           );
         }),
 
       getSession: (id) =>
         Effect.sync(() => {
           const row = stmtGetSession.get(id);
-          return row ? Option.some(rowToMeta(row)) : Option.none();
+          return row ? Option.some(rowToRecord(row)) : Option.none();
         }),
 
       listSessions: () =>
         Effect.sync(() => {
-          const rows = stmtListSessions.all() as SqlRow[];
-          return rows.map(rowToMeta);
+          return stmtListSessions.all().map(rowToRecord);
         }),
 
       updateSession: (id, patch) =>
         Effect.sync(() => {
           const existing = stmtGetSession.get(id);
           if (!existing) return;
-          const merged = { ...rowToMeta(existing), ...patch };
+          const merged = { ...rowToRecord(existing), ...patch };
           stmtUpsertSession.run(
             merged.id,
             merged.title,
             merged.cwd,
-            merged.worktreeCwd ?? null,
+            merged.runtime.workspace.kind === "git-worktree" ? merged.runtime.workspace.worktreePath : null,
+            merged.runtime.executionCwd,
+            JSON.stringify(merged.runtime.workspace),
             merged.branch ?? null,
             merged.status,
-            merged.updatedAt,
+            merged.updatedAtMs,
             merged.tokens.in,
             merged.tokens.out,
             merged.costUsd,

@@ -1,6 +1,6 @@
 import * as v from "valibot";
 
-export const PRODUCT_VERSION = "0.4.7";
+export const PRODUCT_VERSION = "0.4.8";
 export const PROTOCOL_VERSION = 1;
 export const MIN_MOBILE_VERSION = "0.2.1";
 export const RECOMMENDED_MOBILE_VERSION = PRODUCT_VERSION;
@@ -234,15 +234,39 @@ export const SessionMeta = v.object({
   id: v.string(),
   title: v.string(),
   cwd: v.string(),
-  worktreeCwd: v.optional(v.string()),
   branch: v.optional(v.string()),
   status: SessionStatus,
-  updatedAt: v.number(),
+  updatedAt: v.string(),
   tokens: v.object({ in: v.number(), out: v.number() }),
   costUsd: v.number(),
-  archived: v.optional(v.boolean()),
+  archived: v.boolean(),
 });
 export type SessionMeta = v.InferOutput<typeof SessionMeta>;
+
+export const LocalGitBranch = v.object({
+  kind: v.literal("local"),
+  name: v.string(),
+  current: v.boolean(),
+});
+export type LocalGitBranch = v.InferOutput<typeof LocalGitBranch>;
+
+export const RemoteGitBranch = v.object({
+  kind: v.literal("remote"),
+  name: v.string(),
+  remote: v.string(),
+});
+export type RemoteGitBranch = v.InferOutput<typeof RemoteGitBranch>;
+
+export const GitBranch = v.variant("kind", [LocalGitBranch, RemoteGitBranch]);
+export type GitBranch = v.InferOutput<typeof GitBranch>;
+
+export const GitBranchesResponse = v.object({
+  isRepo: v.boolean(),
+  root: v.optional(v.string()),
+  current: v.optional(v.string()),
+  branches: v.array(GitBranch),
+});
+export type GitBranchesResponse = v.InferOutput<typeof GitBranchesResponse>;
 
 export const ModelSummary = v.object({
   provider: v.string(),
@@ -520,6 +544,9 @@ export const parseSessionStats = (raw: unknown): SessionStats =>
 
 export const parseCommands = (raw: unknown): Commands =>
   v.parse(Commands, raw);
+
+export const parseGitBranchesResponse = (raw: unknown): GitBranchesResponse =>
+  v.parse(GitBranchesResponse, raw);
 
 export const parseQueueState = (raw: unknown): QueueState =>
   v.parse(QueueState, raw);

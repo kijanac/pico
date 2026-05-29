@@ -2,6 +2,7 @@ import { WebSocket as ReconnectingWS } from "partysocket";
 import {
   decodeWireEvent,
   parseCommands,
+  parseGitBranchesResponse,
   parseQueueState,
   parseSessionStats,
 } from "@pi-mobile/protocol";
@@ -10,6 +11,8 @@ import type {
   AuthProviders,
   ClientEvent,
   Commands,
+  GitBranch,
+  GitBranchesResponse,
   QueueState,
   SessionMeta,
   SessionModelState,
@@ -55,24 +58,13 @@ export const createSession = (
 ): Promise<SessionMeta> =>
   requestJson("createSession", `${baseUrl}/sessions`, jsonInit("POST", opts));
 
-export interface GitBranchInfo {
-  name: string;
-  current: boolean;
-  kind: "local" | "remote";
-  remote?: string;
-}
+export type GitBranchInfo = GitBranch;
+export type GitBranchesResult = GitBranchesResponse;
 
-export interface GitBranchesResult {
-  isRepo: boolean;
-  root?: string;
-  current?: string;
-  branches: GitBranchInfo[];
-}
-
-export function listGitBranches(baseUrl: string, cwd: string): Promise<GitBranchesResult> {
+export async function listGitBranches(baseUrl: string, cwd: string): Promise<GitBranchesResult> {
   const url = new URL(`${baseUrl}/git/branches`);
   url.searchParams.set("cwd", cwd);
-  return requestJson("listGitBranches", url);
+  return parseGitBranchesResponse(await requestJson("listGitBranches", url));
 }
 
 export const patchSession = (

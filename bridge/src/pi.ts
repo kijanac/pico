@@ -143,12 +143,12 @@ export class PiClient extends Context.Tag("PiClient")<
   {
     readonly create: (opts: {
       cwd: string;
-      worktreeCwd?: string;
+      executionCwd: string;
       title?: string;
       branch?: string;
     }) => Effect.Effect<PiSession, PiError>;
     readonly resume: (
-      storedMeta: SessionMeta,
+      storedRecord: import("./session-record.ts").SessionRecord,
     ) => Effect.Effect<PiSession, PiError | SessionNotFound>;
   }
 >() {}
@@ -252,6 +252,37 @@ const toolCallBase = (id: string) => ({
   status: "running" as const,
 });
 
+// Compatibility boundary for tool argument shapes emitted by older pi agents.
+// Keep canonical protocol schemas strict; normalize legacy inputs here, then
+// remove these adapters after one release once all supported agents emit the
+// canonical shapes.
+const LegacyEditToolArgs = v.object({
+  path: v.string(),
+  oldText: v.string(),
+  newText: v.string(),
+});
+
+const LegacyBashToolArgs = v.object({
+  cmd: v.string(),
+  timeout: v.optional(v.number()),
+});
+
+const normalizeEditArgs = (rawArgs: unknown): EditToolInput => {
+  const current = v.safeParse(EditToolArgs, rawArgs);
+  if (current.success) return current.output;
+
+  const legacy = v.parse(LegacyEditToolArgs, rawArgs);
+  return { path: legacy.path, edits: [{ oldText: legacy.oldText, newText: legacy.newText }] };
+};
+
+const normalizeBashArgs = (rawArgs: unknown): BashToolInput => {
+  const current = v.safeParse(BashToolArgs, rawArgs);
+  if (current.success) return current.output;
+
+  const legacy = v.parse(LegacyBashToolArgs, rawArgs);
+  return { command: legacy.cmd, timeout: legacy.timeout };
+};
+
 const normalizeToolCall = (
   id: string,
   toolName: string,
@@ -269,23 +300,11 @@ const normalizeToolCall = (
       return { ...base, toolKind: "builtin", tool: "write", args };
     }
     case "edit": {
-      const raw = v.parse(CustomToolArgs, rawArgs);
-      const legacyEdits =
-        typeof raw.oldText === "string" || typeof raw.newText === "string"
-          ? [{ oldText: raw.oldText ?? "", newText: raw.newText ?? "" }]
-          : undefined;
-      const args: EditToolInput = v.parse(EditToolArgs, {
-        ...raw,
-        edits: raw.edits ?? legacyEdits,
-      });
+      const args = normalizeEditArgs(rawArgs);
       return { ...base, toolKind: "builtin", tool: "edit", args };
     }
     case "bash": {
-      const raw = v.parse(CustomToolArgs, rawArgs);
-      const args: BashToolInput = v.parse(BashToolArgs, {
-        ...raw,
-        command: raw.command ?? raw.cmd,
-      });
+      const args = normalizeBashArgs(rawArgs);
       return { ...base, toolKind: "builtin", tool: "bash", args };
     }
     default:
@@ -683,7 +702,7 @@ const wirePiSession = (
 
 const makeLiveSession = (opts: {
   cwd: string;
-  worktreeCwd?: string;
+  executionCwd: string;
   title?: string;
   branch?: string;
 }): Effect.Effect<PiSession, PiError> =>
@@ -695,7 +714,7 @@ const makeLiveSession = (opts: {
 
         const fauxModel = setupFauxIfEnabled(authStorage);
 
-        const sessionCwd = opts.worktreeCwd ?? opts.cwd;
+        const sessionCwd = opts.executionCwd;
         const sessionManager =
           process.env.PI_EPHEMERAL === "1"
             ? PiSessionManager.inMemory()
@@ -721,19 +740,19 @@ const makeLiveSession = (opts: {
       id: piSession.sessionId,
       title: opts.title ?? "untitled session",
       cwd: opts.cwd,
-      worktreeCwd: opts.worktreeCwd,
       branch: opts.branch,
       status: "idle",
-      updatedAt: Date.now(),
+      updatedAt: new Date().toISOString(),
       tokens: { in: 0, out: 0 },
       costUsd: 0,
+      archived: false,
     };
 
     return yield* wirePiSession(piSession, meta);
   });
 
 const makeResumedSession = (
-  storedMeta: SessionMeta,
+  storedRecord: import("./session-record.ts").SessionRecord,
 ): Effect.Effect<PiSession, PiError | SessionNotFound> =>
   Effect.gen(function* () {
     const piSession = yield* Effect.tryPromise<
@@ -741,11 +760,11 @@ const makeResumedSession = (
       PiError | SessionNotFound
     >({
       try: async () => {
-        const sessionCwd = storedMeta.worktreeCwd ?? storedMeta.cwd;
+        const sessionCwd = storedRecord.runtime.executionCwd;
         const infos = await PiSessionManager.list(sessionCwd);
-        const found = infos.find((i) => i.id === storedMeta.id);
+        const found = infos.find((i) => i.id === storedRecord.id);
         if (!found) {
-          throw new SessionNotFound(storedMeta.id);
+          throw new SessionNotFound(storedRecord.id);
         }
 
         const authStorage = AuthStorage.create();
@@ -775,9 +794,15 @@ const makeResumedSession = (
     });
 
     const meta: SessionMeta = {
-      ...storedMeta,
+      id: storedRecord.id,
+      title: storedRecord.title,
+      cwd: storedRecord.cwd,
+      branch: storedRecord.branch,
       status: "idle",
-      updatedAt: Date.now(),
+      updatedAt: new Date().toISOString(),
+      tokens: storedRecord.tokens,
+      costUsd: storedRecord.costUsd,
+      archived: storedRecord.archived,
     };
 
     return yield* wirePiSession(piSession, meta);

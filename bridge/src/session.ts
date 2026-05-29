@@ -30,6 +30,7 @@ import type {
 } from "@pi-mobile/protocol";
 import { Store } from "./store.ts";
 import { createSessionWorktree, removeSessionWorktree } from "./git.ts";
+import { toSessionMeta, type WorkspaceBinding } from "./session-record.ts";
 
 interface ManagedSessionState {
   readonly meta: Ref.Ref<SessionMeta>;
@@ -144,22 +145,26 @@ const make = Effect.gen(function* () {
             yield* Ref.update(ms.meta, (m) => ({
               ...m,
               status: event.status,
-              updatedAt: Date.now(),
+              updatedAt: new Date().toISOString(),
             }));
             yield* store.updateSession(sessionId, {
               status: event.status,
-              updatedAt: Date.now(),
+              updatedAtMs: Date.now(),
             });
           } else if (event.t === "cost") {
             const patch = {
               tokens: { in: event.tokensIn, out: event.tokensOut },
               costUsd: event.costUsd,
-              updatedAt: Date.now(),
+              updatedAt: new Date().toISOString(),
             };
             yield* Ref.update(ms.meta, (m) => ({ ...m, ...patch }));
-            yield* store.updateSession(sessionId, patch);
+            yield* store.updateSession(sessionId, {
+              tokens: patch.tokens,
+              costUsd: patch.costUsd,
+              updatedAtMs: Date.now(),
+            });
           } else {
-            yield* Ref.update(ms.meta, (m) => ({ ...m, updatedAt: Date.now() }));
+            yield* Ref.update(ms.meta, (m) => ({ ...m, updatedAt: new Date().toISOString() }));
           }
 
           if (event.t === "assistant_delta") {
@@ -220,15 +225,38 @@ const make = Effect.gen(function* () {
   const create = (opts: { cwd: string; title?: string; branch?: string }) =>
     Effect.gen(function* () {
       const worktree = yield* createSessionWorktree({ cwd: opts.cwd, branch: opts.branch });
+      const workspace: WorkspaceBinding = worktree
+        ? {
+            kind: "git-worktree",
+            repoRoot: worktree.repoRoot,
+            worktreePath: worktree.worktreePath,
+            branch: worktree.branch,
+            ownedBySession: true,
+          }
+        : { kind: "plain" };
       const piSession = yield* pi.create({
         cwd: worktree?.repoRoot ?? opts.cwd,
-        worktreeCwd: worktree?.worktreeCwd,
+        executionCwd: worktree?.worktreePath ?? opts.cwd,
         title: opts.title,
         branch: worktree?.branch,
       });
       const meta = piSession.meta;
 
-      yield* store.insertSession(meta);
+      yield* store.insertSession({
+        id: meta.id,
+        title: meta.title,
+        cwd: meta.cwd,
+        branch: meta.branch,
+        status: meta.status,
+        updatedAtMs: Date.parse(meta.updatedAt),
+        tokens: meta.tokens,
+        costUsd: meta.costUsd,
+        archived: meta.archived,
+        runtime: {
+          executionCwd: worktree?.worktreePath ?? opts.cwd,
+          workspace,
+        },
+      });
 
       const ms = yield* buildManagedSession(meta.id, piSession);
       yield* Ref.update(sessions, HashMap.set(meta.id, ms));
@@ -243,9 +271,10 @@ const make = Effect.gen(function* () {
       if (Option.isNone(storedOpt)) {
         return yield* Effect.fail(new SessionNotFound(id));
       }
-      const storedMeta = storedOpt.value;
+      const storedRecord = storedOpt.value;
+      const storedMeta = toSessionMeta(storedRecord);
 
-      const piSession = yield* pi.resume(storedMeta);
+      const piSession = yield* pi.resume(storedRecord);
       yield* Effect.ignoreLogged(piSession.patchSession({ title: storedMeta.title }));
       const ms = yield* buildManagedSession(id, piSession);
       yield* Ref.update(sessions, HashMap.set(id, ms));
@@ -282,9 +311,9 @@ const make = Effect.gen(function* () {
       );
     });
 
-  const list = () => store.listSessions();
+  const list = () => Effect.map(store.listSessions(), (records) => records.map(toSessionMeta));
 
-  const get = (id: string) => store.getSession(id);
+  const get = (id: string) => Effect.map(store.getSession(id), Option.map(toSessionMeta));
 
   const subscribe = (id: string, fromCursor: number) =>
     Stream.unwrap(
@@ -408,13 +437,14 @@ const make = Effect.gen(function* () {
       if (Option.isNone(existing))
         return yield* Effect.fail(new SessionNotFound(id));
 
-      const next: SessionMeta = {
+      const nextRecord = {
         ...existing.value,
         ...(p.title !== undefined ? { title: p.title } : {}),
         ...(p.archived !== undefined ? { archived: p.archived } : {}),
-        updatedAt: Date.now(),
+        updatedAtMs: Date.now(),
       };
-      yield* store.updateSession(id, next);
+      const next = toSessionMeta(nextRecord);
+      yield* store.updateSession(id, nextRecord);
 
       const map = yield* Ref.get(sessions);
       const live = HashMap.get(map, id);
@@ -439,8 +469,10 @@ const make = Effect.gen(function* () {
         yield* Fiber.interrupt(live.value.pumpFiber);
         yield* Ref.update(sessions, (m) => HashMap.remove(m, id));
       }
-      if (existing.value.worktreeCwd) {
-        yield* Effect.ignoreLogged(removeSessionWorktree(existing.value.cwd, existing.value.worktreeCwd));
+      if (existing.value.runtime.workspace.kind === "git-worktree" && existing.value.runtime.workspace.ownedBySession) {
+        yield* Effect.ignoreLogged(
+          removeSessionWorktree(existing.value.runtime.workspace.repoRoot, existing.value.runtime.workspace.worktreePath),
+        );
       }
       yield* store.deleteSession(id);
     });

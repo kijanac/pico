@@ -9,8 +9,9 @@ const UNITS: Array<[number, number, Intl.RelativeTimeFormatUnit]> = [
   [Number.POSITIVE_INFINITY, 2_592_000_000, "month"],
 ];
 
-export function relativeTime(at: number, now = Date.now()): string {
-  const diff = at - now;
+export function relativeTime(at: string | number, now = Date.now()): string {
+  const timestamp = typeof at === "string" ? Date.parse(at) : at;
+  const diff = timestamp - now;
   for (const [threshold, div, unit] of UNITS) {
     if (Math.abs(diff) < threshold) {
       return rtf.format(Math.round(diff / div), unit);
