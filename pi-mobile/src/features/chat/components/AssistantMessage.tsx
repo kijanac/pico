@@ -1,8 +1,8 @@
 import { Show, createSignal, type JSX } from "solid-js";
 import { AlertCircle, Check, Copy, Info, XCircle, AlertTriangle } from "lucide-solid";
 import type { AssistantMessage } from "@pi-mobile/protocol";
-import BottomSheet from "@/components/BottomSheet";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import StreamingMarkdown from "./StreamingMarkdown";
 import { formatCost, formatTokens } from "@/lib/format";
 
@@ -81,29 +81,46 @@ function MessageDetailsSheet(props: {
 }) {
   const usage = () => props.msg.usage;
 
+  function handleOpenChange(open: boolean) {
+    if (!open) props.onClose();
+  }
+
   return (
     <Show when={props.open}>
-      <BottomSheet open title="message details" onClose={props.onClose} contentClass="px-3 pb-3">
-        <Show
-          when={usage()}
-          fallback={
-            <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-[12px] text-[color:var(--color-fg-faint)]">
-              usage is not available for this message
-            </div>
-          }
+      <Sheet open onOpenChange={handleOpenChange}>
+        <SheetContent
+          position="bottom"
+          class="flex flex-col !overflow-hidden gap-0 rounded-t-[12px] border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)] p-0 text-[color:var(--color-fg)] shadow-none"
+          style={{ "padding-bottom": "calc(env(safe-area-inset-bottom) + 0.5rem)" }}
         >
-          {(u) => (
-            <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-[12px]">
-              <InfoRow label="input" value={formatTokens(u().input)} />
-              <InfoRow label="output" value={formatTokens(u().output)} />
-              <InfoRow label="cache read" value={formatTokens(u().cacheRead)} />
-              <InfoRow label="cache write" value={formatTokens(u().cacheWrite)} />
-              <InfoRow label="total" value={formatTokens(u().total)} />
-              <InfoRow label="cost" value={formatCost(u().cost)} />
-            </div>
-          )}
-        </Show>
-      </BottomSheet>
+          <SheetHeader class="hairline-b space-y-0 px-3 py-3 pr-12 text-left">
+            <SheetTitle class="min-w-0 flex-1 px-1 text-[13px] font-medium">
+              message details
+            </SheetTitle>
+          </SheetHeader>
+          <div class="px-3 pb-3">
+            <Show
+              when={usage()}
+              fallback={
+                <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-[12px] text-[color:var(--color-fg-faint)]">
+                  usage is not available for this message
+                </div>
+              }
+            >
+              {(u) => (
+                <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-[12px]">
+                  <InfoRow label="input" value={formatTokens(u().input)} />
+                  <InfoRow label="output" value={formatTokens(u().output)} />
+                  <InfoRow label="cache read" value={formatTokens(u().cacheRead)} />
+                  <InfoRow label="cache write" value={formatTokens(u().cacheWrite)} />
+                  <InfoRow label="total" value={formatTokens(u().total)} />
+                  <InfoRow label="cost" value={formatCost(u().cost)} />
+                </div>
+              )}
+            </Show>
+          </div>
+        </SheetContent>
+      </Sheet>
     </Show>
   );
 }
@@ -126,7 +143,7 @@ function IconButton(props: {
     <Button
       type="button"
       variant="ghost"
-      size="icon-sm"
+      size="icon"
       aria-label={props.label}
       title={props.label}
       onClick={props.onClick}

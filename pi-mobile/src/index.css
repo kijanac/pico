@@ -31,6 +31,27 @@
   --color-danger: #ff6b6b;
   --color-warn: #f5c451;
 
+  /* solid-ui/shadcn compatibility tokens. Keep component defaults usable;
+     point-of-use classes still define the app-specific look. */
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-fg);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-fg);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-fg);
+  --color-primary: var(--color-accent);
+  --color-primary-foreground: var(--color-bg);
+  --color-secondary: var(--color-surface);
+  --color-secondary-foreground: var(--color-fg);
+  --color-muted: var(--color-surface);
+  --color-muted-foreground: var(--color-fg-muted);
+  --color-accent-foreground: var(--color-bg);
+  --color-destructive: var(--color-danger);
+  --color-destructive-foreground: var(--color-bg);
+  --color-input: var(--color-border);
+  --color-ring: var(--color-accent);
+  --color-error-foreground: var(--color-danger);
+
   /* diff tones — calm, terminal-native; the gutter sign carries most of
      the signal, the background is a hint */
   --color-diff-add: #5fb55f;

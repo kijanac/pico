@@ -242,7 +242,7 @@ export default function Settings() {
               </div>
             </Show>
 
-            <Button type="button" variant="accent" onClick={save} class="mt-6 w-full">
+            <Button type="button" variant="default" onClick={save} class="mt-6 w-full bg-[color:var(--color-accent)] text-[color:var(--color-bg)] hover:bg-[color:var(--color-accent)] active:opacity-80">
               {saved() ? "saved ✓" : "save"}
             </Button>
           </section>

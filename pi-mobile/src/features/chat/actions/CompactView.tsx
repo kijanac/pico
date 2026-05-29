@@ -40,7 +40,7 @@ export default function CompactView(props: { sessionId: string; onDone: () => vo
           class="text-[12.5px]"
         />
       </TextField>
-      <Button type="button" variant="accent" onClick={compact} disabled={running()} class="w-full">
+      <Button type="button" variant="default" onClick={compact} disabled={running()} class="w-full bg-[color:var(--color-accent)] text-[color:var(--color-bg)] hover:bg-[color:var(--color-accent)] active:opacity-80">
         <Show when={running()}><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /></Show>
         {running() ? "compacting…" : "compact now"}
       </Button>

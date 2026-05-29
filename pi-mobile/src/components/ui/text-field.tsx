@@ -1,91 +1,152 @@
-import type { ComponentProps, ValidComponent } from "solid-js";
-import { splitProps } from "solid-js";
-import { TextField as TextFieldPrimitive } from "@kobalte/core/text-field";
+import type { ValidComponent } from "solid-js"
+import { mergeProps, splitProps } from "solid-js"
 
-import { cx } from "@/lib/cva";
+import type { PolymorphicProps } from "@kobalte/core"
+import * as TextFieldPrimitive from "@kobalte/core/text-field"
+import { cva } from "class-variance-authority"
 
-type TextFieldProps<T extends ValidComponent = "div"> = ComponentProps<
-  typeof TextFieldPrimitive<T>
->;
+import { cn } from "@/lib/utils"
 
-export const TextField = <T extends ValidComponent = "div">(
-  props: TextFieldProps<T>,
+type TextFieldRootProps<T extends ValidComponent = "div"> =
+  TextFieldPrimitive.TextFieldRootProps<T> & {
+    class?: string | undefined
+  }
+
+const TextField = <T extends ValidComponent = "div">(
+  props: PolymorphicProps<T, TextFieldRootProps<T>>
 ) => {
-  const [, rest] = splitProps(props as TextFieldProps, ["class"]);
-
-  return (
-    <TextFieldPrimitive
-      data-slot="text-field"
-      class={cx("grid w-full gap-1.5", props.class)}
-      {...rest}
-    />
-  );
-};
+  const [local, others] = splitProps(props as TextFieldRootProps, ["class"])
+  return <TextFieldPrimitive.Root class={cn("flex flex-col gap-1", local.class)} {...others} />
+}
 
 type TextFieldInputProps<T extends ValidComponent = "input"> =
-  ComponentProps<typeof TextFieldPrimitive.Input<T>>;
+  TextFieldPrimitive.TextFieldInputProps<T> & {
+    class?: string | undefined
+    type?:
+      | "button"
+      | "checkbox"
+      | "color"
+      | "date"
+      | "datetime-local"
+      | "email"
+      | "file"
+      | "hidden"
+      | "image"
+      | "month"
+      | "number"
+      | "password"
+      | "radio"
+      | "range"
+      | "reset"
+      | "search"
+      | "submit"
+      | "tel"
+      | "text"
+      | "time"
+      | "url"
+      | "week"
+  }
 
-export const TextFieldInput = <T extends ValidComponent = "input">(
-  props: TextFieldInputProps<T>,
+const TextFieldInput = <T extends ValidComponent = "input">(
+  rawProps: PolymorphicProps<T, TextFieldInputProps<T>>
 ) => {
-  const [, rest] = splitProps(props as TextFieldInputProps, ["class"]);
-
+  const props = mergeProps<TextFieldInputProps<T>[]>({ type: "text" }, rawProps)
+  const [local, others] = splitProps(props as TextFieldInputProps, ["type", "class"])
   return (
     <TextFieldPrimitive.Input
-      data-slot="text-field-input"
-      class={cx(
-        "w-full rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[12.5px] text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] outline-none transition-colors disabled:pointer-events-none disabled:opacity-40",
-        "focus:border-[color:var(--color-border-strong)] focus-visible:border-[color:var(--color-border-strong)]",
-        "aria-invalid:border-[color:var(--color-danger)]",
-        "file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-[12px] file:font-medium file:text-[color:var(--color-fg)]",
-        props.class,
+      type={local.type}
+      class={cn(
+        "flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[invalid]:border-error-foreground data-[invalid]:text-error-foreground",
+        local.class
       )}
-      {...rest}
+      {...others}
     />
-  );
-};
+  )
+}
 
 type TextFieldTextAreaProps<T extends ValidComponent = "textarea"> =
-  ComponentProps<typeof TextFieldPrimitive.TextArea<T>>;
+  TextFieldPrimitive.TextFieldTextAreaProps<T> & { class?: string | undefined }
 
-export const TextFieldTextArea = <T extends ValidComponent = "textarea">(
-  props: TextFieldTextAreaProps<T>,
+const TextFieldTextArea = <T extends ValidComponent = "textarea">(
+  props: PolymorphicProps<T, TextFieldTextAreaProps<T>>
 ) => {
-  const [, rest] = splitProps(props as TextFieldTextAreaProps, ["class"]);
-
+  const [local, others] = splitProps(props as TextFieldTextAreaProps, ["class"])
   return (
     <TextFieldPrimitive.TextArea
-      data-slot="text-field-textarea"
-      class={cx(
-        "min-h-16 w-full resize-none rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[13px] text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] outline-none transition-colors disabled:pointer-events-none disabled:opacity-40",
-        "focus:border-[color:var(--color-border-strong)] focus-visible:border-[color:var(--color-border-strong)]",
-        "aria-invalid:border-[color:var(--color-danger)]",
-        props.class,
+      class={cn(
+        "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        local.class
       )}
-      {...rest}
+      {...others}
     />
-  );
-};
+  )
+}
+
+const labelVariants = cva(
+  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+  {
+    variants: {
+      variant: {
+        label: "data-[invalid]:text-destructive",
+        description: "font-normal text-muted-foreground",
+        error: "text-xs text-destructive"
+      }
+    },
+    defaultVariants: {
+      variant: "label"
+    }
+  }
+)
 
 type TextFieldLabelProps<T extends ValidComponent = "label"> =
-  ComponentProps<typeof TextFieldPrimitive.Label<T>>;
+  TextFieldPrimitive.TextFieldLabelProps<T> & { class?: string | undefined }
 
-export const TextFieldLabel = <T extends ValidComponent = "label">(
-  props: TextFieldLabelProps<T>,
+const TextFieldLabel = <T extends ValidComponent = "label">(
+  props: PolymorphicProps<T, TextFieldLabelProps<T>>
 ) => {
-  const [, rest] = splitProps(props as TextFieldLabelProps, ["class"]);
+  const [local, others] = splitProps(props as TextFieldLabelProps, ["class"])
+  return <TextFieldPrimitive.Label class={cn(labelVariants(), local.class)} {...others} />
+}
 
+type TextFieldDescriptionProps<T extends ValidComponent = "div"> =
+  TextFieldPrimitive.TextFieldDescriptionProps<T> & {
+    class?: string | undefined
+  }
+
+const TextFieldDescription = <T extends ValidComponent = "div">(
+  props: PolymorphicProps<T, TextFieldDescriptionProps<T>>
+) => {
+  const [local, others] = splitProps(props as TextFieldDescriptionProps, ["class"])
   return (
-    <TextFieldPrimitive.Label
-      data-slot="text-field-label"
-      class={cx(
-        "label select-none",
-        "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-        "data-[invalid]:text-[color:var(--color-danger)]",
-        props.class,
-      )}
-      {...rest}
+    <TextFieldPrimitive.Description
+      class={cn(labelVariants({ variant: "description" }), local.class)}
+      {...others}
     />
-  );
-};
+  )
+}
 
+type TextFieldErrorMessageProps<T extends ValidComponent = "div"> =
+  TextFieldPrimitive.TextFieldErrorMessageProps<T> & {
+    class?: string | undefined
+  }
+
+const TextFieldErrorMessage = <T extends ValidComponent = "div">(
+  props: PolymorphicProps<T, TextFieldErrorMessageProps<T>>
+) => {
+  const [local, others] = splitProps(props as TextFieldErrorMessageProps, ["class"])
+  return (
+    <TextFieldPrimitive.ErrorMessage
+      class={cn(labelVariants({ variant: "error" }), local.class)}
+      {...others}
+    />
+  )
+}
+
+export {
+  TextField,
+  TextFieldInput,
+  TextFieldTextArea,
+  TextFieldLabel,
+  TextFieldDescription,
+  TextFieldErrorMessage
+}

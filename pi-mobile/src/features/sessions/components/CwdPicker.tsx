@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Folder,
   Home,
-  X,
   Check,
 } from "lucide-solid";
 import { lsFs, type FsListing } from "@/lib/api";
@@ -18,7 +17,6 @@ import { getBridgeUrl } from "@/lib/settings";
 interface Props {
   initial?: string;
   onSelect: (path: string) => void;
-  onCancel: () => void;
 }
 
 export default function CwdPicker(props: Props) {
@@ -49,32 +47,19 @@ export default function CwdPicker(props: Props) {
   };
 
   return (
-    <div class="fixed inset-0 z-50 flex flex-col bg-[color:var(--color-bg)]">
-      <div
-        class="hairline-b flex items-center gap-1 px-2"
-        style={{ "padding-top": "env(safe-area-inset-top)" }}
-      >
-        <button
-          type="button"
-          onClick={props.onCancel}
-          class="flex h-10 w-10 items-center justify-center text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
-          aria-label="Cancel"
-        >
-          <X size={16} />
-        </button>
-        <span class="text-[12px] font-medium">choose directory</span>
+    <div class="flex min-h-0 flex-1 flex-col bg-[color:var(--color-bg)]">
+      <div class="hairline-b flex items-center gap-2 px-2 py-1.5">
+        <Breadcrumb path={listing()?.path} home={listing()?.home} onJump={setPath} />
         <button
           type="button"
           onClick={goHome}
-          class="ml-auto flex h-10 w-10 items-center justify-center text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
+          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
           aria-label="Home"
           title="Go to home directory"
         >
           <Home size={14} />
         </button>
       </div>
-
-      <Breadcrumb path={listing()?.path} home={listing()?.home} onJump={setPath} />
 
       <div class="flex-1 overflow-y-auto">
         <Show when={listing.loading}>
@@ -138,12 +123,7 @@ export default function CwdPicker(props: Props) {
         </Show>
       </div>
 
-      <div
-        class="hairline-t sticky bottom-0 bg-[color:var(--color-bg)]/95 backdrop-blur-md p-2"
-        style={{
-          "padding-bottom": "calc(env(safe-area-inset-bottom) + 0.5rem)",
-        }}
-      >
+      <div class="hairline-t bg-[color:var(--color-bg)]/95 backdrop-blur-md p-2">
         <button
           type="button"
           onClick={() => {
@@ -194,7 +174,7 @@ function Breadcrumb(props: {
   };
 
   return (
-    <div class="hairline-b overflow-x-auto px-2 py-1.5">
+    <div class="min-w-0 flex-1 overflow-x-auto">
       <div class="flex items-center gap-0.5 whitespace-nowrap">
         <For each={segments()}>
           {(s, i) => (

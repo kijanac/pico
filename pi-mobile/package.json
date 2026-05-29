@@ -1,7 +1,7 @@
 {
   "name": "pi-mobile",
   "private": true,
-  "version": "0.4.6",
+  "version": "0.4.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -21,22 +21,22 @@
     "@capacitor/ios": "^8.3.4",
     "@capacitor/keyboard": "^8.0.0",
     "@capacitor/preferences": "^8.0.0",
-    "@corvu/drawer": "^0.2.4",
     "@kobalte/core": "^0.13.11",
     "@pi-mobile/protocol": "workspace:*",
     "@shikijs/langs": "^4.1.0",
     "@shikijs/themes": "^4.1.0",
     "@solidjs/router": "^0.15.3",
     "anser": "^2.3.5",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "cva": "1.0.0-beta.4",
     "diff": "^9.0.0",
     "lucide-solid": "^0.460.0",
     "partysocket": "^1.1.5",
     "shiki": "^4.0.2",
     "solid-js": "^1.9.13",
     "streaming-markdown": "^0.2.15",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.3.4",

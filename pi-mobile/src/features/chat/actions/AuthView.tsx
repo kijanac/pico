@@ -110,7 +110,7 @@ export default function AuthView(props: { sessionId: string; onError: ActionErro
                   class="min-h-0 text-[12px]"
                 />
               </TextField>
-              <Button type="button" variant="accent" onClick={submit} class="w-full">submit</Button>
+              <Button type="button" variant="default" onClick={submit} class="w-full bg-[color:var(--color-accent)] text-[color:var(--color-bg)] hover:bg-[color:var(--color-accent)] active:opacity-80">submit</Button>
             </Show>
             <button type="button" onClick={refreshJob} class="h-9 w-full rounded-[var(--radius-md)] border border-[color:var(--color-border)] text-[12px]">refresh</button>
             <button type="button" onClick={cancel} class="h-9 w-full rounded-[var(--radius-md)] border border-[color:var(--color-border)] text-[12px] text-[color:var(--color-fg-muted)]">cancel</button>

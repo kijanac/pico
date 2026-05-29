@@ -19,6 +19,7 @@ import { getBridgeUrl } from "@/lib/settings";
 import { haptic } from "@/lib/haptics";
 import { createLongPress } from "@/lib/long-press";
 import { relativeTime, shortPath, formatCost } from "@/lib/format";
+import { KeyboardAvoidance } from "@/lib/keyboard";
 import type { SessionMeta } from "@pi-mobile/protocol";
 
 const LONG_PRESS_MS = 500;
@@ -155,7 +156,8 @@ export default function Sessions() {
   }
 
   return (
-    <div class="flex min-h-dvh flex-col">
+    <KeyboardAvoidance mode="manual">
+      <div class="flex min-h-0 flex-1 flex-col">
       <Header
         trailing={
           <A
@@ -286,6 +288,7 @@ export default function Sessions() {
         onCancel={() => setRenameTarget(null)}
         onSave={handleRename}
       />
-    </div>
+      </div>
+    </KeyboardAvoidance>
   );
 }
