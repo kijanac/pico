@@ -127,6 +127,12 @@
     user-select: none;
   }
 
+  .session-row {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
   /* native-ish bouncy scroll inside our chat */
   .scroll-momentum {
     -webkit-overflow-scrolling: touch;

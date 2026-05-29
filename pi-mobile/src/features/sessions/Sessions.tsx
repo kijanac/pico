@@ -214,8 +214,9 @@ export default function Sessions() {
                 onPointerMove={(e) => rowPress.move(e)}
                 onPointerUp={onRowPointerUp}
                 onPointerCancel={onRowPointerUp}
+                onContextMenu={(e) => e.preventDefault()}
                 onClick={onRowClick}
-                class="hairline-b block px-3 py-3 active:bg-[color:var(--color-surface)]"
+                class="session-row hairline-b block px-3 py-3 active:bg-[color:var(--color-surface)]"
               >
                 <div class="mb-1 flex items-center gap-2">
                   <StatusDot status={s.status} />
