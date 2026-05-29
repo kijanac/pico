@@ -55,6 +55,26 @@ export const createSession = (
 ): Promise<SessionMeta> =>
   requestJson("createSession", `${baseUrl}/sessions`, jsonInit("POST", opts));
 
+export interface GitBranchInfo {
+  name: string;
+  current: boolean;
+  kind: "local" | "remote";
+  remote?: string;
+}
+
+export interface GitBranchesResult {
+  isRepo: boolean;
+  root?: string;
+  current?: string;
+  branches: GitBranchInfo[];
+}
+
+export function listGitBranches(baseUrl: string, cwd: string): Promise<GitBranchesResult> {
+  const url = new URL(`${baseUrl}/git/branches`);
+  url.searchParams.set("cwd", cwd);
+  return requestJson("listGitBranches", url);
+}
+
 export const patchSession = (
   baseUrl: string,
   id: string,

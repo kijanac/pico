@@ -56,6 +56,7 @@ runtime.runFork(
       `   db   :  ${DB_PATH}\n` +
       `   REST :  GET    /healthz\n` +
       `           GET    /sessions\n` +
+      `           GET    /git/branches?cwd=:path\n` +
       `           POST   /sessions       { cwd, title?, branch? }\n` +
       `           GET    /sessions/:id\n` +
       `           PATCH  /sessions/:id   { title?, archived? }\n` +

@@ -29,6 +29,7 @@ import type {
   WireEvent,
 } from "@pi-mobile/protocol";
 import { Store } from "./store.ts";
+import { createSessionWorktree, removeSessionWorktree } from "./git.ts";
 
 interface ManagedSessionState {
   readonly meta: Ref.Ref<SessionMeta>;
@@ -218,7 +219,13 @@ const make = Effect.gen(function* () {
 
   const create = (opts: { cwd: string; title?: string; branch?: string }) =>
     Effect.gen(function* () {
-      const piSession = yield* pi.create(opts);
+      const worktree = yield* createSessionWorktree({ cwd: opts.cwd, branch: opts.branch });
+      const piSession = yield* pi.create({
+        cwd: worktree?.repoRoot ?? opts.cwd,
+        worktreeCwd: worktree?.worktreeCwd,
+        title: opts.title,
+        branch: worktree?.branch,
+      });
       const meta = piSession.meta;
 
       yield* store.insertSession(meta);
@@ -431,6 +438,9 @@ const make = Effect.gen(function* () {
       if (Option.isSome(live)) {
         yield* Fiber.interrupt(live.value.pumpFiber);
         yield* Ref.update(sessions, (m) => HashMap.remove(m, id));
+      }
+      if (existing.value.worktreeCwd) {
+        yield* Effect.ignoreLogged(removeSessionWorktree(existing.value.cwd, existing.value.worktreeCwd));
       }
       yield* store.deleteSession(id);
     });

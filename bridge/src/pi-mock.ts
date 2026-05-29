@@ -147,6 +147,7 @@ const scriptedFlow = (q: Queue.Queue<PiEmission>, userText: string) =>
 
 const makeMockSession = (opts: {
   cwd: string;
+  worktreeCwd?: string;
   title?: string;
   branch?: string;
 }): Effect.Effect<PiSession, PiError> =>
@@ -161,6 +162,7 @@ const makeMockSession = (opts: {
       id: nextId("s"),
       title: opts.title ?? "untitled session",
       cwd: opts.cwd,
+      worktreeCwd: opts.worktreeCwd,
       branch: opts.branch,
       status: "idle",
       updatedAt: Date.now(),

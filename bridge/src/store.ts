@@ -42,6 +42,7 @@ const SCHEMA = `
     id          TEXT PRIMARY KEY,
     title       TEXT NOT NULL,
     cwd         TEXT NOT NULL,
+    worktree_cwd TEXT,
     branch      TEXT,
     status      TEXT NOT NULL,
     updated_at  INTEGER NOT NULL,
@@ -67,6 +68,7 @@ const SCHEMA = `
 
 const MIGRATIONS = [
   `ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE sessions ADD COLUMN worktree_cwd TEXT`,
 ];
 
 
@@ -78,6 +80,7 @@ const rowToMeta = (r: SqlRow): SessionMeta =>
     id: r.id,
     title: r.title,
     cwd: r.cwd,
+    worktreeCwd: r.worktree_cwd ?? undefined,
     branch: r.branch ?? undefined,
     status: r.status,
     updatedAt: r.updated_at,
@@ -106,9 +109,9 @@ const make = (dbPath: string) =>
 
     const stmtUpsertSession: StatementSync = db.prepare(`
       INSERT OR REPLACE INTO sessions
-        (id, title, cwd, branch, status, updated_at,
+        (id, title, cwd, worktree_cwd, branch, status, updated_at,
          tokens_in, tokens_out, cost_usd, created_at, archived)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const stmtGetSession: StatementSync = db.prepare(
@@ -150,6 +153,7 @@ const make = (dbPath: string) =>
             meta.id,
             meta.title,
             meta.cwd,
+            meta.worktreeCwd ?? null,
             meta.branch ?? null,
             meta.status,
             meta.updatedAt,
@@ -182,6 +186,7 @@ const make = (dbPath: string) =>
             merged.id,
             merged.title,
             merged.cwd,
+            merged.worktreeCwd ?? null,
             merged.branch ?? null,
             merged.status,
             merged.updatedAt,

@@ -234,6 +234,7 @@ export const SessionMeta = v.object({
   id: v.string(),
   title: v.string(),
   cwd: v.string(),
+  worktreeCwd: v.optional(v.string()),
   branch: v.optional(v.string()),
   status: SessionStatus,
   updatedAt: v.number(),

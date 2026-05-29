@@ -143,6 +143,7 @@ export class PiClient extends Context.Tag("PiClient")<
   {
     readonly create: (opts: {
       cwd: string;
+      worktreeCwd?: string;
       title?: string;
       branch?: string;
     }) => Effect.Effect<PiSession, PiError>;
@@ -682,6 +683,7 @@ const wirePiSession = (
 
 const makeLiveSession = (opts: {
   cwd: string;
+  worktreeCwd?: string;
   title?: string;
   branch?: string;
 }): Effect.Effect<PiSession, PiError> =>
@@ -693,16 +695,17 @@ const makeLiveSession = (opts: {
 
         const fauxModel = setupFauxIfEnabled(authStorage);
 
+        const sessionCwd = opts.worktreeCwd ?? opts.cwd;
         const sessionManager =
           process.env.PI_EPHEMERAL === "1"
             ? PiSessionManager.inMemory()
-            : PiSessionManager.create(opts.cwd);
+            : PiSessionManager.create(sessionCwd);
 
         const { session } = await createAgentSession({
           sessionManager,
           authStorage,
           modelRegistry,
-          cwd: opts.cwd,
+          cwd: sessionCwd,
         });
 
         if (fauxModel) {
@@ -718,6 +721,7 @@ const makeLiveSession = (opts: {
       id: piSession.sessionId,
       title: opts.title ?? "untitled session",
       cwd: opts.cwd,
+      worktreeCwd: opts.worktreeCwd,
       branch: opts.branch,
       status: "idle",
       updatedAt: Date.now(),
@@ -737,7 +741,8 @@ const makeResumedSession = (
       PiError | SessionNotFound
     >({
       try: async () => {
-        const infos = await PiSessionManager.list(storedMeta.cwd);
+        const sessionCwd = storedMeta.worktreeCwd ?? storedMeta.cwd;
+        const infos = await PiSessionManager.list(sessionCwd);
         const found = infos.find((i) => i.id === storedMeta.id);
         if (!found) {
           throw new SessionNotFound(storedMeta.id);
@@ -754,7 +759,7 @@ const makeResumedSession = (
           sessionManager,
           authStorage,
           modelRegistry,
-          cwd: storedMeta.cwd,
+          cwd: sessionCwd,
         });
 
         if (fauxModel) {

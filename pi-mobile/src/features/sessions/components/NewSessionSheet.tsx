@@ -1,9 +1,11 @@
-import { createSignal, Show, type JSX } from "solid-js";
-import { ChevronLeft, Folder, Plus } from "lucide-solid";
+import { createEffect, createResource, createSignal, For, Show, type JSX } from "solid-js";
+import { ChevronLeft, Folder, GitBranch, Plus } from "lucide-solid";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { TextField, TextFieldInput, TextFieldLabel } from "@/components/ui/text-field";
 import { useKeyboardInset } from "@/lib/keyboard";
+import { listGitBranches, type GitBranchInfo, type GitBranchesResult } from "@/lib/api";
+import { getBridgeUrl } from "@/lib/settings";
 import CwdPicker from "./CwdPicker";
 
 interface Props {
@@ -19,13 +21,39 @@ function basename(path: string): string {
   return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
 }
 
+function branchLabel(branch: GitBranchInfo): string {
+  return branch.kind === "remote" ? `${branch.name} (remote)` : branch.name;
+}
+
 export default function NewSessionSheet(props: Props) {
-  const [cwd, setCwd] = createSignal<string | null>(null);
+  const [cwd, setCwd] = createSignal<string>();
   const [title, setTitle] = createSignal("");
-  const [branch, setBranch] = createSignal("");
+  const [branch, setBranch] = createSignal<string>();
   const [pickerOpen, setPickerOpen] = createSignal(false);
   const [titleTouched, setTitleTouched] = createSignal(false);
   const keyboardInset = useKeyboardInset();
+
+  const [gitInfo] = createResource<GitBranchesResult, string>(
+    () => cwd() ?? "",
+    async (c) => {
+      if (!c) return { isRepo: false, branches: [] };
+      const baseUrl = await getBridgeUrl();
+      return listGitBranches(baseUrl, c);
+    },
+  );
+
+  createEffect(() => {
+    const info = gitInfo();
+    if (!info?.isRepo) {
+      setBranch(undefined);
+      return;
+    }
+    setBranch((current) =>
+      current && info.branches.some((b) => b.name === current)
+        ? current
+        : info.current ?? info.branches[0]?.name,
+    );
+  });
 
   const effectiveTitle = () => {
     const t = title().trim();
@@ -34,15 +62,16 @@ export default function NewSessionSheet(props: Props) {
     return c ? basename(c) : "";
   };
 
-  const canCreate = () => cwd() !== null && cwd()!.length > 0 && !props.creating;
+  const canCreate = () => !!cwd() && !props.creating && !gitInfo.loading;
 
   function handleCreate() {
     const c = cwd();
     if (!c) return;
+    const info = gitInfo();
     props.onCreate({
       cwd: c,
       title: effectiveTitle(),
-      branch: branch().trim() || undefined,
+      branch: info?.isRepo ? branch() : undefined,
     });
   }
 
@@ -116,16 +145,13 @@ export default function NewSessionSheet(props: Props) {
                   />
                 </TextField>
 
-                <TextField>
-                  <TextFieldLabel>branch (optional)</TextFieldLabel>
-                  <TextFieldInput
-                    type="text"
-                    value={branch()}
-                    onInput={(e) => setBranch(e.currentTarget.value)}
-                    placeholder="main"
-                    class="py-2.5"
-                  />
-                </TextField>
+                <BranchPicker
+                  info={gitInfo()}
+                  loading={gitInfo.loading}
+                  error={gitInfo.error}
+                  value={branch()}
+                  onChange={setBranch}
+                />
               </div>
 
               <div class="px-3 pt-2">
@@ -145,7 +171,7 @@ export default function NewSessionSheet(props: Props) {
           }
         >
           <CwdPicker
-            initial={cwd() ?? undefined}
+            initial={cwd()}
             onSelect={(p) => {
               setCwd(p);
               setPickerOpen(false);
@@ -154,6 +180,56 @@ export default function NewSessionSheet(props: Props) {
         </Show>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function BranchPicker(props: {
+  info: GitBranchesResult | undefined;
+  loading: boolean;
+  error: unknown;
+  value: string | undefined;
+  onChange: (branch: string) => void;
+}) {
+  return (
+    <Field label="branch">
+      <Show
+        when={props.info?.isRepo}
+        fallback={
+          <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2.5 text-[12.5px] text-[color:var(--color-fg-faint)]">
+            {props.loading ? "detecting git repository…" : props.error ? "could not load branches" : "not a git repository"}
+          </div>
+        }
+      >
+        <div class="space-y-1.5">
+          <div class="flex items-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[12.5px]">
+            <GitBranch size={12} class="shrink-0 text-[color:var(--color-fg-muted)]" />
+            <span class="min-w-0 flex-1 truncate">{props.value ?? "choose a branch"}</span>
+          </div>
+          <div class="max-h-40 overflow-y-auto rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
+            <For each={props.info?.branches ?? []}>
+              {(b) => (
+                <button
+                  type="button"
+                  onClick={() => props.onChange(b.name)}
+                  class="hairline-b flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] active:bg-[color:var(--color-surface-2)]"
+                >
+                  <span class="min-w-0 flex-1 truncate">{branchLabel(b)}</span>
+                  <Show when={b.current}>
+                    <span class="text-[11px] text-[color:var(--color-fg-faint)]">current</span>
+                  </Show>
+                  <Show when={props.value === b.name}>
+                    <span class="text-[color:var(--color-accent)]">✓</span>
+                  </Show>
+                </button>
+              )}
+            </For>
+          </div>
+          <p class="px-1 text-[11px] leading-4 text-[color:var(--color-fg-faint)]">
+            A per-session git worktree will be created for this branch.
+          </p>
+        </div>
+      </Show>
+    </Field>
   );
 }
 

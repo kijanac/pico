@@ -7,6 +7,7 @@ import { mountSessionActionRoutes } from "./session-actions.ts";
 import { mountAuthRoutes } from "./auth.ts";
 import { mountCommandRoutes } from "./commands.ts";
 import { mountFsRoutes } from "./fs.ts";
+import { mountGitRoutes } from "./git.ts";
 
 export function makeHttpApp(runtime: ManagedRuntime.ManagedRuntime<any, never>): Hono {
   const app = new Hono();
@@ -26,6 +27,7 @@ export function makeHttpApp(runtime: ManagedRuntime.ManagedRuntime<any, never>):
   mountAuthRoutes(app, runtime);
   mountCommandRoutes(app);
   mountFsRoutes(app);
+  mountGitRoutes(app, runtime);
 
   return app;
 }
