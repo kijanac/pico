@@ -165,10 +165,8 @@ systemctl start pi-bridge-update.service     # check now
 systemctl disable --now pi-bridge-update.timer
 ```
 
-The bridge uses additive SQLite migrations at startup. When a release changes
-runtime record shape, it should also include a compatibility normalizer that
-upgrades existing rows into the new canonical columns. Keep that normalizer for
-at least one released version, then remove the legacy adapter in a later patch.
+The bridge uses additive SQLite migrations at startup. Destructive schema
+changes still require a deliberate table rebuild/backfill.
 
 ## Git workspaces on the box
 
@@ -278,8 +276,7 @@ userdel pi-bridge
 - **No backups.** Snapshot `/var/lib/pi-bridge/` if the conversation
   history matters to you — it's the SQLite DB plus pi's per-cwd JSONLs
   under `.pi/agent/sessions/`.
-- **Limited migrations.** Additive SQLite migrations run at bridge startup, and
-  releases may include one-version compatibility normalizers for old row shapes.
+- **Limited migrations.** Additive SQLite migrations run at bridge startup.
   Destructive schema changes still need a deliberate table rebuild/backfill.
 - **No metrics.** If you want Prometheus/etc., add an exporter. Right
   now observability is "tail journalctl".

@@ -252,37 +252,6 @@ const toolCallBase = (id: string) => ({
   status: "running" as const,
 });
 
-// Compatibility boundary for tool argument shapes emitted by older pi agents.
-// Keep canonical protocol schemas strict; normalize legacy inputs here, then
-// remove these adapters after one release once all supported agents emit the
-// canonical shapes.
-const LegacyEditToolArgs = v.object({
-  path: v.string(),
-  oldText: v.string(),
-  newText: v.string(),
-});
-
-const LegacyBashToolArgs = v.object({
-  cmd: v.string(),
-  timeout: v.optional(v.number()),
-});
-
-const normalizeEditArgs = (rawArgs: unknown): EditToolInput => {
-  const current = v.safeParse(EditToolArgs, rawArgs);
-  if (current.success) return current.output;
-
-  const legacy = v.parse(LegacyEditToolArgs, rawArgs);
-  return { path: legacy.path, edits: [{ oldText: legacy.oldText, newText: legacy.newText }] };
-};
-
-const normalizeBashArgs = (rawArgs: unknown): BashToolInput => {
-  const current = v.safeParse(BashToolArgs, rawArgs);
-  if (current.success) return current.output;
-
-  const legacy = v.parse(LegacyBashToolArgs, rawArgs);
-  return { command: legacy.cmd, timeout: legacy.timeout };
-};
-
 const normalizeToolCall = (
   id: string,
   toolName: string,
@@ -300,11 +269,11 @@ const normalizeToolCall = (
       return { ...base, toolKind: "builtin", tool: "write", args };
     }
     case "edit": {
-      const args = normalizeEditArgs(rawArgs);
+      const args: EditToolInput = v.parse(EditToolArgs, rawArgs);
       return { ...base, toolKind: "builtin", tool: "edit", args };
     }
     case "bash": {
-      const args = normalizeBashArgs(rawArgs);
+      const args: BashToolInput = v.parse(BashToolArgs, rawArgs);
       return { ...base, toolKind: "builtin", tool: "bash", args };
     }
     default:

@@ -43,9 +43,8 @@ const SCHEMA = `
     id          TEXT PRIMARY KEY,
     title       TEXT NOT NULL,
     cwd         TEXT NOT NULL,
-    worktree_cwd TEXT,
-    execution_cwd TEXT,
-    workspace_json TEXT,
+    execution_cwd TEXT NOT NULL,
+    workspace_json TEXT NOT NULL,
     branch      TEXT,
     status      TEXT NOT NULL,
     updated_at  INTEGER NOT NULL,
@@ -71,7 +70,6 @@ const SCHEMA = `
 
 const MIGRATIONS = [
   `ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
-  `ALTER TABLE sessions ADD COLUMN worktree_cwd TEXT`,
   `ALTER TABLE sessions ADD COLUMN execution_cwd TEXT`,
   `ALTER TABLE sessions ADD COLUMN workspace_json TEXT`,
 ];
@@ -95,27 +93,6 @@ const SessionRow = v.object({
   workspace_json: v.string(),
 });
 type SessionRow = v.InferOutput<typeof SessionRow>;
-
-const LegacySessionRow = v.object({
-  id: v.string(),
-  cwd: v.string(),
-  branch: v.nullable(v.string()),
-  worktree_cwd: v.nullable(v.string()),
-  execution_cwd: v.nullable(v.string()),
-  workspace_json: v.nullable(v.string()),
-});
-type LegacySessionRow = v.InferOutput<typeof LegacySessionRow>;
-
-const workspaceFromLegacyRow = (row: LegacySessionRow) =>
-  row.worktree_cwd
-    ? {
-        kind: "git-worktree" as const,
-        repoRoot: row.cwd,
-        worktreePath: row.worktree_cwd,
-        branch: row.branch ?? "",
-        ownedBySession: true as const,
-      }
-    : { kind: "plain" as const };
 
 const rowToRecord = (raw: unknown): SessionRecord => {
   const r = v.parse(SessionRow, raw);
@@ -152,35 +129,14 @@ const make = (dbPath: string) =>
         }
       }
 
-      const legacyRows = d.prepare(`
-        SELECT id, cwd, branch, worktree_cwd, execution_cwd, workspace_json
-        FROM sessions
-        WHERE execution_cwd IS NULL OR workspace_json IS NULL
-      `).all().map((row) => v.parse(LegacySessionRow, row));
-      if (legacyRows.length > 0) {
-        const stmtNormalize = d.prepare(`
-          UPDATE sessions
-          SET execution_cwd = ?, workspace_json = ?
-          WHERE id = ?
-        `);
-        for (const row of legacyRows) {
-          const workspace = workspaceFromLegacyRow(row);
-          stmtNormalize.run(
-            row.execution_cwd ?? row.worktree_cwd ?? row.cwd,
-            JSON.stringify(workspace),
-            row.id,
-          );
-        }
-      }
-
       return d;
     });
 
     const stmtUpsertSession: StatementSync = db.prepare(`
       INSERT OR REPLACE INTO sessions
-        (id, title, cwd, worktree_cwd, execution_cwd, workspace_json, branch, status, updated_at,
+        (id, title, cwd, execution_cwd, workspace_json, branch, status, updated_at,
          tokens_in, tokens_out, cost_usd, created_at, archived)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const stmtGetSession: StatementSync = db.prepare(
@@ -222,7 +178,6 @@ const make = (dbPath: string) =>
             record.id,
             record.title,
             record.cwd,
-            record.runtime.workspace.kind === "git-worktree" ? record.runtime.workspace.worktreePath : null,
             record.runtime.executionCwd,
             JSON.stringify(record.runtime.workspace),
             record.branch ?? null,
@@ -256,7 +211,6 @@ const make = (dbPath: string) =>
             merged.id,
             merged.title,
             merged.cwd,
-            merged.runtime.workspace.kind === "git-worktree" ? merged.runtime.workspace.worktreePath : null,
             merged.runtime.executionCwd,
             JSON.stringify(merged.runtime.workspace),
             merged.branch ?? null,
