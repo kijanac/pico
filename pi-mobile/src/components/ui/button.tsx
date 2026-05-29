@@ -32,9 +32,9 @@ const buttonVariants = cva({
       default: "h-10 px-3 text-[12px]",
       sm: "h-8 px-2.5 text-[11.5px]",
       lg: "h-11 px-4 text-[13px]",
-      icon: "h-9 w-9 text-[color:var(--color-fg-muted)]",
-      "icon-sm": "h-8 w-8 text-[color:var(--color-fg-muted)]",
-      "icon-lg": "h-10 w-10 text-[color:var(--color-fg-muted)]",
+      icon: "h-9 w-9",
+      "icon-sm": "h-8 w-8",
+      "icon-lg": "h-10 w-10",
     },
   },
   defaultVariants: {

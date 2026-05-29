@@ -248,9 +248,11 @@ export default function Sessions() {
       >
         <button
           type="button"
-          onClick={() => setSheetOpen(true)}
-          disabled={connState() !== "connected"}
-          class="flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border-strong)] text-[12px] active:bg-[color:var(--color-surface)] disabled:opacity-50"
+          onClick={() => {
+            setError(null);
+            setSheetOpen(true);
+          }}
+          class="flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border-strong)] text-[12px] active:bg-[color:var(--color-surface)]"
         >
           <Plus size={14} />
           new session

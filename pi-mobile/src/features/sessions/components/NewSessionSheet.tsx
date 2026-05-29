@@ -45,8 +45,9 @@ export default function NewSessionSheet(props: Props) {
   }
 
   return (
-    <Show when={props.open}>
-      <BottomSheet open title="new session" onClose={props.onCancel} maxHeightClass="max-h-[92dvh]">
+    <>
+      <Show when={props.open}>
+        <BottomSheet open title="new session" onClose={props.onCancel} maxHeightClass="max-h-[92dvh]">
         <div class="flex-1 space-y-3 overflow-y-auto px-3 pb-3">
           <Field label="cwd">
             <button
@@ -110,18 +111,20 @@ export default function NewSessionSheet(props: Props) {
           </Button>
         </div>
 
-        <Show when={pickerOpen()}>
-          <CwdPicker
-            initial={cwd() ?? undefined}
-            onSelect={(p) => {
-              setCwd(p);
-              setPickerOpen(false);
-            }}
-            onCancel={() => setPickerOpen(false)}
-          />
-        </Show>
-      </BottomSheet>
-    </Show>
+        </BottomSheet>
+      </Show>
+
+      <Show when={props.open && pickerOpen()}>
+        <CwdPicker
+          initial={cwd() ?? undefined}
+          onSelect={(p) => {
+            setCwd(p);
+            setPickerOpen(false);
+          }}
+          onCancel={() => setPickerOpen(false)}
+        />
+      </Show>
+    </>
   );
 }
 
