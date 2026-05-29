@@ -147,8 +147,6 @@ export default function NewSessionSheet(props: Props) {
 
                 <BranchPicker
                   info={gitInfo()}
-                  loading={gitInfo.loading}
-                  error={gitInfo.error}
                   value={branch()}
                   onChange={setBranch}
                 />
@@ -185,21 +183,12 @@ export default function NewSessionSheet(props: Props) {
 
 function BranchPicker(props: {
   info: GitBranchesResult | undefined;
-  loading: boolean;
-  error: unknown;
   value: string | undefined;
   onChange: (branch: string) => void;
 }) {
   return (
-    <Field label="branch">
-      <Show
-        when={props.info?.isRepo}
-        fallback={
-          <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2.5 text-[12.5px] text-[color:var(--color-fg-faint)]">
-            {props.loading ? "detecting git repository…" : props.error ? "could not load branches" : "not a git repository"}
-          </div>
-        }
-      >
+    <Show when={props.info?.isRepo && props.info.branches.length > 0}>
+      <Field label="branch">
         <div class="space-y-1.5">
           <div class="flex items-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[12.5px]">
             <GitBranch size={12} class="shrink-0 text-[color:var(--color-fg-muted)]" />
@@ -228,8 +217,8 @@ function BranchPicker(props: {
             A per-session git worktree will be created for this branch.
           </p>
         </div>
-      </Show>
-    </Field>
+      </Field>
+    </Show>
   );
 }
 

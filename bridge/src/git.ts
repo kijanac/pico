@@ -38,6 +38,11 @@ const slug = (value: string) =>
 
 const localNameForRemote = (name: string) => name.replace(/^[^/]+\//, "");
 
+const sortBranches = (a: GitBranchInfo, b: GitBranchInfo) =>
+  Number(b.kind === "local" && b.current) - Number(a.kind === "local" && a.current) ||
+  a.kind.localeCompare(b.kind) ||
+  a.name.localeCompare(b.name);
+
 export const listGitBranches = (cwd: string): Effect.Effect<GitBranchesResult, PiError> =>
   Effect.tryPromise({
     try: async () => {
@@ -51,27 +56,28 @@ export const listGitBranches = (cwd: string): Effect.Effect<GitBranchesResult, P
       const current = await git(root, ["branch", "--show-current"]).catch(() => "");
       const lines = (await git(root, [
         "for-each-ref",
-        "--format=%(refname:short)%00%(HEAD)%00%(upstream:short)",
+        "--format=%(refname)%00%(HEAD)",
         "refs/heads",
         "refs/remotes",
       ])).split("\n").filter(Boolean);
 
-      const seen = new Set<string>();
       const branches: GitBranchInfo[] = [];
       for (const line of lines) {
-        const [name, head] = line.split("\0");
-        if (!name || name.endsWith("/HEAD") || seen.has(name)) continue;
-        seen.add(name);
-        // refs/remotes and refs/heads are both emitted as short names; detect remotes by asking show-ref prefix shape.
-        const isRemote = await git(root, ["show-ref", "--verify", `refs/remotes/${name}`]).then(() => true, () => false);
-        if (isRemote) {
-          branches.push({ kind: "remote", name, remote: name.split("/")[0] });
-        } else {
+        const [ref, head] = line.split("\0");
+        if (ref.startsWith("refs/heads/")) {
+          const name = ref.slice("refs/heads/".length);
           branches.push({ kind: "local", name, current: head === "*" || name === current });
+          continue;
+        }
+
+        if (ref.startsWith("refs/remotes/")) {
+          const name = ref.slice("refs/remotes/".length);
+          if (name.endsWith("/HEAD")) continue;
+          branches.push({ kind: "remote", name, remote: name.split("/")[0] });
         }
       }
 
-      branches.sort((a, b) => Number(b.kind === "local" && b.current) - Number(a.kind === "local" && a.current) || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
+      branches.sort(sortBranches);
       return { isRepo: true, root, current: current || undefined, branches };
     },
     catch: (e) => new PiError(`git branches failed: ${String(e)}`),
