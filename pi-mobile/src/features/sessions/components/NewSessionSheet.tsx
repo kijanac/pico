@@ -86,13 +86,15 @@ export default function NewSessionSheet(props: Props) {
           <Field label="branch (optional)">
             <div class="flex items-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-0.5 focus-within:border-[color:var(--color-border-strong)]">
               <GitBranch size={12} class="shrink-0 text-[color:var(--color-fg-muted)]" />
-              <TextFieldInput
-                type="text"
-                value={branch()}
-                onInput={(e) => setBranch(e.currentTarget.value)}
-                placeholder="main"
-                class="border-0 bg-transparent px-0 py-2 focus:border-0 focus-visible:border-0"
-              />
+              <TextField class="min-w-0 flex-1 gap-0">
+                <TextFieldInput
+                  type="text"
+                  value={branch()}
+                  onInput={(e) => setBranch(e.currentTarget.value)}
+                  placeholder="main"
+                  class="border-0 bg-transparent px-0 py-2 focus:border-0 focus-visible:border-0"
+                />
+              </TextField>
             </div>
           </Field>
         </div>

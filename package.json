@@ -1,7 +1,7 @@
 {
   "name": "pi-mobile-workspace",
   "private": true,
-  "version": "0.4.5",
+  "version": "0.4.6",
   "packageManager": "pnpm@10.5.2",
   "engines": {
     "node": ">=24"

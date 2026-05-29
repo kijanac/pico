@@ -18,7 +18,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
-ReadWritePaths=/opt/pi-mobile-workspace /var/lib/pi-bridge
+ReadWritePaths=/opt/pi-mobile-workspace /var/lib/pi-bridge /etc/systemd/system /etc/pi-bridge
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native
 

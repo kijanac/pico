@@ -11,6 +11,8 @@ STATE_FILE="$DATA_DIR/update-state.json"
 REPO="${PI_BRIDGE_RELEASE_REPO:-kijanac/pi-mobile}"
 CHANNEL="${PI_BRIDGE_UPDATE_CHANNEL:-stable}"
 PUBLIC_KEY="${PI_BRIDGE_UPDATE_PUBLIC_KEY:-/etc/pi-bridge/update-public-key.pem}"
+HEALTH_HOST="${PI_BRIDGE_HEALTH_HOST:-127.0.0.1}"
+HEALTH_PORT="${PI_BRIDGE_HEALTH_PORT:-${PORT:-7777}}"
 TMP_DIR="$(mktemp -d)"
 
 cleanup() { rm -rf "$TMP_DIR"; }
@@ -18,6 +20,28 @@ trap cleanup EXIT
 
 log() { printf '[pi-bridge-update] %s\n' "$*"; }
 fatal() { printf '[pi-bridge-update] ERROR: %s\n' "$*" >&2; exit 1; }
+
+dump_bridge_diagnostics() {
+  log "pi-bridge status:"
+  systemctl status pi-bridge --no-pager -l || true
+  log "recent pi-bridge logs:"
+  journalctl -u pi-bridge -n 80 --no-pager -o short-iso || true
+}
+
+health_check() {
+  local url="$1"
+  local attempts="${PI_BRIDGE_HEALTH_ATTEMPTS:-30}"
+  local delay="${PI_BRIDGE_HEALTH_DELAY:-1}"
+
+  for _ in $(seq 1 "$attempts"); do
+    if curl -fsS --max-time 5 "$url" >/dev/null; then
+      return 0
+    fi
+    sleep "$delay"
+  done
+
+  return 1
+}
 
 version_gt() {
   node -e '
@@ -48,7 +72,6 @@ state_set() {
       state.lastSeenVersion=version;
       state.lastSeenAt=now;
     } else if (status === "failed") {
-      state.currentVersion=version;
       state.failedAt=now;
       state.failure={ version, reason, at: now };
     } else if (status === "updated") {
@@ -131,19 +154,53 @@ cd /
 chown -R pi-bridge:pi-bridge "$TARGET.tmp"
 mv "$TARGET.tmp" "$TARGET"
 
+PREVIOUS=""
+[[ ! -L "$CURRENT_LINK" ]] || PREVIOUS="$(readlink -f "$CURRENT_LINK")"
 ln -sfn "$TARGET" "$CURRENT_LINK"
+
+rollback() {
+  local reason="$1"
+  state_set "$VERSION" failed "$reason"
+  if [[ -n "$PREVIOUS" ]]; then
+    log "rolling back to $(basename "$PREVIOUS")"
+    ln -sfn "$PREVIOUS" "$CURRENT_LINK"
+    systemctl restart pi-bridge || true
+  fi
+}
+
+sync_deploy_files() {
+  if [[ -f "$CURRENT_LINK/bridge/deploy/update.sh" ]]; then
+    install -o root -g root -m 0755 "$CURRENT_LINK/bridge/deploy/update.sh" "$APP_DIR/update.sh"
+  fi
+
+  if [[ -w /etc/systemd/system ]]; then
+    for unit in pi-bridge.service pi-bridge-update.service pi-bridge-update.timer; do
+      if [[ -f "$CURRENT_LINK/bridge/deploy/$unit" ]]; then
+        install -o root -g root -m 0644 "$CURRENT_LINK/bridge/deploy/$unit" "/etc/systemd/system/$unit"
+      fi
+    done
+    systemctl daemon-reload
+  else
+    log "skipping systemd unit refresh; /etc/systemd/system is not writable in this sandbox"
+  fi
+}
 
 log "restarting pi-bridge on $VERSION"
 if ! systemctl restart pi-bridge; then
-  state_set "$VERSION" failed restart_failed
-  fatal "restart failed; leaving $VERSION installed"
+  dump_bridge_diagnostics
+  rollback restart_failed
+  fatal "restart failed"
 fi
 
-if ! sh -c 'for i in $(seq 1 30); do curl -fsS --max-time 5 http://127.0.0.1:7777/healthz >/dev/null && exit 0; sleep 1; done; exit 1'; then
-  state_set "$VERSION" failed health_check_failed
-  fatal "health check failed; leaving $VERSION installed"
+HEALTH_URL="http://$HEALTH_HOST:$HEALTH_PORT/healthz"
+log "waiting for health check at $HEALTH_URL"
+if ! health_check "$HEALTH_URL"; then
+  dump_bridge_diagnostics
+  rollback health_check_failed
+  fatal "health check failed"
 fi
 
+sync_deploy_files
 state_set "$VERSION" updated
 
 log "updated to $VERSION"

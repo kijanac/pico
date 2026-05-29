@@ -296,6 +296,22 @@ sudo -u pi-bridge HOME=/var/lib/pi-bridge pnpm exec pi
 
 then use `/login` or `/model` as needed.
 
+**`pi-bridge-update.service` fails during the health check.** The updater
+installed the release, restarted `pi-bridge`, then rolled back because
+`/healthz` did not answer. The root cause is normally in the bridge unit, not
+the updater unit:
+
+```sh
+journalctl -u pi-bridge-update -n 120 --no-pager
+journalctl -u pi-bridge -n 120 --no-pager
+systemctl status pi-bridge --no-pager
+cat /var/lib/pi-bridge/update-state.json
+```
+
+Do not clear a failed version from `update-state.json` until the `pi-bridge`
+logs explain why it failed; otherwise the timer will just retry and roll back
+again.
+
 **Mobile connects but `/healthz` 404s.** The `tailscale serve` route
 isn't pointing at port 7777 — re-run the `tailscale serve` command
 and check `tailscale serve status`.
