@@ -295,30 +295,45 @@ export const SessionModelState = v.object({
 });
 export type SessionModelState = v.InferOutput<typeof SessionModelState>;
 
-export const ThinkingLevel = v.picklist(["off", "low", "medium", "high"]);
-export type ThinkingLevel = v.InferOutput<typeof ThinkingLevel>;
-
-export const QueueMode = v.picklist(["all", "one-at-a-time"]);
-export type QueueMode = v.InferOutput<typeof QueueMode>;
-
-export const SessionSettings = v.object({
-  thinkingLevel: ThinkingLevel,
-  availableThinkingLevels: v.array(ThinkingLevel),
-  steeringMode: QueueMode,
-  followUpMode: QueueMode,
-  autoCompaction: v.boolean(),
-  autoRetry: v.boolean(),
+export const SessionControlOption = v.object({
+  value: v.string(),
+  label: v.string(),
+  description: v.optional(v.string()),
+  disabled: v.optional(v.boolean()),
 });
-export type SessionSettings = v.InferOutput<typeof SessionSettings>;
+export type SessionControlOption = v.InferOutput<typeof SessionControlOption>;
 
-export const SessionSettingsPatch = v.object({
-  thinkingLevel: v.optional(ThinkingLevel),
-  steeringMode: v.optional(QueueMode),
-  followUpMode: v.optional(QueueMode),
-  autoCompaction: v.optional(v.boolean()),
-  autoRetry: v.optional(v.boolean()),
+export const SelectSessionControl = v.object({
+  key: v.string(),
+  kind: v.literal("select"),
+  label: v.string(),
+  value: v.string(),
+  description: v.optional(v.string()),
+  options: v.array(SessionControlOption),
 });
-export type SessionSettingsPatch = v.InferOutput<typeof SessionSettingsPatch>;
+export type SelectSessionControl = v.InferOutput<typeof SelectSessionControl>;
+
+export const BooleanSessionControl = v.object({
+  key: v.string(),
+  kind: v.literal("boolean"),
+  label: v.string(),
+  value: v.boolean(),
+  description: v.optional(v.string()),
+});
+export type BooleanSessionControl = v.InferOutput<typeof BooleanSessionControl>;
+
+export const SessionControl = v.variant("kind", [SelectSessionControl, BooleanSessionControl]);
+export type SessionControl = v.InferOutput<typeof SessionControl>;
+
+export const SessionControls = v.object({
+  controls: v.array(SessionControl),
+});
+export type SessionControls = v.InferOutput<typeof SessionControls>;
+
+export const SessionControlValueBody = v.object({
+  value: v.union([v.string(), v.boolean()]),
+});
+export type SessionControlValueBody = v.InferOutput<typeof SessionControlValueBody>;
 
 export const AuthProvider = v.object({
   id: v.string(),

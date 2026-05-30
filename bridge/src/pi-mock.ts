@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Effect, Fiber, Layer, Queue, Random, Ref, Stream } from "effect";
-import type { ModelSummary, SessionMeta } from "@pi-mobile/protocol";
+import type { ModelSummary, SessionControls, SessionMeta } from "@pi-mobile/protocol";
 import { SessionNotFound } from "./errors.ts";
 import {
   PiClient,
@@ -63,6 +63,16 @@ const mockModel: ModelSummary = {
   current: true,
   usingOAuth: false,
 };
+
+const mockSettings = (): SessionControls => ({
+  controls: [
+    { key: "thinkingLevel", kind: "select", label: "thinking level", value: "off", options: [{ value: "off", label: "off" }] },
+    { key: "steeringMode", kind: "select", label: "steering while running", value: "one-at-a-time", options: [{ value: "one-at-a-time", label: "one-at-a-time" }, { value: "all", label: "all" }] },
+    { key: "followUpMode", kind: "select", label: "follow-up delivery", value: "one-at-a-time", options: [{ value: "one-at-a-time", label: "one-at-a-time" }, { value: "all", label: "all" }] },
+    { key: "autoCompaction", kind: "boolean", label: "auto compact", value: true },
+    { key: "autoRetry", kind: "boolean", label: "auto retry", value: true },
+  ],
+});
 
 const scriptedFlow = (q: Queue.Queue<PiEmission>, userText: string) =>
   Effect.gen(function* () {
@@ -218,24 +228,8 @@ const makeMockSession = (opts: {
       getQueue: () => Effect.succeed({ steering: [], followUp: [] }),
       clearQueue: () => Effect.succeed({ steering: [], followUp: [] }),
       patchSession: () => Effect.void,
-      getSettings: () =>
-        Effect.succeed({
-          thinkingLevel: "off",
-          availableThinkingLevels: ["off", "low", "medium", "high"],
-          steeringMode: "one-at-a-time",
-          followUpMode: "one-at-a-time",
-          autoCompaction: true,
-          autoRetry: true,
-        }),
-      patchSettings: () =>
-        Effect.succeed({
-          thinkingLevel: "off",
-          availableThinkingLevels: ["off", "low", "medium", "high"],
-          steeringMode: "one-at-a-time",
-          followUpMode: "one-at-a-time",
-          autoCompaction: true,
-          autoRetry: true,
-        }),
+      getSettings: () => Effect.succeed(mockSettings()),
+      patchSetting: () => Effect.succeed(mockSettings()),
       getStats: () =>
         Effect.succeed({
           sessionId: meta.id,

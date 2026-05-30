@@ -20,8 +20,7 @@ import type {
   PermissionChoice,
   SessionMeta,
   QueueState,
-  SessionSettings,
-  SessionSettingsPatch,
+  SessionControls,
   SessionStats,
   SessionTree,
   WireEvent,
@@ -86,11 +85,12 @@ export class SessionManager extends Context.Tag("SessionManager")<
     readonly listCommands: (id: string) => Effect.Effect<Commands, PiError | SessionNotFound>;
     readonly getQueue: (id: string) => Effect.Effect<QueueState, PiError | SessionNotFound>;
     readonly clearQueue: (id: string) => Effect.Effect<QueueState, PiError | SessionNotFound>;
-    readonly getSettings: (id: string) => Effect.Effect<SessionSettings, PiError | SessionNotFound>;
-    readonly patchSettings: (
+    readonly getSettings: (id: string) => Effect.Effect<SessionControls, PiError | SessionNotFound>;
+    readonly patchSetting: (
       id: string,
-      patch: SessionSettingsPatch,
-    ) => Effect.Effect<SessionSettings, PiError | SessionNotFound>;
+      key: string,
+      value: string | boolean,
+    ) => Effect.Effect<SessionControls, PiError | SessionNotFound>;
     readonly getStats: (id: string) => Effect.Effect<SessionStats, PiError | SessionNotFound>;
     readonly getTree: (id: string) => Effect.Effect<SessionTree, PiError | SessionNotFound>;
     readonly navigateTree: (
@@ -407,8 +407,8 @@ const make = Effect.gen(function* () {
   const getSettings = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getSettings());
 
-  const patchSettings = (id: string, patch: SessionSettingsPatch) =>
-    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.patchSettings(patch));
+  const patchSetting = (id: string, key: string, value: string | boolean) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.patchSetting(key, value));
 
   const getStats = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getStats());
@@ -501,7 +501,7 @@ const make = Effect.gen(function* () {
     getQueue,
     clearQueue,
     getSettings,
-    patchSettings,
+    patchSetting,
     getStats,
     getTree,
     navigateTree,

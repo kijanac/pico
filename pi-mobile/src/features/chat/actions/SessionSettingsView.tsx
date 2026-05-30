@@ -1,9 +1,6 @@
-import { Show, createResource, createSignal } from "solid-js";
-import type { QueueMode, SessionSettings, ThinkingLevel } from "@pi-mobile/protocol";
-
-const THINKING_LEVELS = ["off", "low", "medium", "high"] as const satisfies readonly ThinkingLevel[];
-const QUEUE_MODES = ["one-at-a-time", "all"] as const satisfies readonly QueueMode[];
-import { getSessionSettings, patchSessionSettings } from "@/lib/api";
+import { For, Match, Show, Switch, createResource, createSignal } from "solid-js";
+import type { SessionControl } from "@pi-mobile/protocol";
+import { getSessionSettings, patchSessionSetting } from "@/lib/api";
 import { getBridgeUrl } from "@/lib/settings";
 import { haptic } from "@/lib/haptics";
 import { Segmented, ToggleRow } from "./shared";
@@ -16,13 +13,13 @@ export default function SessionSettingsView(props: { sessionId: string; onError:
     return getSessionSettings(baseUrl, props.sessionId);
   });
 
-  async function patch(key: keyof SessionSettings, value: ThinkingLevel | QueueMode | boolean) {
+  async function patch(key: string, value: string | boolean) {
     if (saving()) return;
-    setSaving(String(key));
+    setSaving(key);
     props.onError(null);
     try {
       const baseUrl = await getBridgeUrl();
-      const next = await patchSessionSettings(baseUrl, props.sessionId, { [key]: value });
+      const next = await patchSessionSetting(baseUrl, props.sessionId, key, value);
       mutate(next);
       haptic.success();
     } catch (e) {
@@ -39,14 +36,23 @@ export default function SessionSettingsView(props: { sessionId: string; onError:
       <Show when={settings()}>
         {(s) => (
           <div class="space-y-4">
-            <Segmented label="thinking level" options={s().availableThinkingLevels.length ? s().availableThinkingLevels : THINKING_LEVELS} value={s().thinkingLevel} disabled={saving() !== null} onChange={(v) => patch("thinkingLevel", v)} />
-            <Segmented label="steering while running" options={QUEUE_MODES} value={s().steeringMode} disabled={saving() !== null} onChange={(v) => patch("steeringMode", v)} />
-            <Segmented label="follow-up delivery" options={QUEUE_MODES} value={s().followUpMode} disabled={saving() !== null} onChange={(v) => patch("followUpMode", v)} />
-            <ToggleRow label="auto compact" checked={s().autoCompaction} disabled={saving() !== null} onChange={(v) => patch("autoCompaction", v)} />
-            <ToggleRow label="auto retry" checked={s().autoRetry} disabled={saving() !== null} onChange={(v) => patch("autoRetry", v)} />
+            <For each={s().controls}>{(control) => <Control control={control} saving={saving() !== null} onChange={(value) => patch(control.key, value)} />}</For>
           </div>
         )}
       </Show>
     </div>
+  );
+}
+
+function Control(props: { control: SessionControl; saving: boolean; onChange: (value: string | boolean) => void }) {
+  return (
+    <Switch>
+      <Match when={props.control.kind === "select" && props.control}>
+        {(control) => <Segmented label={control().label} options={control().options.map((option) => option.value)} value={control().value} disabled={props.saving} onChange={props.onChange} />}
+      </Match>
+      <Match when={props.control.kind === "boolean" && props.control}>
+        {(control) => <ToggleRow label={control().label} checked={control().value} disabled={props.saving} onChange={props.onChange} />}
+      </Match>
+    </Switch>
   );
 }

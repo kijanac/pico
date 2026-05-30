@@ -2,7 +2,7 @@ import { Effect, type ManagedRuntime } from "effect";
 import type { Hono } from "hono";
 import * as v from "valibot";
 import { SessionManager } from "../session.ts";
-import { CompactBody, SessionSettingsPatch, SetModelBody, TreeJumpBody } from "./schemas.ts";
+import { CompactBody, SessionControlValueBody, SetModelBody, TreeJumpBody } from "./schemas.ts";
 import { runJson, runResponse } from "./run.ts";
 
 export function mountSessionActionRoutes(app: Hono, runtime: ManagedRuntime.ManagedRuntime<any, never>): void {
@@ -77,11 +77,12 @@ export function mountSessionActionRoutes(app: Hono, runtime: ManagedRuntime.Mana
     return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.getSettings(id)), "settings_failed");
   });
 
-  app.patch("/sessions/:id/settings", async (c) => {
+  app.patch("/sessions/:id/settings/:key", async (c) => {
     const id = c.req.param("id");
-    const body = v.safeParse(SessionSettingsPatch, await c.req.json().catch(() => null));
+    const key = c.req.param("key");
+    const body = v.safeParse(SessionControlValueBody, await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "invalid_body", issues: body.issues }, 400);
-    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.patchSettings(id, body.output)), "settings_failed");
+    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.patchSetting(id, key, body.output.value)), "settings_failed");
   });
 
   app.get("/sessions/:id/stats", async (c) => {

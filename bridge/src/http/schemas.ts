@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { SessionSettingsPatch } from "@pi-mobile/protocol";
+import { SessionControlValueBody } from "@pi-mobile/protocol";
 
 const NonEmptyString = v.pipe(v.string(), v.trim(), v.nonEmpty());
 
@@ -30,4 +30,4 @@ export const TreeJumpBody = v.object({
 
 export const AuthInputBody = v.object({ value: v.string() });
 
-export { SessionSettingsPatch };
+export { SessionControlValueBody };

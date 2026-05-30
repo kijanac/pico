@@ -16,8 +16,7 @@ import type {
   QueueState,
   SessionMeta,
   SessionModelState,
-  SessionSettings,
-  SessionSettingsPatch,
+  SessionControls,
   SessionStats,
   SessionTree,
   SystemInfo,
@@ -169,15 +168,16 @@ export const cancelAuthLogin = (baseUrl: string, jobId: string): Promise<void> =
 export const getSessionSettings = (
   baseUrl: string,
   id: string,
-): Promise<SessionSettings> =>
+): Promise<SessionControls> =>
   requestJson("getSessionSettings", sessionUrl(baseUrl, id, "/settings"));
 
-export const patchSessionSettings = (
+export const patchSessionSetting = (
   baseUrl: string,
   id: string,
-  patch: SessionSettingsPatch,
-): Promise<SessionSettings> =>
-  requestJson("patchSessionSettings", sessionUrl(baseUrl, id, "/settings"), jsonInit("PATCH", patch));
+  key: string,
+  value: string | boolean,
+): Promise<SessionControls> =>
+  requestJson("patchSessionSetting", sessionUrl(baseUrl, id, `/settings/${encodeURIComponent(key)}`), jsonInit("PATCH", { value }));
 
 export const getSessionStats = async (
   baseUrl: string,

@@ -36,15 +36,12 @@ import {
   type PermissionChoice,
   type ModelSummary,
   type PermissionRequest,
-  type QueueMode,
   type QueueState,
+  type SessionControls,
   type SessionMeta,
-  type SessionSettings,
-  type SessionSettingsPatch,
   type SessionStats,
   type SessionStatus,
   type SessionTree,
-  type ThinkingLevel,
   type ToolCallMessage,
   type TreeEntry,
 } from "@pi-mobile/protocol";
@@ -128,9 +125,9 @@ export interface PiSession {
   readonly listCommands: () => Effect.Effect<Commands, PiError>;
   readonly getQueue: () => Effect.Effect<QueueState, PiError>;
   readonly clearQueue: () => Effect.Effect<QueueState, PiError>;
-  readonly getSettings: () => Effect.Effect<SessionSettings, PiError>;
+  readonly getSettings: () => Effect.Effect<SessionControls, PiError>;
   readonly patchSession: (patch: { title?: string }) => Effect.Effect<void, PiError>;
-  readonly patchSettings: (patch: SessionSettingsPatch) => Effect.Effect<SessionSettings, PiError>;
+  readonly patchSetting: (key: string, value: string | boolean) => Effect.Effect<SessionControls, PiError>;
   readonly getStats: () => Effect.Effect<SessionStats, PiError>;
   readonly getTree: () => Effect.Effect<SessionTree, PiError>;
   readonly navigateTree: (entryId: string, summarize?: boolean) => Effect.Effect<void, PiError>;
@@ -208,14 +205,86 @@ const textFromContent = (content: unknown): string => {
     .join(" ");
 };
 
-const sessionSettings = (piSession: AgentSession): SessionSettings => ({
-  thinkingLevel: piSession.thinkingLevel as ThinkingLevel,
-  availableThinkingLevels: piSession.getAvailableThinkingLevels() as ThinkingLevel[],
-  steeringMode: piSession.steeringMode as QueueMode,
-  followUpMode: piSession.followUpMode as QueueMode,
-  autoCompaction: piSession.autoCompactionEnabled,
-  autoRetry: piSession.autoRetryEnabled,
+const queueModeOptions = [
+  { value: "one-at-a-time", label: "one-at-a-time" },
+  { value: "all", label: "all" },
+];
+
+const sessionSettings = (piSession: AgentSession): SessionControls => ({
+  controls: [
+    {
+      key: "thinkingLevel",
+      kind: "select",
+      label: "thinking level",
+      value: piSession.thinkingLevel,
+      options: piSession.getAvailableThinkingLevels().map((level) => ({ value: level, label: level })),
+    },
+    {
+      key: "steeringMode",
+      kind: "select",
+      label: "steering while running",
+      value: piSession.steeringMode,
+      options: queueModeOptions,
+    },
+    {
+      key: "followUpMode",
+      kind: "select",
+      label: "follow-up delivery",
+      value: piSession.followUpMode,
+      options: queueModeOptions,
+    },
+    {
+      key: "autoCompaction",
+      kind: "boolean",
+      label: "auto compact",
+      value: piSession.autoCompactionEnabled,
+    },
+    {
+      key: "autoRetry",
+      kind: "boolean",
+      label: "auto retry",
+      value: piSession.autoRetryEnabled,
+    },
+  ],
 });
+
+const requireString = (key: string, value: string | boolean): string => {
+  if (typeof value !== "string") throw new PiError(`${key} requires a string value`);
+  return value;
+};
+
+const requireBoolean = (key: string, value: string | boolean): boolean => {
+  if (typeof value !== "boolean") throw new PiError(`${key} requires a boolean value`);
+  return value;
+};
+
+const requireOption = <T extends string>(key: string, value: string, options: readonly T[]): T => {
+  if (!options.includes(value as T)) throw new PiError(`${key} does not support value: ${value}`);
+  return value as T;
+};
+
+const setSessionSetting = (piSession: AgentSession, key: string, value: string | boolean): SessionControls => {
+  switch (key) {
+    case "thinkingLevel":
+      piSession.setThinkingLevel(requireOption(key, requireString(key, value), piSession.getAvailableThinkingLevels()));
+      break;
+    case "steeringMode":
+      piSession.setSteeringMode(requireOption(key, requireString(key, value), ["all", "one-at-a-time"]));
+      break;
+    case "followUpMode":
+      piSession.setFollowUpMode(requireOption(key, requireString(key, value), ["all", "one-at-a-time"]));
+      break;
+    case "autoCompaction":
+      piSession.setAutoCompactionEnabled(requireBoolean(key, value));
+      break;
+    case "autoRetry":
+      piSession.setAutoRetryEnabled(requireBoolean(key, value));
+      break;
+    default:
+      throw new PiError(`unknown setting: ${key}`);
+  }
+  return sessionSettings(piSession);
+};
 
 const flattenSessionTree = (piSession: AgentSession): SessionTree => {
   const roots = piSession.sessionManager.getTree();
@@ -601,15 +670,8 @@ const wirePiSession = (
         Effect.sync(() => {
           if (patch.title !== undefined) piSession.setSessionName(patch.title);
         }),
-      patchSettings: (patch) =>
-        Effect.sync(() => {
-          if (patch.thinkingLevel) piSession.setThinkingLevel(patch.thinkingLevel);
-          if (patch.steeringMode) piSession.setSteeringMode(patch.steeringMode);
-          if (patch.followUpMode) piSession.setFollowUpMode(patch.followUpMode);
-          if (patch.autoCompaction !== undefined) piSession.setAutoCompactionEnabled(patch.autoCompaction);
-          if (patch.autoRetry !== undefined) piSession.setAutoRetryEnabled(patch.autoRetry);
-          return sessionSettings(piSession);
-        }),
+      patchSetting: (key, value) =>
+        Effect.sync(() => setSessionSetting(piSession, key, value)),
       getStats: () => Effect.sync(() => piSession.getSessionStats() as SessionStats),
       getTree: () => Effect.sync(() => flattenSessionTree(piSession)),
       navigateTree: (entryId, summarize) =>
