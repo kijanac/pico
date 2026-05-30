@@ -222,7 +222,7 @@ function BranchPicker(props: {
               </For>
             </div>
             <p class="px-1 text-[11px] leading-4 text-[color:var(--color-fg-faint)]">
-              A per-session git worktree will be created for this branch.
+              A per-session branch and git worktree will be created from this branch.
             </p>
           </div>
         </Field>

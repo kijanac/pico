@@ -7,7 +7,9 @@ export const WorkspaceBinding = v.variant("kind", [
     kind: v.literal("git-worktree"),
     repoRoot: v.string(),
     worktreePath: v.string(),
-    branch: v.string(),
+    baseBranch: v.string(),
+    baseRef: v.string(),
+    sessionBranch: v.string(),
     ownedBySession: v.literal(true),
   }),
 ]);
@@ -39,19 +41,4 @@ export function toSessionMeta(record: SessionRecord): SessionMeta {
 
 export function parseWorkspaceBinding(raw: unknown): WorkspaceBinding {
   return v.parse(WorkspaceBinding, raw);
-}
-
-export function metaToRecord(meta: SessionMeta, executionCwd = meta.cwd, workspace: WorkspaceBinding = { kind: "plain" }): SessionRecord {
-  return {
-    id: meta.id,
-    title: meta.title,
-    cwd: meta.cwd,
-    branch: meta.branch,
-    status: meta.status,
-    updatedAtMs: Date.parse(meta.updatedAt),
-    tokens: meta.tokens,
-    costUsd: meta.costUsd,
-    archived: meta.archived,
-    runtime: { executionCwd, workspace },
-  };
 }

@@ -228,13 +228,15 @@ const make = Effect.gen(function* () {
       const worktree = yield* createSessionWorktree({ cwd: opts.cwd, branch: opts.branch });
       const displayCwd = worktree ? worktree.repoRoot : opts.cwd;
       const executionCwd = worktree ? worktree.worktreePath : opts.cwd;
-      const branch = worktree?.branch;
+      const branch = worktree?.baseBranch;
       const workspace: WorkspaceBinding = worktree
         ? {
             kind: "git-worktree",
             repoRoot: worktree.repoRoot,
             worktreePath: worktree.worktreePath,
-            branch: worktree.branch,
+            baseBranch: worktree.baseBranch,
+            baseRef: worktree.baseRef,
+            sessionBranch: worktree.sessionBranch,
             ownedBySession: true,
           }
         : { kind: "plain" };
@@ -483,7 +485,11 @@ const make = Effect.gen(function* () {
       }
       if (existing.value.runtime.workspace.kind === "git-worktree" && existing.value.runtime.workspace.ownedBySession) {
         yield* Effect.ignoreLogged(
-          removeSessionWorktree(existing.value.runtime.workspace.repoRoot, existing.value.runtime.workspace.worktreePath),
+          removeSessionWorktree({
+            repoRoot: existing.value.runtime.workspace.repoRoot,
+            worktreePath: existing.value.runtime.workspace.worktreePath,
+            sessionBranch: existing.value.runtime.workspace.sessionBranch,
+          }),
         );
       }
       yield* store.deleteSession(id);

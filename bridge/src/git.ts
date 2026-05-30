@@ -23,7 +23,9 @@ export interface GitBranchesResult {
 export interface GitWorktree {
   repoRoot: string;
   worktreePath: string;
-  branch: string;
+  baseBranch: string;
+  baseRef: string;
+  sessionBranch: string;
 }
 
 const git = async (cwd: string, args: string[]) => {
@@ -37,6 +39,9 @@ const slug = (value: string) =>
   value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "repo";
 
 const localNameForRemote = (name: string) => name.replace(/^[^/]+\//, "");
+
+const sessionBranchName = (baseBranch: string) =>
+  `pi/session/${randomUUID().slice(0, 8)}-${slug(baseBranch)}`;
 
 const sortBranches = (a: GitBranchInfo, b: GitBranchInfo) =>
   Number(b.kind === "local" && b.current) - Number(a.kind === "local" && a.current) ||
@@ -91,39 +96,40 @@ export const createSessionWorktree = (opts: { cwd: string; branch?: string }): E
         if (opts.branch) throw new Error("selected directory is not inside a git repository");
         return undefined;
       }
-      const branch = opts.branch || info.current;
-      if (!branch) throw new Error("repository is in detached HEAD; choose a branch");
 
-      const selected = info.branches.find((b) => b.name === branch);
-      if (!selected) throw new Error(`branch not found: ${branch}`);
+      const selectedBranch = opts.branch || info.current;
+      if (!selectedBranch) throw new Error("repository is in detached HEAD; choose a branch");
 
-      const root = info.root;
-      const worktreePath = join(homedir(), ".pi-mobile", "worktrees", `${slug(basename(root))}-${randomUUID().slice(0, 8)}`);
+      const selected = info.branches.find((b) => b.name === selectedBranch);
+      if (!selected) throw new Error(`branch not found: ${selectedBranch}`);
+
+      const repoRoot = info.root;
+      const baseRef = selected.name;
+      const baseBranch = selected.kind === "remote" ? localNameForRemote(selected.name) : selected.name;
+      const sessionBranch = sessionBranchName(baseBranch);
+      const worktreePath = join(homedir(), ".pi-mobile", "worktrees", `${slug(basename(repoRoot))}-${randomUUID().slice(0, 8)}`);
+
       await mkdir(join(homedir(), ".pi-mobile", "worktrees"), { recursive: true });
+      await git(repoRoot, ["worktree", "add", "-b", sessionBranch, worktreePath, baseRef]);
 
-      if (selected.kind === "remote") {
-        const localName = localNameForRemote(branch);
-        if (info.branches.some((b) => b.kind === "local" && b.name === localName)) {
-          await git(root, ["worktree", "add", "-f", worktreePath, localName]);
-          return { repoRoot: root, worktreePath, branch: localName };
-        }
-        await git(root, ["worktree", "add", "--track", "-b", localName, worktreePath, branch]);
-        return { repoRoot: root, worktreePath, branch: localName };
-      }
-
-      await git(root, ["worktree", "add", "-f", worktreePath, branch]);
-      return { repoRoot: root, worktreePath, branch };
+      return { repoRoot, worktreePath, baseBranch, baseRef, sessionBranch };
     },
     catch: (e) => new PiError(`create worktree failed: ${String(e)}`),
   });
 
-export const removeSessionWorktree = (repoRoot: string, worktreeCwd: string): Effect.Effect<void> =>
+export const removeSessionWorktree = (opts: {
+  repoRoot: string;
+  worktreePath: string;
+  sessionBranch: string;
+}): Effect.Effect<void> =>
   Effect.promise(async () => {
     try {
-      await execFileAsync("git", ["-C", repoRoot, "worktree", "remove", worktreeCwd]);
+      await execFileAsync("git", ["-C", opts.repoRoot, "worktree", "remove", opts.worktreePath]);
     } catch {
-      // If git refuses because the tree is dirty or metadata is gone, leave files in place.
+      // If git refuses because the tree is dirty or metadata is gone, leave files and branch in place.
       return;
     }
-    await rm(worktreeCwd, { recursive: true, force: true }).catch(() => undefined);
+
+    await execFileAsync("git", ["-C", opts.repoRoot, "branch", "-d", opts.sessionBranch]).catch(() => undefined);
+    await rm(opts.worktreePath, { recursive: true, force: true }).catch(() => undefined);
   });
