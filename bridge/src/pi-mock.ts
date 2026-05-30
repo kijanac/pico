@@ -217,11 +217,6 @@ const makeMockSession = (opts: {
       listCommands: () => Effect.succeed({ builtins: [], prompts: [], skills: [] }),
       getQueue: () => Effect.succeed({ steering: [], followUp: [] }),
       clearQueue: () => Effect.succeed({ steering: [], followUp: [] }),
-      listAuthProviders: () => Effect.succeed({ providers: [] }),
-      startAuthLogin: () => Effect.fail(new PiError("mock auth login unavailable")),
-      getAuthLogin: () => Effect.fail(new PiError("mock auth job not found")),
-      submitAuthLoginInput: () => Effect.fail(new PiError("mock auth job not found")),
-      cancelAuthLogin: () => Effect.void,
       patchSession: () => Effect.void,
       getSettings: () =>
         Effect.succeed({

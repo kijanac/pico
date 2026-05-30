@@ -9,13 +9,13 @@ import { TextField, TextFieldLabel, TextFieldTextArea } from "@/components/ui/te
 import { InfoRow } from "./shared";
 import type { ActionErrorHandler } from "./types";
 
-export default function AuthView(props: { sessionId: string; onError: ActionErrorHandler }) {
+export default function AuthView(props: { onError: ActionErrorHandler; onConfigured?: () => void }) {
   const [job, setJob] = createSignal<AuthLoginJob | null>(null);
   const [input, setInput] = createSignal("");
   const [starting, setStarting] = createSignal<string | null>(null);
   const [providers, { refetch }] = createResource(async () => {
     const baseUrl = await getBridgeUrl();
-    return listAuthProviders(baseUrl, props.sessionId);
+    return listAuthProviders(baseUrl);
   });
 
   async function start(provider: AuthProvider) {
@@ -24,7 +24,7 @@ export default function AuthView(props: { sessionId: string; onError: ActionErro
     props.onError(null);
     try {
       const baseUrl = await getBridgeUrl();
-      setJob(await startAuthLogin(baseUrl, props.sessionId, provider.id));
+      setJob(await startAuthLogin(baseUrl, provider.id));
     } catch (e) {
       props.onError(String(e));
     } finally {
@@ -36,11 +36,12 @@ export default function AuthView(props: { sessionId: string; onError: ActionErro
     const j = job();
     if (!j) return;
     const baseUrl = await getBridgeUrl();
-    const next = await getAuthLoginJob(baseUrl, props.sessionId, j.id);
+    const next = await getAuthLoginJob(baseUrl, j.id);
     setJob(next);
     if (next.status === "success") {
       haptic.success();
       await refetch();
+      props.onConfigured?.();
     }
   }
 
@@ -57,7 +58,7 @@ export default function AuthView(props: { sessionId: string; onError: ActionErro
     const j = job();
     if (!j) return;
     const baseUrl = await getBridgeUrl();
-    setJob(await submitAuthLoginInput(baseUrl, props.sessionId, j.id, input()));
+    setJob(await submitAuthLoginInput(baseUrl, j.id, input()));
     setInput("");
   }
 
@@ -65,7 +66,7 @@ export default function AuthView(props: { sessionId: string; onError: ActionErro
     const j = job();
     if (!j) return;
     const baseUrl = await getBridgeUrl();
-    await cancelAuthLogin(baseUrl, props.sessionId, j.id);
+    await cancelAuthLogin(baseUrl, j.id);
     setJob(null);
   }
 

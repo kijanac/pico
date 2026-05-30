@@ -28,7 +28,6 @@ export const TreeJumpBody = v.object({
   summarize: v.optional(v.boolean()),
 });
 
-export const AuthLoginBody = v.object({ providerId: v.string() });
 export const AuthInputBody = v.object({ value: v.string() });
 
 export { SessionSettingsPatch };

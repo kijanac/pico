@@ -1,3 +1,4 @@
+import { A } from "@solidjs/router";
 import { createMemo, createSignal, onMount, Show } from "solid-js";
 import { Check, Copy, Loader2, X } from "lucide-solid";
 import { PRODUCT_VERSION, PROTOCOL_VERSION, renderBridgeCloudInit, type SystemInfo } from "@pi-mobile/protocol";
@@ -243,7 +244,21 @@ export default function Settings() {
           <section class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
             <div class="mb-3">
               <h2 class="text-[13px] font-medium text-[color:var(--color-fg)]">
-                generate cloud-init bridge setup
+                guided bridge onboarding
+              </h2>
+              <p class="mt-1 text-[11px] leading-relaxed text-[color:var(--color-fg-faint)]">
+                generate cloud-init, provision a fresh box, then let pi-mobile wait for and claim the bridge.
+              </p>
+            </div>
+            <A href="/onboarding" class="block rounded-[var(--radius-md)] bg-[color:var(--color-accent)] px-3 py-3 text-center text-[13px] font-medium text-[color:var(--color-bg)] active:opacity-80">
+              start onboarding
+            </A>
+          </section>
+
+          <section class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
+            <div class="mb-3">
+              <h2 class="text-[13px] font-medium text-[color:var(--color-fg)]">
+                advanced cloud-init bridge setup
               </h2>
               <p class="mt-1 text-[11px] leading-relaxed text-[color:var(--color-fg-faint)]">
                 create a single-use, preauthorized Tailscale auth key, paste it here,

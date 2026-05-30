@@ -143,36 +143,28 @@ export const clearSessionQueue = async (baseUrl: string, id: string): Promise<Qu
     await requestJson("clearSessionQueue", sessionUrl(baseUrl, id, "/queue"), { method: "DELETE" }),
   );
 
-export const listAuthProviders = (
-  baseUrl: string,
-  id: string,
-): Promise<AuthProviders> =>
-  requestJson("listAuthProviders", sessionUrl(baseUrl, id, "/auth/providers"));
+export const listAuthProviders = (baseUrl: string): Promise<AuthProviders> =>
+  requestJson("listAuthProviders", `${baseUrl}/providers`);
 
-export const startAuthLogin = (
-  baseUrl: string,
-  id: string,
-  providerId: string,
-): Promise<AuthLoginJob> =>
-  requestJson("startAuthLogin", sessionUrl(baseUrl, id, "/auth/login"), jsonInit("POST", { providerId }));
+export const startAuthLogin = (baseUrl: string, providerId: string): Promise<AuthLoginJob> =>
+  requestJson("startAuthLogin", `${baseUrl}/providers/${encodeURIComponent(providerId)}/login`, jsonInit("POST"));
 
-export const getAuthLoginJob = (baseUrl: string, id: string, jobId: string): Promise<AuthLoginJob> =>
-  requestJson("getAuthLoginJob", sessionUrl(baseUrl, id, `/auth/login/${encodeURIComponent(jobId)}`));
+export const getAuthLoginJob = (baseUrl: string, jobId: string): Promise<AuthLoginJob> =>
+  requestJson("getAuthLoginJob", `${baseUrl}/provider-logins/${encodeURIComponent(jobId)}`);
 
 export const submitAuthLoginInput = (
   baseUrl: string,
-  id: string,
   jobId: string,
   value: string,
 ): Promise<AuthLoginJob> =>
   requestJson(
     "submitAuthLoginInput",
-    sessionUrl(baseUrl, id, `/auth/login/${encodeURIComponent(jobId)}/input`),
+    `${baseUrl}/provider-logins/${encodeURIComponent(jobId)}/input`,
     jsonInit("POST", { value }),
   );
 
-export const cancelAuthLogin = (baseUrl: string, id: string, jobId: string): Promise<void> =>
-  requestVoid("cancelAuthLogin", sessionUrl(baseUrl, id, `/auth/login/${encodeURIComponent(jobId)}/cancel`), jsonInit("POST"));
+export const cancelAuthLogin = (baseUrl: string, jobId: string): Promise<void> =>
+  requestVoid("cancelAuthLogin", `${baseUrl}/provider-logins/${encodeURIComponent(jobId)}/cancel`, jsonInit("POST"));
 
 export const getSessionSettings = (
   baseUrl: string,

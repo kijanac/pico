@@ -76,7 +76,7 @@ export default function SessionAgentActions(props: Props) {
             <SessionInfoView sessionId={props.sessionId} />
           </Show>
           <Show when={view() === "auth"}>
-            <AuthView sessionId={props.sessionId} onError={setError} />
+            <AuthView onError={setError} />
           </Show>
         </AgentActionSheet>
       </Show>

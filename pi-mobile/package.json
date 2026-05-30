@@ -30,6 +30,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "diff": "^9.0.0",
+    "embla-carousel-solid": "^8.6.0",
     "lucide-solid": "^0.460.0",
     "partysocket": "^1.1.5",
     "shiki": "^4.0.2",

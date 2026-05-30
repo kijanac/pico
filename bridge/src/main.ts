@@ -5,6 +5,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DB_PATH } from "./config.ts";
 import { PiClientFromEnv } from "./pi-env.ts";
+import { ProviderAuthLive } from "./provider-auth.ts";
 import { SessionManager, SessionManagerLive } from "./session.ts";
 import { StoreLive } from "./store.ts";
 import { makeConnectionHandler, type WsBindings } from "./ws.ts";
@@ -17,9 +18,10 @@ const USING_MOCK = process.env.PI_USE_MOCK === "1";
 
 mkdirSync(dirname(DB_PATH), { recursive: true });
 
-const AppLayer = SessionManagerLive.pipe(
+const SessionLayer = SessionManagerLive.pipe(
   Layer.provide(Layer.mergeAll(PiClientFromEnv, StoreLive(DB_PATH))),
 );
+const AppLayer = Layer.mergeAll(SessionLayer, ProviderAuthLive);
 const runtime = ManagedRuntime.make(
   Layer.mergeAll(AppLayer, Logger.minimumLogLevel(LogLevel.Info)),
 );

@@ -4,7 +4,7 @@ import type { ManagedRuntime } from "effect";
 import { mountSystemRoutes } from "./system.ts";
 import { mountSessionRoutes } from "./sessions.ts";
 import { mountSessionActionRoutes } from "./session-actions.ts";
-import { mountAuthRoutes } from "./auth.ts";
+import { mountProviderRoutes } from "./providers.ts";
 import { mountCommandRoutes } from "./commands.ts";
 import { mountFsRoutes } from "./fs.ts";
 import { mountGitRoutes } from "./git.ts";
@@ -26,7 +26,7 @@ export function makeHttpApp(runtime: ManagedRuntime.ManagedRuntime<any, never>):
   mountSystemRoutes(app);
   mountSessionRoutes(app, runtime);
   mountSessionActionRoutes(app, runtime);
-  mountAuthRoutes(app, runtime);
+  mountProviderRoutes(app, runtime);
   mountCommandRoutes(app);
   mountFsRoutes(app);
   mountGitRoutes(app, runtime);
