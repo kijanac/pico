@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Context, Effect, Layer } from "effect";
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { AuthLoginJob, AuthProvider } from "@pi-mobile/protocol";
-import { PiError } from "./pi.ts";
-import { setupFauxIfEnabled } from "./pi-faux.ts";
+import { getAgentServices, PiError, reloadAgentAuth } from "./pi.ts";
 
 interface AuthJobState {
   job: AuthLoginJob;
@@ -12,6 +10,8 @@ interface AuthJobState {
 }
 
 const nextId = (prefix: string) => `${prefix}_${randomUUID()}`;
+const TERMINAL_JOB_TTL_MS = 60_000;
+const isTerminalStatus = (status: AuthLoginJob["status"]) => ["success", "failed", "cancelled"].includes(status);
 
 export class ProviderAuth extends Context.Tag("ProviderAuth")<
   ProviderAuth,
@@ -24,86 +24,105 @@ export class ProviderAuth extends Context.Tag("ProviderAuth")<
   }
 >() {}
 
-export const ProviderAuthLive = Layer.sync(ProviderAuth, () => {
-  const authStorage = AuthStorage.create();
-  const modelRegistry = ModelRegistry.create(authStorage);
-  setupFauxIfEnabled(authStorage);
-  const authJobs = new Map<string, AuthJobState>();
+export const ProviderAuthLive = Layer.effect(
+  ProviderAuth,
+  Effect.gen(function* () {
+    const authJobs = new Map<string, AuthJobState>();
+    const removeIfTerminalLater = (jobId: string) => {
+      setTimeout(() => {
+        const state = authJobs.get(jobId);
+        if (state && isTerminalStatus(state.job.status)) authJobs.delete(jobId);
+      }, TERMINAL_JOB_TTL_MS).unref();
+    };
+    const getDefaultServices = () =>
+      Effect.tryPromise({
+        try: () => getAgentServices(process.cwd()),
+        catch: (e) => new PiError(`createAgentSessionServices failed: ${String(e)}`),
+      });
 
-  return {
-    listProviders: () =>
-      Effect.sync(() => ({
-        providers: modelRegistry.authStorage.getOAuthProviders().map((p) => {
-          const status = modelRegistry.authStorage.getAuthStatus(p.id);
-          return {
-            id: p.id,
-            name: p.name,
-            configured: status.configured,
-            ...(status.source ? { source: status.source } : {}),
-            ...(status.label ? { label: status.label } : {}),
-          };
+    return {
+      listProviders: () =>
+        Effect.flatMap(getDefaultServices(), (services) =>
+          Effect.sync(() => ({
+            providers: services.modelRegistry.authStorage.getOAuthProviders().map((p) => {
+              const status = services.modelRegistry.authStorage.getAuthStatus(p.id);
+              return {
+                id: p.id,
+                name: p.name,
+                configured: status.configured,
+                ...(status.source ? { source: status.source } : {}),
+                ...(status.label ? { label: status.label } : {}),
+              };
+            }),
+          })),
+        ),
+      startLogin: (providerId) =>
+        Effect.flatMap(getDefaultServices(), (services) =>
+          Effect.sync(() => {
+            const provider = services.modelRegistry.authStorage.getOAuthProviders().find((p) => p.id === providerId);
+            if (!provider) throw new PiError(`auth provider not found: ${providerId}`);
+            const id = nextId("auth");
+            const abort = new AbortController();
+            const state: AuthJobState = {
+              abort,
+              job: { id, providerId, providerName: provider.name, status: "starting" },
+            };
+            authJobs.set(id, state);
+            void services.modelRegistry.authStorage.login(providerId, {
+              signal: abort.signal,
+              onAuth: (info) => {
+                state.job = { ...state.job, status: "auth", authUrl: info.url, instructions: info.instructions };
+              },
+              onDeviceCode: (info) => {
+                state.job = { ...state.job, status: "device", userCode: info.userCode, verificationUri: info.verificationUri };
+              },
+              onProgress: (progress) => {
+                state.job = { ...state.job, status: "progress", progress };
+              },
+              onSelect: async () => providerId,
+              onPrompt: async (prompt) => {
+                state.job = { ...state.job, status: "prompt", promptMessage: prompt.message, promptPlaceholder: prompt.placeholder };
+                return await new Promise<string>((resolve) => { state.resolveInput = resolve; });
+              },
+              onManualCodeInput: async () => {
+                state.job = { ...state.job, status: "manual", promptMessage: "Paste the authorization code or final redirect URL" };
+                return await new Promise<string>((resolve) => { state.resolveInput = resolve; });
+              },
+            }).then(() => {
+              reloadAgentAuth();
+              state.job = { ...state.job, status: "success" };
+              removeIfTerminalLater(id);
+            }).catch((e) => {
+              state.job = { ...state.job, status: abort.signal.aborted ? "cancelled" : "failed", error: String(e) };
+              removeIfTerminalLater(id);
+            });
+            return state.job;
+          }),
+        ),
+      getLogin: (jobId) =>
+        Effect.sync(() => {
+          const state = authJobs.get(jobId);
+          if (!state) throw new PiError(`auth job not found: ${jobId}`);
+          return state.job;
         }),
-      })),
-    startLogin: (providerId) =>
-      Effect.sync(() => {
-        const provider = modelRegistry.authStorage.getOAuthProviders().find((p) => p.id === providerId);
-        if (!provider) throw new PiError(`auth provider not found: ${providerId}`);
-        const id = nextId("auth");
-        const abort = new AbortController();
-        const state: AuthJobState = {
-          abort,
-          job: { id, providerId, providerName: provider.name, status: "starting" },
-        };
-        authJobs.set(id, state);
-        void modelRegistry.authStorage.login(providerId, {
-          signal: abort.signal,
-          onAuth: (info) => {
-            state.job = { ...state.job, status: "auth", authUrl: info.url, instructions: info.instructions };
-          },
-          onDeviceCode: (info) => {
-            state.job = { ...state.job, status: "device", userCode: info.userCode, verificationUri: info.verificationUri };
-          },
-          onProgress: (progress) => {
-            state.job = { ...state.job, status: "progress", progress };
-          },
-          onSelect: async () => providerId,
-          onPrompt: async (prompt) => {
-            state.job = { ...state.job, status: "prompt", promptMessage: prompt.message, promptPlaceholder: prompt.placeholder };
-            return await new Promise<string>((resolve) => { state.resolveInput = resolve; });
-          },
-          onManualCodeInput: async () => {
-            state.job = { ...state.job, status: "manual", promptMessage: "Paste the authorization code or final redirect URL" };
-            return await new Promise<string>((resolve) => { state.resolveInput = resolve; });
-          },
-        }).then(() => {
-          state.job = { ...state.job, status: "success" };
-        }).catch((e) => {
-          state.job = { ...state.job, status: abort.signal.aborted ? "cancelled" : "failed", error: String(e) };
-        });
-        return state.job;
-      }),
-    getLogin: (jobId) =>
-      Effect.sync(() => {
-        const state = authJobs.get(jobId);
-        if (!state) throw new PiError(`auth job not found: ${jobId}`);
-        return state.job;
-      }),
-    submitLoginInput: (jobId, value) =>
-      Effect.sync(() => {
-        const state = authJobs.get(jobId);
-        if (!state) throw new PiError(`auth job not found: ${jobId}`);
-        state.resolveInput?.(value);
-        state.resolveInput = undefined;
-        state.job = { ...state.job, status: "progress", progress: "Submitted authentication input…" };
-        return state.job;
-      }),
-    cancelLogin: (jobId) =>
-      Effect.sync(() => {
-        const state = authJobs.get(jobId);
-        if (!state) throw new PiError(`auth job not found: ${jobId}`);
-        state.abort.abort();
-        state.resolveInput?.("");
-        state.job = { ...state.job, status: "cancelled" };
-      }),
-  };
-});
+      submitLoginInput: (jobId, value) =>
+        Effect.sync(() => {
+          const state = authJobs.get(jobId);
+          if (!state) throw new PiError(`auth job not found: ${jobId}`);
+          state.resolveInput?.(value);
+          state.resolveInput = undefined;
+          state.job = { ...state.job, status: "progress", progress: "Submitted authentication input…" };
+          return state.job;
+        }),
+      cancelLogin: (jobId) =>
+        Effect.sync(() => {
+          const state = authJobs.get(jobId);
+          if (!state) throw new PiError(`auth job not found: ${jobId}`);
+          state.abort.abort();
+          state.resolveInput?.("");
+          state.job = { ...state.job, status: "cancelled" };
+          removeIfTerminalLater(jobId);
+        }),
+    };
+  }),
+);

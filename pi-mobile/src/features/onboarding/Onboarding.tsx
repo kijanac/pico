@@ -1,5 +1,5 @@
 import { A } from "@solidjs/router";
-import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js";
 import { Check, Copy, ExternalLink, Loader2 } from "lucide-solid";
 import { renderBridgeCloudInit } from "@pi-mobile/protocol";
 import EdgeSwipeBack from "@/components/EdgeSwipeBack";
@@ -12,7 +12,7 @@ import SessionsPreview from "@/features/sessions/components/SessionsPreview";
 import { claimBridge, getBridgeIdentity, healthcheck } from "@/lib/api";
 import { haptic } from "@/lib/haptics";
 import { KeyboardAvoidance } from "@/lib/keyboard";
-import { clearOnboardingDraft, getOnboardingDraft, setBridgeUrl, setOnboardingDraft } from "@/lib/settings";
+import { clearOnboardingDraft, getOnboardingDraft, setBridgeUrl, setOnboardingDraft, type OnboardingDraft } from "@/lib/settings";
 
 const steps = ["tailscale", "keys", "cloud-init", "connect", "providers", "done"] as const;
 type ConnectState = "idle" | "polling" | "reachable" | "claimed" | "failed";
@@ -36,11 +36,21 @@ function setupErrorMessage(error: unknown): string {
 }
 
 export default function Onboarding() {
+  const [draft] = createResource(getOnboardingDraft);
+
+  return (
+    <Show when={draft()} fallback={<div class="p-4 text-[12px] text-[color:var(--color-fg-muted)]">loading onboarding…</div>}>
+      {(loadedDraft) => <OnboardingContent draft={loadedDraft()} />}
+    </Show>
+  );
+}
+
+function OnboardingContent(props: { draft: Partial<OnboardingDraft> }) {
   const [currentIndex, setCurrentIndex] = createSignal(0);
   const [carouselApi, setCarouselApi] = createSignal<ReturnType<CarouselApi>>();
-  const [tsAuthKey, setTsAuthKey] = createSignal("");
-  const [tailnet, setTailnet] = createSignal("");
-  const [bridgeHostname, setBridgeHostname] = createSignal(randomBridgeHostname());
+  const [tsAuthKey, setTsAuthKey] = createSignal(props.draft.tsAuthKey ?? "");
+  const [tailnet, setTailnet] = createSignal(props.draft.tailnet ?? "");
+  const [bridgeHostname, setBridgeHostname] = createSignal(props.draft.bridgeHostname ?? randomBridgeHostname());
   const [showAdvanced, setShowAdvanced] = createSignal(false);
   const [copied, setCopied] = createSignal<string | null>(null);
   const [connectState, setConnectState] = createSignal<ConnectState>("idle");
@@ -61,13 +71,6 @@ export default function Onboarding() {
     if (connectState() === "claimed") return 4;
     if (hasSetupInputs()) return 3;
     return 1;
-  });
-
-  onMount(async () => {
-    const draft = await getOnboardingDraft();
-    if (draft.tsAuthKey) setTsAuthKey(draft.tsAuthKey);
-    if (draft.tailnet) setTailnet(draft.tailnet);
-    if (draft.bridgeHostname) setBridgeHostname(draft.bridgeHostname);
   });
 
   createEffect(() => {
@@ -97,7 +100,7 @@ export default function Onboarding() {
     };
 
     api.on("select", onSelect);
-    return () => api.off("select", onSelect);
+    onCleanup(() => api.off("select", onSelect));
   });
 
   function go(index: number) {

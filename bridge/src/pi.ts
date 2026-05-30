@@ -7,10 +7,11 @@ import {
 } from "effect";
 import {
   AuthStorage,
-  createAgentSession,
-  ModelRegistry,
+  createAgentSessionFromServices,
+  createAgentSessionServices,
   SessionManager as PiSessionManager,
   type AgentSession,
+  type AgentSessionServices,
   type AgentSessionEvent,
   type BashToolInput,
   type EditToolInput,
@@ -18,12 +19,12 @@ import {
   type SessionEntry,
   type WriteToolInput,
 } from "@earendil-works/pi-coding-agent";
-import type { Usage } from "@earendil-works/pi-ai";
+import type { Model, Usage } from "@earendil-works/pi-ai";
 import * as v from "valibot";
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import {
   BashToolArgs,
@@ -48,8 +49,8 @@ import {
   type TreeEntry,
 } from "@pi-mobile/protocol";
 import { SessionNotFound } from "./errors.ts";
-import { setupFauxIfEnabled } from "./pi-faux.ts";
 import { BRIDGE_DATA_DIR } from "./config.ts";
+import { setupFauxIfEnabled } from "./pi-faux.ts";
 
 
 export type PiEmission =
@@ -156,6 +157,20 @@ const nextId = (prefix: string) => `${prefix}_${randomUUID()}`;
 
 const EXPORT_DIR = join(BRIDGE_DATA_DIR, "exports");
 const EXPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const authStorage = AuthStorage.create();
+const fauxModel = setupFauxIfEnabled(authStorage);
+const servicesByCwd = new Map<string, Promise<AgentSessionServices>>();
+
+export const reloadAgentAuth = (): void => authStorage.reload();
+
+export const getAgentServices = (cwd: string): Promise<AgentSessionServices> => {
+  const key = resolve(cwd);
+  const existing = servicesByCwd.get(key);
+  if (existing) return existing;
+  const created = createAgentSessionServices({ cwd: key, authStorage });
+  servicesByCwd.set(key, created);
+  return created;
+};
 
 const safeFilenamePart = (value: string) =>
   value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "session";
@@ -612,36 +627,30 @@ const wirePiSession = (
     };
   });
 
-const makeLiveSession = (opts: {
-  cwd: string;
-  executionCwd: string;
-  title: string;
-  branch?: string;
-}): Effect.Effect<PiSession, PiError> =>
+const makeLiveSession = (
+  services: AgentSessionServices,
+  fauxModel: Model<any> | null,
+  opts: {
+    cwd: string;
+    executionCwd: string;
+    title: string;
+    branch?: string;
+  },
+): Effect.Effect<PiSession, PiError> =>
   Effect.gen(function* () {
     const piSession = yield* Effect.tryPromise<AgentSession, PiError>({
       try: async () => {
-        const authStorage = AuthStorage.create();
-        const modelRegistry = ModelRegistry.create(authStorage);
-
-        const fauxModel = setupFauxIfEnabled(authStorage);
-
         const sessionCwd = opts.executionCwd;
         const sessionManager =
           process.env.PI_EPHEMERAL === "1"
             ? PiSessionManager.inMemory()
             : PiSessionManager.create(sessionCwd);
 
-        const { session } = await createAgentSession({
+        const { session } = await createAgentSessionFromServices({
+          services,
           sessionManager,
-          authStorage,
-          modelRegistry,
-          cwd: sessionCwd,
+          model: fauxModel ?? undefined,
         });
-
-        if (fauxModel) {
-          await session.setModel(fauxModel);
-        }
 
         return session;
       },
@@ -664,6 +673,8 @@ const makeLiveSession = (opts: {
   });
 
 const makeResumedSession = (
+  services: AgentSessionServices,
+  fauxModel: Model<any> | null,
   storedRecord: import("./session-record.ts").SessionRecord,
 ): Effect.Effect<PiSession, PiError | SessionNotFound> =>
   Effect.gen(function* () {
@@ -679,23 +690,13 @@ const makeResumedSession = (
           throw new SessionNotFound(storedRecord.id);
         }
 
-        const authStorage = AuthStorage.create();
-        const modelRegistry = ModelRegistry.create(authStorage);
-
-        const fauxModel = setupFauxIfEnabled(authStorage);
-
         const sessionManager = PiSessionManager.open(found.path);
 
-        const { session } = await createAgentSession({
+        const { session } = await createAgentSessionFromServices({
+          services,
           sessionManager,
-          authStorage,
-          modelRegistry,
-          cwd: sessionCwd,
+          model: fauxModel ?? undefined,
         });
-
-        if (fauxModel) {
-          await session.setModel(fauxModel);
-        }
 
         return session;
       },
@@ -721,8 +722,20 @@ const makeResumedSession = (
   });
 
 
+const loadServices = (cwd: string) =>
+  Effect.tryPromise({
+    try: () => getAgentServices(cwd),
+    catch: (e) => new PiError(`createAgentSessionServices failed: ${String(e)}`),
+  });
+
 export const PiClientLive = Layer.succeed(PiClient, {
-  create: (opts) => makeLiveSession(opts),
-  resume: (storedMeta) => makeResumedSession(storedMeta),
+  create: (opts) =>
+    Effect.flatMap(loadServices(opts.executionCwd), (services) =>
+      makeLiveSession(services, fauxModel, opts),
+    ),
+  resume: (storedMeta) =>
+    Effect.flatMap(loadServices(storedMeta.runtime.executionCwd), (services) =>
+      makeResumedSession(services, fauxModel, storedMeta),
+    ),
 });
 
