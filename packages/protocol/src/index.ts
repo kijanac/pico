@@ -44,6 +44,8 @@ export const UserMessage = v.object({
   kind: v.literal("user"),
   ...Base,
   text: v.string(),
+  queued: v.optional(v.boolean()),
+  queueKind: v.optional(v.picklist(["steer", "follow_up"])),
 });
 export type UserMessage = v.InferOutput<typeof UserMessage>;
 

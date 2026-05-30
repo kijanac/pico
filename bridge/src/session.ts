@@ -359,6 +359,9 @@ const make = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       const ms = yield* lookupOrReattach(id);
+      const currentMeta = yield* Ref.get(ms.meta);
+      const queued = currentMeta.status === "thinking" || currentMeta.status === "tool";
+      const queueKind = mode === "follow_up" ? "follow_up" : "steer";
       const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
       const userEvent: WireEvent = {
         t: "user_message",
@@ -368,6 +371,7 @@ const make = Effect.gen(function* () {
           id: `u_${randomUUID()}`,
           at: Date.now(),
           text,
+          ...(queued ? { queued: true, queueKind } : {}),
         },
       };
       yield* store.appendEvent(id, userEvent);
