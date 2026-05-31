@@ -9,6 +9,7 @@ import {
 import type {
   AuthLoginJob,
   AuthProviders,
+  BridgeUpdateStatus,
   ClientEvent,
   Commands,
   GitBranch,
@@ -103,6 +104,12 @@ export interface BridgeIdentity {
 
 export const getBridgeIdentity = (baseUrl: string): Promise<BridgeIdentity> =>
   requestJson("getBridgeIdentity", `${baseUrl}/system/identity`);
+
+export const getBridgeUpdateStatus = (baseUrl: string): Promise<BridgeUpdateStatus> =>
+  requestJson("getBridgeUpdateStatus", `${baseUrl}/system/update`);
+
+export const triggerBridgeUpdate = (baseUrl: string): Promise<BridgeUpdateStatus> =>
+  requestJson("triggerBridgeUpdate", `${baseUrl}/system/update`, { method: "POST" });
 
 export const claimBridge = (baseUrl: string): Promise<{ claimed: true; owner: string }> =>
   requestJson("claimBridge", `${baseUrl}/setup/claim`, { method: "POST" });

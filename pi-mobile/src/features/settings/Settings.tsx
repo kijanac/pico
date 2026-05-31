@@ -1,13 +1,13 @@
 import { A } from "@solidjs/router";
 import { createMemo, createSignal, onMount, Show } from "solid-js";
 import { Check, Copy, Loader2, X } from "lucide-solid";
-import { PRODUCT_VERSION, PROTOCOL_VERSION, renderBridgeCloudInit, type SystemInfo } from "@pi-mobile/protocol";
+import { PRODUCT_VERSION, PROTOCOL_VERSION, renderBridgeCloudInit, type BridgeUpdateStatus, type SystemInfo } from "@pi-mobile/protocol";
 import EdgeSwipeBack from "@/components/EdgeSwipeBack";
 import Header from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { TextField, TextFieldInput, TextFieldLabel, TextFieldTextArea } from "@/components/ui/text-field";
 import SessionsPreview from "@/features/sessions/components/SessionsPreview";
-import { claimBridge, getBridgeIdentity, getSystemInfo, healthcheck, type BridgeIdentity } from "@/lib/api";
+import { claimBridge, getBridgeIdentity, getBridgeUpdateStatus, getSystemInfo, healthcheck, triggerBridgeUpdate, type BridgeIdentity } from "@/lib/api";
 import { KeyboardAvoidance } from "@/lib/keyboard";
 import { getBridgeUrl, setBridgeUrl } from "@/lib/settings";
 
@@ -36,6 +36,9 @@ export default function Settings() {
   const [systemInfo, setSystemInfo] = createSignal<SystemInfo | null>(null);
   const [systemInfoError, setSystemInfoError] = createSignal<string | null>(null);
   const [bridgeIdentity, setBridgeIdentity] = createSignal<BridgeIdentity | null>(null);
+  const [bridgeUpdateStatus, setBridgeUpdateStatus] = createSignal<BridgeUpdateStatus | null>(null);
+  const [bridgeUpdateMessage, setBridgeUpdateMessage] = createSignal<string | null>(null);
+  const [bridgeUpdateBusy, setBridgeUpdateBusy] = createSignal(false);
   const [copied, setCopied] = createSignal<string | null>(null);
 
   const [tsAuthKey, setTsAuthKey] = createSignal("");
@@ -89,12 +92,15 @@ export default function Settings() {
     setSystemInfo(null);
     setSystemInfoError(null);
     setBridgeIdentity(null);
+    setBridgeUpdateStatus(null);
+    setBridgeUpdateMessage(null);
     const base = url().trim();
     const ok = await healthcheck(base);
     setProbe(ok ? "ok" : "fail");
     if (!ok) return;
     try {
       setSystemInfo(await getSystemInfo(base));
+      setBridgeUpdateStatus(await getBridgeUpdateStatus(base));
       const identity = await getBridgeIdentity(base);
       if (!identity.claimed) {
         const claimed = await claimBridge(base);
@@ -104,6 +110,21 @@ export default function Settings() {
       }
     } catch (error) {
       setSystemInfoError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function updateBridgeNow() {
+    if (bridgeUpdateBusy()) return;
+    setBridgeUpdateBusy(true);
+    setBridgeUpdateMessage(null);
+    try {
+      const status = await triggerBridgeUpdate(url().trim());
+      setBridgeUpdateStatus(status);
+      setBridgeUpdateMessage("bridge update requested; it may restart if a newer release is available");
+    } catch (e) {
+      setBridgeUpdateMessage(String(e));
+    } finally {
+      setBridgeUpdateBusy(false);
     }
   }
 
@@ -220,6 +241,29 @@ export default function Settings() {
                     protocol {info().protocolVersion} · updates {info().autoUpdate ? "on" : "off"} ·{" "}
                     {info().updateChannel}
                   </div>
+                  <Show when={bridgeUpdateStatus()}>
+                    {(status) => (
+                      <div class="mt-2 flex items-center justify-between gap-2">
+                        <span>
+                          manual update {status().manualUpdate ? "available" : "unavailable"}
+                          <Show when={status().failure}>
+                            {(failure) => <> · last failed {failure().version}</>}
+                          </Show>
+                        </span>
+                        <button
+                          type="button"
+                          disabled={!status().manualUpdate || bridgeUpdateBusy()}
+                          onClick={updateBridgeNow}
+                          class="rounded-[var(--radius-sm)] border border-[color:var(--color-border)] px-2 py-1 text-[10px] uppercase tracking-[0.08em] text-[color:var(--color-fg-muted)] disabled:opacity-50"
+                        >
+                          {bridgeUpdateBusy() ? "requesting" : "update now"}
+                        </button>
+                      </div>
+                    )}
+                  </Show>
+                  <Show when={bridgeUpdateMessage()}>
+                    <div class="mt-1 text-[color:var(--color-fg-faint)]">{bridgeUpdateMessage()}</div>
+                  </Show>
                   <Show when={bridgeIdentity()}>
                     {(identity) => (
                       <div class="mt-1">

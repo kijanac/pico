@@ -112,12 +112,14 @@ step "systemd units"
 install -o root -g root -m 0644 "$HERE/pi-bridge.service" /etc/systemd/system/pi-bridge.service
 install -o root -g root -m 0644 "$HERE/pi-bridge-update.service" /etc/systemd/system/pi-bridge-update.service
 install -o root -g root -m 0644 "$HERE/pi-bridge-update.timer" /etc/systemd/system/pi-bridge-update.timer
+install -o root -g root -m 0644 "$HERE/pi-bridge-update.path" /etc/systemd/system/pi-bridge-update.path
 install -o root -g root -m 0755 "$HERE/update.sh" "$INSTALL_DIR/update.sh"
 if [[ -f "$HERE/update-public-key.pem" ]]; then
   install -o root -g "$USER_NAME" -m 0640 "$HERE/update-public-key.pem" "$ETC_DIR/update-public-key.pem"
 fi
 systemctl daemon-reload
 systemctl enable pi-bridge >/dev/null
+systemctl enable --now pi-bridge-update.path >/dev/null
 if [[ "$PI_BRIDGE_AUTO_UPDATE" == "1" ]]; then
   systemctl enable pi-bridge-update.timer >/dev/null
 fi
@@ -169,6 +171,9 @@ if [[ "$PI_BRIDGE_AUTO_DEPLOY" == "1" ]]; then
   systemctl restart pi-bridge
   sleep 2
   systemctl is-active pi-bridge
+
+  step "manual update trigger"
+  systemctl enable --now pi-bridge-update.path
 
   if [[ "$PI_BRIDGE_AUTO_UPDATE" == "1" ]]; then
     step "auto update timer"

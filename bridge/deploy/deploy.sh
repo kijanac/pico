@@ -64,9 +64,11 @@ step "systemd units"
 ssh "$HOST" "install -o root -g root -m 0644 $REMOTE/current/bridge/deploy/pi-bridge.service /etc/systemd/system/pi-bridge.service && \
   install -o root -g root -m 0644 $REMOTE/current/bridge/deploy/pi-bridge-update.service /etc/systemd/system/pi-bridge-update.service && \
   install -o root -g root -m 0644 $REMOTE/current/bridge/deploy/pi-bridge-update.timer /etc/systemd/system/pi-bridge-update.timer && \
+  install -o root -g root -m 0644 $REMOTE/current/bridge/deploy/pi-bridge-update.path /etc/systemd/system/pi-bridge-update.path && \
   install -o root -g root -m 0755 $REMOTE/current/bridge/deploy/update.sh $REMOTE/update.sh && \
   install -o root -g pi-bridge -m 0640 $REMOTE/current/bridge/deploy/update-public-key.pem /etc/pi-bridge/update-public-key.pem && \
-  systemctl daemon-reload"
+  systemctl daemon-reload && \
+  systemctl enable --now pi-bridge-update.path >/dev/null"
 
 step "restart"
 ssh "$HOST" "systemctl restart pi-bridge && systemctl is-active pi-bridge"

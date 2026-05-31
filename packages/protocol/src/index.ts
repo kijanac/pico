@@ -467,6 +467,21 @@ export const SystemInfo = v.object({
 });
 export type SystemInfo = v.InferOutput<typeof SystemInfo>;
 
+export const BridgeUpdateStatus = v.object({
+  currentVersion: v.string(),
+  autoUpdate: v.boolean(),
+  manualUpdate: v.boolean(),
+  lastSeenVersion: v.optional(v.string()),
+  requestedAt: v.optional(v.string()),
+  updatedAt: v.optional(v.string()),
+  failure: v.optional(v.object({
+    version: v.string(),
+    reason: v.string(),
+    at: v.number(),
+  })),
+});
+export type BridgeUpdateStatus = v.InferOutput<typeof BridgeUpdateStatus>;
+
 
 const Seq = { seq: v.number() } as const;
 

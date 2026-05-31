@@ -15,8 +15,20 @@ export default function SessionSettingsView(props: { sessionId: string; onError:
 
   async function patch(key: string, value: string | boolean) {
     if (saving()) return;
+    const prev = settings();
     setSaving(key);
     props.onError(null);
+    if (prev) {
+      mutate({
+        ...prev,
+        controls: prev.controls.map((control) => {
+          if (control.key !== key) return control;
+          if (control.kind === "select" && typeof value === "string") return { ...control, value };
+          if (control.kind === "boolean" && typeof value === "boolean") return { ...control, value };
+          return control;
+        }),
+      });
+    }
     try {
       const baseUrl = await getBridgeUrl();
       const next = await patchSessionSetting(baseUrl, props.sessionId, key, value);
@@ -24,6 +36,7 @@ export default function SessionSettingsView(props: { sessionId: string; onError:
       haptic.success();
     } catch (e) {
       props.onError(String(e));
+      if (prev) mutate(prev);
       await refetch();
     } finally {
       setSaving(null);
@@ -36,7 +49,7 @@ export default function SessionSettingsView(props: { sessionId: string; onError:
       <Show when={settings()}>
         {(s) => (
           <div class="space-y-4">
-            <For each={s().controls}>{(control) => <Control control={control} saving={saving() !== null} onChange={(value) => patch(control.key, value)} />}</For>
+            <For each={s().controls}>{(control) => <Control control={control} saving={saving() === control.key} onChange={(value) => patch(control.key, value)} />}</For>
           </div>
         )}
       </Show>

@@ -1,0 +1,10 @@
+[Unit]
+Description=Manual pi-bridge release update trigger
+
+[Path]
+PathChanged=/var/lib/pi-bridge/update-request
+PathModified=/var/lib/pi-bridge/update-request
+Unit=pi-bridge-update.service
+
+[Install]
+WantedBy=multi-user.target

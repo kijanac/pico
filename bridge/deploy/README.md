@@ -166,6 +166,10 @@ systemctl start pi-bridge-update.service     # check now
 systemctl disable --now pi-bridge-update.timer
 ```
 
+The installer also enables `pi-bridge-update.path`. The mobile app's
+Settings → `update now` button touches `/var/lib/pi-bridge/update-request`,
+which triggers the same signed, checksum-verified updater idempotently.
+
 The bridge uses additive SQLite migrations at startup. Destructive schema
 changes still require a deliberate table rebuild/backfill.
 

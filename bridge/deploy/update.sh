@@ -126,12 +126,13 @@ sync_deploy_files() {
   fi
 
   if [[ -w /etc/systemd/system ]]; then
-    for unit in pi-bridge.service pi-bridge-update.service pi-bridge-update.timer; do
+    for unit in pi-bridge.service pi-bridge-update.service pi-bridge-update.timer pi-bridge-update.path; do
       if [[ -f "$CURRENT_LINK/bridge/deploy/$unit" ]]; then
         install -o root -g root -m 0644 "$CURRENT_LINK/bridge/deploy/$unit" "/etc/systemd/system/$unit"
       fi
     done
     systemctl daemon-reload
+    systemctl enable --now pi-bridge-update.path >/dev/null || true
   else
     log "skipping systemd unit refresh; /etc/systemd/system is not writable in this sandbox"
   fi
