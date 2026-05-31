@@ -16,7 +16,6 @@ import type {
   GitBranchesResponse,
   QueueState,
   SessionMeta,
-  SessionModelState,
   SessionControls,
   SessionStats,
   SessionTree,
@@ -113,19 +112,6 @@ export const triggerBridgeUpdate = (baseUrl: string): Promise<BridgeUpdateStatus
 
 export const claimBridge = (baseUrl: string): Promise<{ claimed: true; owner: string }> =>
   requestJson("claimBridge", `${baseUrl}/setup/claim`, { method: "POST" });
-
-export const listSessionModels = (
-  baseUrl: string,
-  id: string,
-): Promise<SessionModelState> =>
-  requestJson("listSessionModels", sessionUrl(baseUrl, id, "/models"));
-
-export const setSessionModel = (
-  baseUrl: string,
-  id: string,
-  opts: { provider: string; modelId: string },
-): Promise<void> =>
-  requestVoid("setSessionModel", sessionUrl(baseUrl, id, "/model"), jsonInit("POST", opts));
 
 export const compactSession = (
   baseUrl: string,

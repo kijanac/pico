@@ -3,10 +3,10 @@ import type { SessionControl } from "@pi-mobile/protocol";
 import { getSessionSettings, patchSessionSetting } from "@/lib/api";
 import { getBridgeUrl } from "@/lib/settings";
 import { haptic } from "@/lib/haptics";
-import { Segmented, ToggleRow } from "./shared";
+import { Segmented, SelectRows, ToggleRow } from "./shared";
 import type { ActionErrorHandler } from "./types";
 
-export default function SessionSettingsView(props: { sessionId: string; onError: ActionErrorHandler }) {
+export default function SessionSettingsView(props: { sessionId: string; onError: ActionErrorHandler; filterKeys?: readonly string[] }) {
   const [saving, setSaving] = createSignal<string | null>(null);
   const [settings, { refetch, mutate }] = createResource(async () => {
     const baseUrl = await getBridgeUrl();
@@ -49,7 +49,7 @@ export default function SessionSettingsView(props: { sessionId: string; onError:
       <Show when={settings()}>
         {(s) => (
           <div class="space-y-4">
-            <For each={s().controls}>{(control) => <Control control={control} saving={saving() === control.key} onChange={(value) => patch(control.key, value)} />}</For>
+            <For each={s().controls.filter((control) => !props.filterKeys || props.filterKeys.includes(control.key))}>{(control) => <Control control={control} saving={saving() === control.key} onChange={(value) => patch(control.key, value)} />}</For>
           </div>
         )}
       </Show>
@@ -61,7 +61,9 @@ function Control(props: { control: SessionControl; saving: boolean; onChange: (v
   return (
     <Switch>
       <Match when={props.control.kind === "select" && props.control}>
-        {(control) => <Segmented label={control().label} options={control().options.map((option) => option.value)} value={control().value} disabled={props.saving} onChange={props.onChange} />}
+        {(control) => control().options.length <= 4 && control().options.every((option) => !option.description)
+          ? <Segmented label={control().label} options={control().options} value={control().value} disabled={props.saving} onChange={props.onChange} />
+          : <SelectRows label={control().label} options={control().options} value={control().value} disabled={props.saving} onChange={props.onChange} />}
       </Match>
       <Match when={props.control.kind === "boolean" && props.control}>
         {(control) => <ToggleRow label={control().label} checked={control().value} disabled={props.saving} onChange={props.onChange} />}

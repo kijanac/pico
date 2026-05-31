@@ -2,30 +2,10 @@ import { Effect, type ManagedRuntime } from "effect";
 import type { Hono } from "hono";
 import * as v from "valibot";
 import { SessionManager } from "../session.ts";
-import { CompactBody, SessionControlValueBody, SetModelBody, TreeJumpBody } from "./schemas.ts";
+import { CompactBody, SessionControlValueBody, TreeJumpBody } from "./schemas.ts";
 import { runJson, runResponse } from "./run.ts";
 
 export function mountSessionActionRoutes(app: Hono, runtime: ManagedRuntime.ManagedRuntime<any, never>): void {
-  app.get("/sessions/:id/models", async (c) => {
-    const id = c.req.param("id");
-    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.listModels(id)), "models_failed");
-  });
-
-  app.post("/sessions/:id/model", async (c) => {
-    const id = c.req.param("id");
-    const body = v.safeParse(SetModelBody, await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "invalid_body", issues: body.issues }, 400);
-    return runJson(
-      runtime,
-      c,
-      Effect.as(
-        Effect.flatMap(SessionManager, (m) => m.setModel(id, body.output.provider, body.output.modelId)),
-        { ok: true },
-      ),
-      "set_model_failed",
-    );
-  });
-
   app.post("/sessions/:id/compact", async (c) => {
     const id = c.req.param("id");
     const body = v.safeParse(CompactBody, await c.req.json().catch(() => ({})));

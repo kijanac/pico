@@ -34,7 +34,6 @@ import {
   ReadToolArgs,
   WriteToolArgs,
   type PermissionChoice,
-  type ModelSummary,
   type PermissionRequest,
   type QueueState,
   type SessionControls,
@@ -118,8 +117,6 @@ export interface PiSession {
     id: string,
     choice: PermissionChoice,
   ) => Effect.Effect<void, PiError>;
-  readonly listModels: () => Effect.Effect<{ current?: ModelSummary; models: ModelSummary[] }, PiError>;
-  readonly setModel: (provider: string, modelId: string) => Effect.Effect<void, PiError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiError>;
   readonly exportHtml: () => Effect.Effect<ExportedHtml, PiError>;
   readonly listCommands: () => Effect.Effect<Commands, PiError>;
@@ -210,8 +207,30 @@ const queueModeOptions = [
   { value: "all", label: "all" },
 ];
 
+const modelControlValue = (model: Model<any>): string => `${model.provider}/${model.id}`;
+
+const modelControlDescription = (piSession: AgentSession, model: Model<any>): string => {
+  const provider = piSession.modelRegistry.getProviderDisplayName(model.provider);
+  const tags = [provider, model.id];
+  if (model.reasoning) tags.push("reasoning");
+  if (model.input.includes("image")) tags.push("image");
+  tags.push(`${Math.round(model.contextWindow / 1000)}k context`);
+  return tags.join(" · ");
+};
+
 const sessionSettings = (piSession: AgentSession): SessionControls => ({
   controls: [
+    {
+      key: "model",
+      kind: "select",
+      label: "model",
+      value: piSession.model ? modelControlValue(piSession.model) : "",
+      options: piSession.modelRegistry.getAvailable().map((model) => ({
+        value: modelControlValue(model),
+        label: model.name,
+        description: modelControlDescription(piSession, model),
+      })),
+    },
     {
       key: "thinkingLevel",
       kind: "select",
@@ -263,8 +282,15 @@ const requireOption = <T extends string>(key: string, value: string, options: re
   return value as T;
 };
 
-const setSessionSetting = (piSession: AgentSession, key: string, value: string | boolean): SessionControls => {
+const setSessionSetting = async (piSession: AgentSession, key: string, value: string | boolean): Promise<SessionControls> => {
   switch (key) {
+    case "model": {
+      const selected = requireString(key, value);
+      const model = piSession.modelRegistry.getAvailable().find((candidate) => modelControlValue(candidate) === selected);
+      if (!model) throw new PiError(`model not found: ${selected}`);
+      await piSession.setModel(model);
+      break;
+    }
     case "thinkingLevel":
       piSession.setThinkingLevel(requireOption(key, requireString(key, value), piSession.getAvailableThinkingLevels()));
       break;
@@ -577,34 +603,6 @@ const wirePiSession = (
       approve: (_id, _choice) =>
         Effect.sync(() => {
         }),
-      listModels: () =>
-        Effect.sync(() => {
-          const current = piSession.model;
-          const models = piSession.modelRegistry.getAvailable().map((m) => ({
-            provider: m.provider,
-            id: m.id,
-            name: m.name,
-            reasoning: m.reasoning,
-            input: [...m.input],
-            contextWindow: m.contextWindow,
-            maxTokens: m.maxTokens,
-            current: current?.provider === m.provider && current?.id === m.id,
-            usingOAuth: piSession.modelRegistry.isUsingOAuth(m),
-          }));
-          return {
-            current: models.find((m) => m.current),
-            models,
-          };
-        }),
-      setModel: (provider, modelId) =>
-        Effect.tryPromise({
-          try: async () => {
-            const model = piSession.modelRegistry.find(provider, modelId);
-            if (!model) throw new Error(`model not found: ${provider}/${modelId}`);
-            await piSession.setModel(model);
-          },
-          catch: (e) => new PiError(`setModel failed: ${String(e)}`),
-        }),
       compact: (instructions) =>
         Effect.tryPromise({
           try: async () => {
@@ -671,7 +669,10 @@ const wirePiSession = (
           if (patch.title !== undefined) piSession.setSessionName(patch.title);
         }),
       patchSetting: (key, value) =>
-        Effect.sync(() => setSessionSetting(piSession, key, value)),
+        Effect.tryPromise({
+          try: () => setSessionSetting(piSession, key, value),
+          catch: (e) => e instanceof PiError ? e : new PiError(`patchSetting failed: ${String(e)}`),
+        }),
       getStats: () => Effect.sync(() => piSession.getSessionStats() as SessionStats),
       getTree: () => Effect.sync(() => flattenSessionTree(piSession)),
       navigateTree: (entryId, summarize) =>

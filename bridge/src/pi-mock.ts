@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Effect, Fiber, Layer, Queue, Random, Ref, Stream } from "effect";
-import type { ModelSummary, SessionControls, SessionMeta } from "@pi-mobile/protocol";
+import type { SessionControls, SessionMeta } from "@pi-mobile/protocol";
 import { SessionNotFound } from "./errors.ts";
 import {
   PiClient,
@@ -52,20 +52,9 @@ export function verifyToken(token: string) {
   });
 }`;
 
-const mockModel: ModelSummary = {
-  provider: "mock",
-  id: "mock-1",
-  name: "Mock Model",
-  reasoning: false,
-  input: ["text"],
-  contextWindow: 100_000,
-  maxTokens: 4096,
-  current: true,
-  usingOAuth: false,
-};
-
 const mockSettings = (): SessionControls => ({
   controls: [
+    { key: "model", kind: "select", label: "model", value: "mock/mock-1", options: [{ value: "mock/mock-1", label: "Mock Model", description: "Mock · mock-1 · 100k context" }] },
     { key: "thinkingLevel", kind: "select", label: "thinking level", value: "off", options: [{ value: "off", label: "off" }] },
     { key: "steeringMode", kind: "select", label: "steering while running", value: "one-at-a-time", options: [{ value: "one-at-a-time", label: "one-at-a-time" }, { value: "all", label: "all" }] },
     { key: "followUpMode", kind: "select", label: "follow-up delivery", value: "one-at-a-time", options: [{ value: "one-at-a-time", label: "one-at-a-time" }, { value: "all", label: "all" }] },
@@ -209,12 +198,6 @@ const makeMockSession = (opts: {
           });
           yield* Queue.offer(q, { t: "status", status: "idle" });
         }),
-      listModels: () =>
-        Effect.succeed({
-          current: mockModel,
-          models: [mockModel],
-        }),
-      setModel: () => Effect.void,
       compact: () => Effect.void,
       exportHtml: () => {
         const html = "<!doctype html><title>Mock session</title><p>Mock session</p>";

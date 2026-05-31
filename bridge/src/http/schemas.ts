@@ -14,11 +14,6 @@ export const PatchBody = v.object({
   archived: v.optional(v.boolean()),
 });
 
-export const SetModelBody = v.object({
-  provider: v.string(),
-  modelId: v.string(),
-});
-
 export const CompactBody = v.object({
   instructions: v.optional(v.string()),
 });

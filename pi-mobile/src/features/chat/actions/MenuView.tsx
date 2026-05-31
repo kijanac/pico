@@ -15,7 +15,7 @@ export default function MenuView(props: {
       <MenuButton title="model" description="choose the model for this session" onClick={props.onModels} />
       <MenuButton title="compact context" description="summarize older context for future turns" onClick={props.onCompact} />
       <MenuButton title="tree" description="jump to an earlier node in this conversation" onClick={props.onTree} icon={<ListTree size={13} />} />
-      <MenuButton title="session settings" description="thinking, queueing, compaction, and retry behavior" onClick={props.onSettings} icon={<Settings size={13} />} />
+      <MenuButton title="session settings" description="model, thinking, queueing, compaction, and retry behavior" onClick={props.onSettings} icon={<Settings size={13} />} />
       <MenuButton title="session info" description="file, tokens, cost, and message counts" onClick={props.onInfo} icon={<Info size={13} />} />
     </div>
   );

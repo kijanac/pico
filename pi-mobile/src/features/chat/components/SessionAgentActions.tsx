@@ -5,7 +5,6 @@ import AgentActionSheet from "@/features/chat/actions/AgentActionSheet";
 import AuthView from "@/features/chat/actions/AuthView";
 import CompactView from "@/features/chat/actions/CompactView";
 import MenuView from "@/features/chat/actions/MenuView";
-import ModelPicker from "@/features/chat/actions/ModelPicker";
 import SessionInfoView from "@/features/chat/actions/SessionInfoView";
 import SessionSettingsView from "@/features/chat/actions/SessionSettingsView";
 import TreeView from "@/features/chat/actions/TreeView";
@@ -61,7 +60,7 @@ export default function SessionAgentActions(props: Props) {
             />
           </Show>
           <Show when={view() === "models"}>
-            <ModelPicker sessionId={props.sessionId} onError={setError} />
+            <SessionSettingsView sessionId={props.sessionId} onError={setError} filterKeys={["model"]} />
           </Show>
           <Show when={view() === "compact"}>
             <CompactView sessionId={props.sessionId} onDone={done} onError={setError} />

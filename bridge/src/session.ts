@@ -16,7 +16,6 @@ import { PiClient, type PiSession, type PiEmission, type ExportedHtml, PiError }
 import { parseWireEvent } from "@pi-mobile/protocol";
 import type {
   Commands,
-  ModelSummary,
   PermissionChoice,
   SessionMeta,
   QueueState,
@@ -68,14 +67,6 @@ export class SessionManager extends Context.Tag("SessionManager")<
       id: string,
       msgId: string,
       choice: PermissionChoice,
-    ) => Effect.Effect<void, PiError | SessionNotFound>;
-    readonly listModels: (
-      id: string,
-    ) => Effect.Effect<{ current?: ModelSummary; models: ModelSummary[] }, PiError | SessionNotFound>;
-    readonly setModel: (
-      id: string,
-      provider: string,
-      modelId: string,
     ) => Effect.Effect<void, PiError | SessionNotFound>;
     readonly compact: (
       id: string,
@@ -381,14 +372,6 @@ const make = Effect.gen(function* () {
   const approve = (id: string, msgId: string, choice: PermissionChoice) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.approve(msgId, choice));
 
-  const listModels = (id: string) =>
-    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.listModels());
-
-  const setModel = (id: string, provider: string, modelId: string) =>
-    Effect.flatMap(lookupOrReattach(id), (ms) =>
-      ms.pi.setModel(provider, modelId),
-    );
-
   const compact = (id: string, instructions?: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.compact(instructions));
 
@@ -493,8 +476,6 @@ const make = Effect.gen(function* () {
     send,
     interrupt,
     approve,
-    listModels,
-    setModel,
     compact,
     exportHtml,
     listCommands,

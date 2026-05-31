@@ -6,8 +6,6 @@ import { PiError } from "../pi.ts";
 export type ApiErrorCode =
   | "not_found"
   | "invalid_body"
-  | "models_failed"
-  | "set_model_failed"
   | "compact_failed"
   | "commands_failed"
   | "export_failed"

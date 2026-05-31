@@ -41,7 +41,14 @@ export function ToggleRow(props: { label: string; checked: boolean; disabled: bo
   );
 }
 
-export function Segmented<T extends string>(props: { label: string; options: readonly T[]; value: T; disabled: boolean; onChange: (value: T) => void }) {
+export interface SelectOption<T extends string = string> {
+  value: T;
+  label: string;
+  description?: string;
+  disabled?: boolean;
+}
+
+export function Segmented<T extends string>(props: { label: string; options: readonly SelectOption<T>[]; value: T; disabled: boolean; onChange: (value: T) => void }) {
   return (
     <div>
       <div class="label mb-1.5">{props.label}</div>
@@ -50,13 +57,43 @@ export function Segmented<T extends string>(props: { label: string; options: rea
           {(option) => (
             <button
               type="button"
-              disabled={props.disabled || option === props.value}
-              onClick={() => props.onChange(option)}
-              class={option === props.value
+              disabled={props.disabled || option.disabled || option.value === props.value}
+              onClick={() => props.onChange(option.value)}
+              class={option.value === props.value
                 ? "rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] px-2 py-2 text-[11px] font-medium text-[color:var(--color-bg)]"
                 : "rounded-[var(--radius-sm)] px-2 py-2 text-[11px] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)] disabled:opacity-70"}
             >
-              {option}
+              {option.label}
+            </button>
+          )}
+        </For>
+      </div>
+    </div>
+  );
+}
+
+export function SelectRows<T extends string>(props: { label: string; options: readonly SelectOption<T>[]; value: T; disabled: boolean; onChange: (value: T) => void }) {
+  return (
+    <div>
+      <div class="label mb-1.5">{props.label}</div>
+      <div class="overflow-hidden rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
+        <For each={[...props.options]}>
+          {(option) => (
+            <button
+              type="button"
+              disabled={props.disabled || option.disabled || option.value === props.value}
+              onClick={() => props.onChange(option.value)}
+              class="hairline-b flex w-full items-center gap-3 px-3 py-2.5 text-left active:bg-[color:var(--color-surface-2)] disabled:opacity-70"
+            >
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-[12.5px] text-[color:var(--color-fg)]">{option.label}</span>
+                <Show when={option.description}>
+                  <span class="mt-0.5 block truncate text-[10.5px] text-[color:var(--color-fg-faint)]">{option.description}</span>
+                </Show>
+              </span>
+              <Show when={option.value === props.value}>
+                <span class="text-[12px] text-[color:var(--color-accent)]">selected</span>
+              </Show>
             </button>
           )}
         </For>
