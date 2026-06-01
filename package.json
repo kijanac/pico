@@ -11,6 +11,7 @@
     "dev:bridge:mock": "BRIDGE_DB=data/bridge.db PI_WORKSPACES_DIR=. PI_USE_MOCK=1 pnpm --filter pi-bridge dev",
     "dev:mobile": "pnpm --filter pi-mobile dev",
     "typecheck": "pnpm --filter @pi-mobile/protocol typecheck && pnpm --filter pi-bridge typecheck",
+    "smoke:bridge": "pnpm --filter pi-bridge smoke",
     "build:mobile": "pnpm --filter pi-mobile build",
     "check": "pnpm typecheck && pnpm --filter pi-mobile build"
   },

@@ -1,14 +1,12 @@
 import { Effect } from "effect";
 import { serve } from "@hono/node-server";
-import { WebSocketServer } from "ws";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DB_PATH } from "./config.ts";
 import { bridgeRuntime as runtime } from "./runtime.ts";
 import { SessionManager } from "./session.ts";
-import { makeConnectionHandler, type WsBindings } from "./ws.ts";
 import { makeHttpApp } from "./http/app.ts";
-import { authorizeHeaders, isAllowedBrowserOrigin } from "./auth.ts";
+import { attachWebSocketUpgrade } from "./server.ts";
 
 const PORT = 7777;
 const HOST = "127.0.0.1";
@@ -17,57 +15,8 @@ const USING_MOCK = process.env.PI_USE_MOCK === "1";
 mkdirSync(dirname(DB_PATH), { recursive: true });
 
 const app = makeHttpApp(runtime);
-const onConnection = makeConnectionHandler(runtime);
 const server = serve({ fetch: app.fetch, port: PORT, hostname: HOST });
-const wss = new WebSocketServer({ noServer: true });
-
-server.on("upgrade", (request, socket, head) => {
-  if (!request.url || !request.headers.host) {
-    socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
-    socket.destroy();
-    return;
-  }
-
-  const url = new URL(request.url, `http://${request.headers.host}`);
-
-  if (url.pathname !== "/ws") {
-    socket.destroy();
-    return;
-  }
-
-  const sessionId = url.searchParams.get("session");
-  const rawCursor = url.searchParams.get("cursor");
-  if (!sessionId || rawCursor === null) {
-    socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
-    socket.destroy();
-    return;
-  }
-
-  const cursor = Number(rawCursor);
-  if (!Number.isSafeInteger(cursor) || cursor < 0) {
-    socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
-    socket.destroy();
-    return;
-  }
-
-  if (!isAllowedBrowserOrigin(request.headers.origin)) {
-    socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-    socket.destroy();
-    return;
-  }
-
-  const auth = authorizeHeaders(request.headers);
-  if (!auth.ok) {
-    socket.write(`HTTP/1.1 ${auth.status} ${auth.status === 401 ? "Unauthorized" : "Forbidden"}\r\n\r\n`);
-    socket.destroy();
-    return;
-  }
-
-  const bindings: WsBindings = { sessionId, cursor };
-  wss.handleUpgrade(request, socket, head, (ws) => {
-    onConnection(ws, bindings);
-  });
-});
+const wss = attachWebSocketUpgrade(server, runtime);
 
 runtime.runFork(
   Effect.logInfo(
