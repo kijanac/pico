@@ -72,6 +72,7 @@ export type PiEmission =
     }
   | { t: "permission"; entry: PermissionRequest }
   | { t: "status"; status: SessionStatus }
+  | { t: "queue"; steering: string[]; followUp: string[] }
   | { t: "cost"; tokensIn: number; tokensOut: number; costUsd: number }
   | {
       t: "auto_retry_start";
@@ -505,6 +506,14 @@ const wirePiSession = (
           });
           return;
         }
+
+        case "queue_update":
+          Queue.unsafeOffer(q, {
+            t: "queue",
+            steering: [...event.steering],
+            followUp: [...event.followUp],
+          });
+          return;
 
         case "turn_start":
           Queue.unsafeOffer(q, { t: "status", status: "thinking" });

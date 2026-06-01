@@ -17,6 +17,10 @@ export function submitAuthLoginInput(jobId: string, value: string): Promise<Auth
   return getBridgeClient().submitAuthLoginInput(jobId, value);
 }
 
+export function saveAuthApiKey(providerId: string, apiKey: string): Promise<AuthProviders> {
+  return getBridgeClient().saveAuthApiKey(providerId, apiKey);
+}
+
 export function cancelAuthLogin(jobId: string): Promise<void> {
   return getBridgeClient().cancelAuthLogin(jobId);
 }

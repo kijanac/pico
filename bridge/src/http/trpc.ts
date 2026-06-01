@@ -115,6 +115,8 @@ function makeAuthService(runtime: BridgeRuntime): BridgeTrpcServices["auth"] {
       runEffectForTrpc(runtime, Effect.flatMap(ProviderAuth, (auth) => auth.getLogin(jobId))),
     submitLoginInput: ({ jobId, value }) =>
       runEffectForTrpc(runtime, Effect.flatMap(ProviderAuth, (auth) => auth.submitLoginInput(jobId, value))),
+    saveApiKey: ({ providerId, apiKey }) =>
+      runEffectForTrpc(runtime, Effect.flatMap(ProviderAuth, (auth) => auth.saveApiKey(providerId, apiKey))),
     cancelLogin: ({ jobId }) =>
       runEffectForTrpc(runtime, Effect.flatMap(ProviderAuth, (auth) => auth.cancelLogin(jobId))),
   };

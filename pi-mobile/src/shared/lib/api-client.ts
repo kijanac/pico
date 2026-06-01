@@ -166,6 +166,10 @@ export class ApiClient {
     return rpc("submitAuthLoginInput", this.trpc.auth.submitLoginInput.mutate({ jobId, value }));
   }
 
+  saveAuthApiKey(providerId: string, apiKey: string): Promise<AuthProviders> {
+    return rpc("saveAuthApiKey", this.trpc.auth.saveApiKey.mutate({ providerId, apiKey }));
+  }
+
   cancelAuthLogin(jobId: string): Promise<void> {
     return rpc("cancelAuthLogin", this.trpc.auth.cancelLogin.mutate({ jobId }));
   }

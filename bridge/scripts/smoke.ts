@@ -138,7 +138,18 @@ try {
     await trpcQuery(baseUrl, "sessions.tree", { id: session.id });
     await trpcQuery(baseUrl, "sessions.commands", { id: session.id });
     await trpcQuery(baseUrl, "commands.list");
-    await trpcQuery(baseUrl, "auth.providers");
+
+    const authProviders = await trpcQuery<{ providers: Array<{ id: string; authType: string; configured: boolean }> }>(baseUrl, "auth.providers");
+    assert(authProviders.providers.length > 3, "auth provider list should include API-key providers, not only OAuth providers");
+    assert(authProviders.providers.some((provider) => provider.authType === "oauth"));
+    assert(authProviders.providers.some((provider) => provider.authType === "api_key"));
+    assert(authProviders.providers.some((provider) => provider.id === "openrouter"));
+
+    const savedProviders = await trpcMutation<{ providers: Array<{ id: string; configured: boolean }> }>(baseUrl, "auth.saveApiKey", {
+      providerId: "openrouter",
+      apiKey: "sk-smoke-test",
+    });
+    assert.equal(savedProviders.providers.find((provider) => provider.id === "openrouter")?.configured, true);
 
     const exportRes = await fetch(`${baseUrl}/sessions/${encodeURIComponent(session.id)}/export.html`, {
       headers: authHeaders,

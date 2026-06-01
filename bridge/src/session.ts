@@ -28,16 +28,50 @@ import { Store } from "./store.ts";
 import { createSessionWorktree, removeSessionWorktree } from "./git.ts";
 import { toSessionMeta, type WorkspaceBinding } from "./session-record.ts";
 
+type QueuedUserMessage = Extract<WireEvent, { t: "queue" }>["queued"][number];
+
 interface ManagedSessionState {
   readonly meta: Ref.Ref<SessionMeta>;
   readonly pi: PiSession;
   readonly pubsub: PubSub.PubSub<WireEvent>;
   readonly seq: Ref.Ref<number>;
   readonly deltaBuffers: Ref.Ref<Map<string, { text: string; seq: number }>>;
+  readonly queuedMessages: Ref.Ref<QueuedUserMessage[]>;
 }
 
 interface ManagedSession extends ManagedSessionState {
   readonly pumpFiber: Fiber.RuntimeFiber<void, PiError>;
+}
+
+function queuedCounts(values: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return counts;
+}
+
+function consumeQueued(counts: Map<string, number>, text: string): boolean {
+  const count = counts.get(text) ?? 0;
+  if (count <= 0) return false;
+  if (count === 1) counts.delete(text);
+  else counts.set(text, count - 1);
+  return true;
+}
+
+function reconcileQueuedMessages(
+  pending: QueuedUserMessage[],
+  queue: { steering: readonly string[]; followUp: readonly string[] },
+): QueuedUserMessage[] {
+  const steering = queuedCounts([...queue.steering]);
+  const followUp = queuedCounts([...queue.followUp]);
+  const next: QueuedUserMessage[] = [];
+
+  for (let index = pending.length - 1; index >= 0; index -= 1) {
+    const message = pending[index];
+    const counts = message.queueKind === "follow_up" ? followUp : steering;
+    if (consumeQueued(counts, message.text)) next.push(message);
+  }
+
+  return next.reverse();
 }
 
 export class SessionManager extends Context.Tag("SessionManager")<
@@ -124,7 +158,15 @@ const make = Effect.gen(function* () {
       Stream.runForEach((emission: PiEmission) =>
         Effect.gen(function* () {
           const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
-          const event = parseWireEvent({ ...emission, seq });
+          const event = emission.t === "queue"
+            ? parseWireEvent({
+                t: "queue",
+                seq,
+                queued: yield* Ref.updateAndGet(ms.queuedMessages, (pending) =>
+                  reconcileQueuedMessages(pending, emission),
+                ),
+              })
+            : parseWireEvent({ ...emission, seq });
 
           if (event.t === "status") {
             yield* Ref.update(ms.meta, (m) => ({
@@ -202,6 +244,7 @@ const make = Effect.gen(function* () {
         deltaBuffers: yield* Ref.make(
           new Map<string, { text: string; seq: number }>(),
         ),
+        queuedMessages: yield* Ref.make<QueuedUserMessage[]>([]),
       };
       const pumpFiber = yield* Effect.forkDaemon(startPump(state, sessionId));
       return { ...state, pumpFiber };
@@ -348,19 +391,26 @@ const make = Effect.gen(function* () {
       const ms = yield* lookupOrReattach(id);
       const currentMeta = yield* Ref.get(ms.meta);
       const queued = currentMeta.status === "thinking" || currentMeta.status === "tool";
-      const queueKind = mode === "follow_up" ? "follow_up" : "steer";
+      const queueKind: QueuedUserMessage["queueKind"] = mode === "follow_up" ? "follow_up" : "steer";
+      const userMessageId = `u_${randomUUID()}`;
       const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
       const userEvent: WireEvent = {
         t: "user_message",
         seq,
         entry: {
           kind: "user",
-          id: `u_${randomUUID()}`,
+          id: userMessageId,
           at: Date.now(),
           text,
           ...(queued ? { queued: true, queueKind } : {}),
         },
       };
+      if (queued) {
+        yield* Ref.update(ms.queuedMessages, (pending) => [
+          ...pending,
+          { id: userMessageId, text, queueKind },
+        ]);
+      }
       yield* store.appendEvent(id, userEvent);
       yield* PubSub.publish(ms.pubsub, userEvent);
       yield* ms.pi.send(text, mode, images);

@@ -66,9 +66,9 @@
     <button
       type="button"
       onclick={() => scrollToLatest()}
-      class="absolute right-3 z-30 flex items-center gap-1.5 rounded-full border border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)]/95 px-3 py-1.5 text-[11px] text-[color:var(--color-fg)] shadow-lg backdrop-blur-md active:bg-[color:var(--color-surface-2)]"
+      class={`absolute right-3 z-30 flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] shadow-lg backdrop-blur-md ${hasNewActivity ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)] active:opacity-85" : "border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)]/95 text-[color:var(--color-fg)] active:bg-[color:var(--color-surface-2)]"}`}
       style="bottom: 0.75rem"
-      aria-label="Scroll to latest message"
+      aria-label={hasNewActivity ? "Scroll to new messages" : "Scroll to latest message"}
     >
       <ArrowDown class="size-3.5" />
       <span>{hasNewActivity ? "new" : "latest"}</span>

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Context, Effect, Layer } from "effect";
-import type { AuthLoginJob, AuthProvider } from "@pi-mobile/protocol";
+import type { AuthLoginJob, AuthProvider, AuthProviders } from "@pi-mobile/protocol";
 import { getAgentServices, PiError, reloadAgentAuth } from "./pi.ts";
 
 interface AuthJobState {
@@ -11,13 +11,49 @@ interface AuthJobState {
 
 const nextId = (prefix: string) => `${prefix}_${randomUUID()}`;
 const TERMINAL_JOB_TTL_MS = 60_000;
+const BEDROCK_PROVIDER_ID = "amazon-bedrock";
 const isTerminalStatus = (status: AuthLoginJob["status"]) => ["success", "failed", "cancelled"].includes(status);
+
+function authProvidersForServices(services: Awaited<ReturnType<typeof getAgentServices>>): AuthProviders {
+  const authStorage = services.modelRegistry.authStorage;
+  const oauthProviders = authStorage.getOAuthProviders();
+  const providers = new Map<string, AuthProvider>();
+
+  for (const provider of oauthProviders) {
+    const status = services.modelRegistry.getProviderAuthStatus(provider.id);
+    providers.set(provider.id, {
+      id: provider.id,
+      name: provider.name,
+      configured: status.configured,
+      authType: "oauth",
+      ...(status.source ? { source: status.source } : {}),
+      ...(status.label ? { label: status.label } : {}),
+    });
+  }
+
+  const modelProviderIds = new Set(services.modelRegistry.getAll().map((model) => model.provider));
+  for (const providerId of modelProviderIds) {
+    if (providers.has(providerId)) continue;
+    const status = services.modelRegistry.getProviderAuthStatus(providerId);
+    providers.set(providerId, {
+      id: providerId,
+      name: services.modelRegistry.getProviderDisplayName(providerId),
+      configured: status.configured,
+      authType: providerId === BEDROCK_PROVIDER_ID ? "setup" : "api_key",
+      ...(status.source ? { source: status.source } : {}),
+      ...(status.label ? { label: status.label } : {}),
+    });
+  }
+
+  return { providers: [...providers.values()].sort((a, b) => a.name.localeCompare(b.name)) };
+}
 
 export class ProviderAuth extends Context.Tag("ProviderAuth")<
   ProviderAuth,
   {
-    readonly listProviders: () => Effect.Effect<{ providers: AuthProvider[] }, PiError>;
+    readonly listProviders: () => Effect.Effect<AuthProviders, PiError>;
     readonly startLogin: (providerId: string) => Effect.Effect<AuthLoginJob, PiError>;
+    readonly saveApiKey: (providerId: string, apiKey: string) => Effect.Effect<AuthProviders, PiError>;
     readonly getLogin: (jobId: string) => Effect.Effect<AuthLoginJob, PiError>;
     readonly submitLoginInput: (jobId: string, value: string) => Effect.Effect<AuthLoginJob, PiError>;
     readonly cancelLogin: (jobId: string) => Effect.Effect<void, PiError>;
@@ -43,18 +79,7 @@ export const ProviderAuthLive = Layer.effect(
     return {
       listProviders: () =>
         Effect.flatMap(getDefaultServices(), (services) =>
-          Effect.sync(() => ({
-            providers: services.modelRegistry.authStorage.getOAuthProviders().map((p) => {
-              const status = services.modelRegistry.authStorage.getAuthStatus(p.id);
-              return {
-                id: p.id,
-                name: p.name,
-                configured: status.configured,
-                ...(status.source ? { source: status.source } : {}),
-                ...(status.label ? { label: status.label } : {}),
-              };
-            }),
-          })),
+          Effect.sync(() => authProvidersForServices(services)),
         ),
       startLogin: (providerId) =>
         Effect.flatMap(getDefaultServices(), (services) =>
@@ -97,6 +122,18 @@ export const ProviderAuthLive = Layer.effect(
               removeIfTerminalLater(id);
             });
             return state.job;
+          }),
+        ),
+      saveApiKey: (providerId, apiKey) =>
+        Effect.flatMap(getDefaultServices(), (services) =>
+          Effect.sync(() => {
+            const provider = services.modelRegistry.getAll().find((model) => model.provider === providerId);
+            if (!provider) throw new PiError(`auth provider not found: ${providerId}`);
+            if (providerId === BEDROCK_PROVIDER_ID) throw new PiError("Amazon Bedrock requires AWS credentials on the bridge");
+            services.modelRegistry.authStorage.set(providerId, { type: "api_key", key: apiKey.trim() });
+            services.modelRegistry.refresh();
+            reloadAgentAuth();
+            return authProvidersForServices(services);
           }),
         ),
       getLogin: (jobId) =>

@@ -320,6 +320,7 @@ export const AuthProvider = v.object({
   id: v.string(),
   name: v.string(),
   configured: v.boolean(),
+  authType: v.picklist(["oauth", "api_key", "setup"]),
   source: v.optional(v.string()),
   label: v.optional(v.string()),
 });
@@ -499,6 +500,15 @@ export const WireEvent = v.variant("t", [
   }),
   v.object({ t: v.literal("permission"), ...Seq, entry: PermissionRequest }),
   v.object({ t: v.literal("status"), ...Seq, status: SessionStatus }),
+  v.object({
+    t: v.literal("queue"),
+    ...Seq,
+    queued: v.array(v.object({
+      id: v.string(),
+      text: v.string(),
+      queueKind: v.picklist(["steer", "follow_up"]),
+    })),
+  }),
   v.object({
     t: v.literal("cost"),
     ...Seq,

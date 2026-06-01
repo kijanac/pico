@@ -1,6 +1,6 @@
 import type { AuthLoginJob, AuthProvider } from "@pi-mobile/protocol";
 import { settingsState } from "@/features/settings/settings.state.svelte";
-import { cancelAuthLogin, getAuthLoginJob, listAuthProviders, startAuthLogin, submitAuthLoginInput } from "@/features/auth/api";
+import { cancelAuthLogin, getAuthLoginJob, listAuthProviders, saveAuthApiKey, startAuthLogin, submitAuthLoginInput } from "@/features/auth/api";
 import { haptics } from "@/shared/mobile/haptics";
 
 export interface ProviderAuthStateOptions {
@@ -13,10 +13,16 @@ export interface ProviderAuthState {
   readonly loading: boolean;
   readonly job: AuthLoginJob | null;
   readonly input: string;
+  readonly apiKeyProvider: AuthProvider | null;
+  readonly apiKeyInput: string;
+  readonly savingApiKey: boolean;
   readonly startingProviderId: string | null;
   setInput(value: string): void;
+  setApiKeyInput(value: string): void;
+  selectApiKeyProvider(provider: AuthProvider | null): void;
   loadProviders(): Promise<void>;
   start(provider: AuthProvider): Promise<void>;
+  saveApiKey(): Promise<void>;
   refreshJob(): Promise<void>;
   submit(): Promise<void>;
   cancel(): Promise<void>;
@@ -27,6 +33,9 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   let loading = $state(false);
   let job = $state<AuthLoginJob | null>(null);
   let input = $state("");
+  let apiKeyProvider = $state<AuthProvider | null>(null);
+  let apiKeyInput = $state("");
+  let savingApiKey = $state(false);
   let startingProviderId = $state<string | null>(null);
 
   async function loadProviders(): Promise<void> {
@@ -43,6 +52,16 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   }
 
   async function start(provider: AuthProvider): Promise<void> {
+    if (provider.authType === "api_key") {
+      apiKeyProvider = provider;
+      apiKeyInput = "";
+      opts.onError(null);
+      return;
+    }
+    if (provider.authType === "setup") {
+      opts.onError(`${provider.name} must be configured on the bridge.`);
+      return;
+    }
     if (startingProviderId) return;
     startingProviderId = provider.id;
     opts.onError(null);
@@ -52,6 +71,23 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
       opts.onError(String(error));
     } finally {
       startingProviderId = null;
+    }
+  }
+
+  async function saveApiKey(): Promise<void> {
+    if (!apiKeyProvider || savingApiKey) return;
+    savingApiKey = true;
+    opts.onError(null);
+    try {
+      providers = (await saveAuthApiKey(apiKeyProvider.id, apiKeyInput)).providers;
+      apiKeyProvider = null;
+      apiKeyInput = "";
+      opts.onConfigured?.();
+      haptics.success();
+    } catch (error) {
+      opts.onError(String(error));
+    } finally {
+      savingApiKey = false;
     }
   }
 
@@ -91,14 +127,32 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     get input() {
       return input;
     },
+    get apiKeyProvider() {
+      return apiKeyProvider;
+    },
+    get apiKeyInput() {
+      return apiKeyInput;
+    },
+    get savingApiKey() {
+      return savingApiKey;
+    },
     get startingProviderId() {
       return startingProviderId;
     },
     setInput(value: string) {
       input = value;
     },
+    setApiKeyInput(value: string) {
+      apiKeyInput = value;
+    },
+    selectApiKeyProvider(provider: AuthProvider | null) {
+      apiKeyProvider = provider;
+      apiKeyInput = "";
+      opts.onError(null);
+    },
     loadProviders,
     start,
+    saveApiKey,
     refreshJob,
     submit,
     cancel,

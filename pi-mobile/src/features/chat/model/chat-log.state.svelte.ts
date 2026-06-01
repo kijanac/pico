@@ -107,6 +107,20 @@ function assistantFromEnd(event: AssistantEndEvent): AssistantMessage {
   return message;
 }
 
+function reconcileQueuedMessages(log: SessionLog, event: Extract<WireEvent, { t: "queue" }>): void {
+  const queuedIds = new Set(event.queued.map((message) => message.id));
+  let changed = false;
+
+  for (const entry of log.entries) {
+    if (entry.kind !== "user" || !entry.queued || queuedIds.has(entry.id)) continue;
+    entry.queued = false;
+    delete entry.queueKind;
+    changed = true;
+  }
+
+  if (changed) bumpActivity(log);
+}
+
 function applyWireEventForSession(sessionId: string, event: WireEvent): void {
   const log = getLog(sessionId);
 
@@ -119,6 +133,10 @@ function applyWireEventForSession(sessionId: string, event: WireEvent): void {
     case "cost":
     case "auto_retry_start":
     case "auto_retry_end":
+      return;
+
+    case "queue":
+      reconcileQueuedMessages(log, event);
       return;
 
     case "user_message":

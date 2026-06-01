@@ -42,6 +42,7 @@ export type NavigateTreeInput = IdInput & { entryId: string; summarize?: boolean
 export type ProviderIdInput = { providerId: string };
 export type AuthJobInput = { jobId: string };
 export type AuthInput = AuthJobInput & { value: string };
+export type AuthApiKeyInput = ProviderIdInput & { apiKey: string };
 export type FsLsInput = { path?: string };
 export type GitBranchesInput = { cwd: string };
 
@@ -74,6 +75,7 @@ export interface AuthTrpcService {
   readonly startLogin: (input: ProviderIdInput) => Promise<AuthLoginJob>;
   readonly getLogin: (input: AuthJobInput) => Promise<AuthLoginJob>;
   readonly submitLoginInput: (input: AuthInput) => Promise<AuthLoginJob>;
+  readonly saveApiKey: (input: AuthApiKeyInput) => Promise<AuthProviders>;
   readonly cancelLogin: (input: AuthJobInput) => Promise<void>;
 }
 
@@ -108,6 +110,7 @@ const NavigateTree = v.object({ id: v.string(), entryId: v.string(), summarize: 
 const ProviderId = v.object({ providerId: v.string() });
 const AuthJob = v.object({ jobId: v.string() });
 const AuthInputBody = v.object({ jobId: v.string(), value: v.string() });
+const AuthApiKey = v.object({ providerId: v.string(), apiKey: v.pipe(v.string(), v.trim(), v.nonEmpty()) });
 const FsLs = v.optional(v.object({ path: v.optional(v.string()) }), {});
 const GitBranches = v.object({ cwd: v.pipe(v.string(), v.trim(), v.nonEmpty()) });
 
@@ -139,6 +142,7 @@ export const appRouter = t.router({
     startLogin: procedure.input(ProviderId).mutation(({ ctx, input }) => ctx.auth.startLogin(input)),
     getLogin: procedure.input(AuthJob).query(({ ctx, input }) => ctx.auth.getLogin(input)),
     submitLoginInput: procedure.input(AuthInputBody).mutation(({ ctx, input }) => ctx.auth.submitLoginInput(input)),
+    saveApiKey: procedure.input(AuthApiKey).mutation(({ ctx, input }) => ctx.auth.saveApiKey(input)),
     cancelLogin: procedure.input(AuthJob).mutation(({ ctx, input }) => ctx.auth.cancelLogin(input)),
   }),
   commands: t.router({

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { Home } from "@lucide/svelte";
   import { navigateTo, routePaths } from "@/app/routes";
   import {
     activeSessionState,
@@ -34,7 +35,9 @@
 
 <main class="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
   <header class="flex items-center justify-between gap-3 border-b border-[color:var(--color-border)] px-3 py-[calc(env(safe-area-inset-top)+12px)] pb-3">
-    <Button type="button" variant="ghost" size="sm" onclick={() => navigateTo(routePaths.sessions)}>back</Button>
+    <Button type="button" variant="ghost" size="icon-sm" aria-label="Sessions" title="Sessions" onclick={() => navigateTo(routePaths.sessions)}>
+      <Home class="size-3.5" />
+    </Button>
     <div class="min-w-0 flex-1">
       {#if session}
         <div class="flex min-w-0 items-center gap-2">

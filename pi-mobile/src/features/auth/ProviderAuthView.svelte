@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Check, Loader2 } from "@lucide/svelte";
+  import { Check, KeyRound, Loader2 } from "@lucide/svelte";
   import { authJobShouldPoll, createProviderAuthState } from "@/features/auth/provider-auth.state.svelte";
   import { Button } from "@/shared/ui/button";
   import { Textarea } from "@/shared/ui/textarea";
@@ -33,7 +33,7 @@
 </script>
 
 <div class={`flex-1 overflow-y-auto ${className}`}>
-  {#if !auth.job}
+  {#if !auth.job && !auth.apiKeyProvider}
     <div class="space-y-2">
       {#if auth.loading}
         <div class="text-[12px] text-[color:var(--color-fg-faint)]">loading providers…</div>
@@ -49,8 +49,11 @@
           <span class="min-w-0 flex-1">
             <span class="block text-[12.5px] font-medium">{provider.name}</span>
             <span class="block text-[11px] text-[color:var(--color-fg-muted)]">
-              {provider.configured ? `configured${provider.source ? ` via ${provider.source}` : ""}` : "not configured"}
+              {provider.configured ? `configured${provider.source ? ` via ${provider.source}` : ""}` : provider.authType === "oauth" ? "subscription sign-in" : provider.authType === "api_key" ? "API key" : "bridge setup required"}
             </span>
+          </span>
+          <span class="rounded-full border border-[color:var(--color-border)] px-2 py-0.5 text-[9px] uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">
+            {provider.authType === "oauth" ? "sign in" : provider.authType === "api_key" ? "key" : "setup"}
           </span>
           {#if provider.configured}
             <Check class="size-3.5 text-[color:var(--color-accent)]" />
@@ -61,7 +64,27 @@
         </button>
       {/each}
     </div>
-  {:else}
+  {:else if auth.apiKeyProvider}
+    <div class="space-y-3 text-[12px]">
+      {@render InfoRow("provider", auth.apiKeyProvider.name)}
+      <div>
+        <label class="label mb-1.5 block" for="auth_api_key">API key</label>
+        <Textarea
+          id="auth_api_key"
+          rows={3}
+          value={auth.apiKeyInput}
+          oninput={(event) => auth.setApiKeyInput(event.currentTarget.value)}
+          placeholder="paste API key"
+          class="min-h-0 text-[12px]"
+        />
+      </div>
+      <Button type="button" class="w-full" disabled={!auth.apiKeyInput.trim() || auth.savingApiKey} onclick={() => auth.saveApiKey()}>
+        {#if auth.savingApiKey}<Loader2 class="size-3.5 animate-spin" />{:else}<KeyRound class="size-3.5" />{/if}
+        save API key
+      </Button>
+      <Button type="button" variant="outline" class="w-full text-[color:var(--color-fg-muted)]" onclick={() => auth.selectApiKeyProvider(null)}>cancel</Button>
+    </div>
+  {:else if auth.job}
     <div class="space-y-3 text-[12px]">
       {@render InfoRow("provider", auth.job.providerName ?? auth.job.providerId)}
       {@render InfoRow("status", auth.job.status)}
