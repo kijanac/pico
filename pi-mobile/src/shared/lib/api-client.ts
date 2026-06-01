@@ -1,11 +1,6 @@
+import { TRPCClientError } from "@trpc/client";
 import { WebSocket as ReconnectingWS } from "partysocket";
-import {
-  decodeWireEvent,
-  parseCommands,
-  parseGitBranchesResponse,
-  parseQueueState,
-  parseSessionStats,
-} from "@pi-mobile/protocol";
+import { decodeWireEvent } from "@pi-mobile/protocol";
 import type {
   AuthLoginJob,
   AuthProviders,
@@ -22,23 +17,15 @@ import type {
   SystemInfo,
   WireEvent,
 } from "@pi-mobile/protocol";
+import type { BridgeClaimResult, BridgeIdentity, FsListing } from "@pi-mobile/protocol/trpc";
+import type { AppRouter } from "@pi-mobile/protocol/trpc";
+import { createBridgeTrpcClient } from "@/shared/lib/trpc-client";
 
 export type { CommandEntry, Commands } from "@pi-mobile/protocol";
+export type { BridgeIdentity, FsListing } from "@pi-mobile/protocol/trpc";
 
 export type GitBranchInfo = GitBranch;
 export type GitBranchesResult = GitBranchesResponse;
-
-export interface BridgeIdentity {
-  readonly user?: string;
-  readonly claimed: boolean;
-}
-
-export interface FsListing {
-  path: string;
-  parent: string | null;
-  home: string;
-  entries: Array<{ name: string; hidden: boolean }>;
-}
 
 export interface StreamHandlers {
   onOpen?: () => void;
@@ -53,44 +40,32 @@ export interface StreamHandle {
   close: () => void;
 }
 
-export class BridgeHttpError extends Error {
+export class BridgeRpcError extends Error {
   constructor(
     readonly label: string,
-    readonly status: number,
+    readonly code: string,
     readonly responseMessage: string,
   ) {
-    super(`${label} ${status}: ${responseMessage}`);
-    this.name = "BridgeHttpError";
+    super(`${label} ${code}: ${responseMessage}`);
+    this.name = "BridgeRpcError";
   }
 }
 
 const TERMINAL_CLOSE_CODES = new Set<number>([4004]);
 
-type JsonObject = Record<string, unknown>;
+type TrpcClient = ReturnType<typeof createBridgeTrpcClient>;
+type TrpcPromise<T> = Promise<T>;
 
-async function readErrorMessage(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => ({ error: res.statusText }))) as JsonObject;
-  const error = body.error;
-  return typeof error === "string" ? error : "unknown";
-}
-
-async function requestJson<T>(label: string, input: RequestInfo | URL, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, init);
-  if (!res.ok) throw new BridgeHttpError(label, res.status, await readErrorMessage(res));
-  return (await res.json()) as T;
-}
-
-async function requestVoid(label: string, input: RequestInfo | URL, init?: RequestInit): Promise<void> {
-  const res = await fetch(input, init);
-  if (!res.ok) throw new BridgeHttpError(label, res.status, await readErrorMessage(res));
-}
-
-function jsonInit(method: string, body?: unknown): RequestInit {
-  return {
-    method,
-    headers: { "content-type": "application/json" },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  };
+async function rpc<T>(label: string, promise: TrpcPromise<T>): Promise<T> {
+  try {
+    return await promise;
+  } catch (error) {
+    if (error instanceof TRPCClientError) {
+      const trpcError = error as TRPCClientError<AppRouter>;
+      throw new BridgeRpcError(label, trpcError.data?.code ?? "TRPC_ERROR", trpcError.message);
+    }
+    throw error;
+  }
 }
 
 function sessionUrl(baseUrl: string, id: string, suffix = ""): string {
@@ -102,7 +77,11 @@ function wsBaseUrl(baseUrl: string): string {
 }
 
 export class ApiClient {
-  constructor(readonly baseUrl: string) {}
+  readonly trpc: TrpcClient;
+
+  constructor(readonly baseUrl: string) {
+    this.trpc = createBridgeTrpcClient(baseUrl);
+  }
 
   async healthcheck(): Promise<boolean> {
     try {
@@ -116,142 +95,109 @@ export class ApiClient {
   }
 
   listSessions(opts?: { archived?: boolean }): Promise<SessionMeta[]> {
-    const url = new URL(`${this.baseUrl}/sessions`);
-    if (opts?.archived) url.searchParams.set("archived", "1");
-    return requestJson("listSessions", url);
+    return rpc("listSessions", this.trpc.sessions.list.query(opts ?? {}));
   }
 
   createSession(opts: { cwd: string; title: string; branch?: string }): Promise<SessionMeta> {
-    return requestJson("createSession", `${this.baseUrl}/sessions`, jsonInit("POST", opts));
+    return rpc("createSession", this.trpc.sessions.create.mutate(opts));
   }
 
   patchSession(id: string, patch: { title?: string; archived?: boolean }): Promise<SessionMeta> {
-    return requestJson("patchSession", sessionUrl(this.baseUrl, id), jsonInit("PATCH", patch));
+    return rpc("patchSession", this.trpc.sessions.patch.mutate({ id, ...patch }));
   }
 
   deleteSession(id: string): Promise<void> {
-    return requestVoid("deleteSession", sessionUrl(this.baseUrl, id), { method: "DELETE" });
+    return rpc("deleteSession", this.trpc.sessions.remove.mutate({ id }));
   }
 
-  async listGitBranches(cwd: string): Promise<GitBranchesResult> {
-    const url = new URL(`${this.baseUrl}/git/branches`);
-    url.searchParams.set("cwd", cwd);
-    return parseGitBranchesResponse(await requestJson("listGitBranches", url));
+  listGitBranches(cwd: string): Promise<GitBranchesResult> {
+    return rpc("listGitBranches", this.trpc.git.branches.query({ cwd }));
   }
 
   getSystemInfo(): Promise<SystemInfo> {
-    return requestJson("getSystemInfo", `${this.baseUrl}/system/info`);
+    return rpc("getSystemInfo", this.trpc.system.info.query({}));
   }
 
   getBridgeIdentity(): Promise<BridgeIdentity> {
-    return requestJson("getBridgeIdentity", `${this.baseUrl}/system/identity`);
+    return rpc("getBridgeIdentity", this.trpc.system.identity.query({}));
   }
 
   getBridgeUpdateStatus(): Promise<BridgeUpdateStatus> {
-    return requestJson("getBridgeUpdateStatus", `${this.baseUrl}/system/update`);
+    return rpc("getBridgeUpdateStatus", this.trpc.system.updateStatus.query({}));
   }
 
   triggerBridgeUpdate(): Promise<BridgeUpdateStatus> {
-    return requestJson("triggerBridgeUpdate", `${this.baseUrl}/system/update`, { method: "POST" });
+    return rpc("triggerBridgeUpdate", this.trpc.system.triggerUpdate.mutate({}));
   }
 
-  claimBridge(): Promise<{ claimed: true; owner: string }> {
-    return requestJson("claimBridge", `${this.baseUrl}/setup/claim`, { method: "POST" });
+  claimBridge(): Promise<BridgeClaimResult> {
+    return rpc("claimBridge", this.trpc.system.claim.mutate({}));
   }
 
   compactSession(id: string, instructions?: string): Promise<void> {
-    return requestVoid(
-      "compactSession",
-      sessionUrl(this.baseUrl, id, "/compact"),
-      jsonInit("POST", { instructions: instructions?.trim() || undefined }),
-    );
+    return rpc("compactSession", this.trpc.sessions.compact.mutate({ id, instructions: instructions?.trim() || undefined }));
   }
 
   sessionExportHtmlUrl(id: string): string {
     return sessionUrl(this.baseUrl, id, "/export.html");
   }
 
-  async getSessionQueue(id: string): Promise<QueueState> {
-    return parseQueueState(await requestJson("getSessionQueue", sessionUrl(this.baseUrl, id, "/queue")));
+  getSessionQueue(id: string): Promise<QueueState> {
+    return rpc("getSessionQueue", this.trpc.sessions.queue.query({ id }));
   }
 
-  async clearSessionQueue(id: string): Promise<QueueState> {
-    return parseQueueState(
-      await requestJson("clearSessionQueue", sessionUrl(this.baseUrl, id, "/queue"), { method: "DELETE" }),
-    );
+  clearSessionQueue(id: string): Promise<QueueState> {
+    return rpc("clearSessionQueue", this.trpc.sessions.clearQueue.mutate({ id }));
   }
 
   listAuthProviders(): Promise<AuthProviders> {
-    return requestJson("listAuthProviders", `${this.baseUrl}/providers`);
+    return rpc("listAuthProviders", this.trpc.auth.providers.query({}));
   }
 
   startAuthLogin(providerId: string): Promise<AuthLoginJob> {
-    return requestJson(
-      "startAuthLogin",
-      `${this.baseUrl}/providers/${encodeURIComponent(providerId)}/login`,
-      jsonInit("POST"),
-    );
+    return rpc("startAuthLogin", this.trpc.auth.startLogin.mutate({ providerId }));
   }
 
   getAuthLoginJob(jobId: string): Promise<AuthLoginJob> {
-    return requestJson("getAuthLoginJob", `${this.baseUrl}/provider-logins/${encodeURIComponent(jobId)}`);
+    return rpc("getAuthLoginJob", this.trpc.auth.getLogin.query({ jobId }));
   }
 
   submitAuthLoginInput(jobId: string, value: string): Promise<AuthLoginJob> {
-    return requestJson(
-      "submitAuthLoginInput",
-      `${this.baseUrl}/provider-logins/${encodeURIComponent(jobId)}/input`,
-      jsonInit("POST", { value }),
-    );
+    return rpc("submitAuthLoginInput", this.trpc.auth.submitLoginInput.mutate({ jobId, value }));
   }
 
   cancelAuthLogin(jobId: string): Promise<void> {
-    return requestVoid(
-      "cancelAuthLogin",
-      `${this.baseUrl}/provider-logins/${encodeURIComponent(jobId)}/cancel`,
-      jsonInit("POST"),
-    );
+    return rpc("cancelAuthLogin", this.trpc.auth.cancelLogin.mutate({ jobId }));
   }
 
   getSessionSettings(id: string): Promise<SessionControls> {
-    return requestJson("getSessionSettings", sessionUrl(this.baseUrl, id, "/settings"));
+    return rpc("getSessionSettings", this.trpc.sessions.controls.query({ id }));
   }
 
   patchSessionSetting(id: string, key: string, value: string | boolean): Promise<SessionControls> {
-    return requestJson(
-      "patchSessionSetting",
-      sessionUrl(this.baseUrl, id, `/settings/${encodeURIComponent(key)}`),
-      jsonInit("PATCH", { value }),
-    );
+    return rpc("patchSessionSetting", this.trpc.sessions.patchControl.mutate({ id, key, value }));
   }
 
-  async getSessionStats(id: string): Promise<SessionStats> {
-    return parseSessionStats(await requestJson("getSessionStats", sessionUrl(this.baseUrl, id, "/stats")));
+  getSessionStats(id: string): Promise<SessionStats> {
+    return rpc("getSessionStats", this.trpc.sessions.stats.query({ id }));
   }
 
   getSessionTree(id: string): Promise<SessionTree> {
-    return requestJson("getSessionTree", sessionUrl(this.baseUrl, id, "/tree"));
+    return rpc("getSessionTree", this.trpc.sessions.tree.query({ id }));
   }
 
   navigateSessionTree(id: string, opts: { entryId: string; summarize?: boolean }): Promise<void> {
-    return requestVoid("navigateSessionTree", sessionUrl(this.baseUrl, id, "/tree/jump"), jsonInit("POST", opts));
+    return rpc("navigateSessionTree", this.trpc.sessions.navigateTree.mutate({ id, ...opts }));
   }
 
   lsFs(path?: string): Promise<FsListing> {
-    const url = new URL(`${this.baseUrl}/fs/ls`);
-    if (path !== undefined) url.searchParams.set("path", path);
-    return requestJson("lsFs", url);
+    return rpc("lsFs", this.trpc.fs.ls.query({ path }));
   }
 
-  async listCommands(sessionId?: string): Promise<Commands> {
-    return parseCommands(
-      await requestJson(
-        "listCommands",
-        sessionId === undefined
-          ? `${this.baseUrl}/commands`
-          : sessionUrl(this.baseUrl, sessionId, "/commands"),
-      ),
-    );
+  listCommands(sessionId?: string): Promise<Commands> {
+    return sessionId === undefined
+      ? rpc("listCommands", this.trpc.commands.list.query({}))
+      : rpc("listSessionCommands", this.trpc.sessions.commands.query({ id: sessionId }));
   }
 
   connectSessionStream(

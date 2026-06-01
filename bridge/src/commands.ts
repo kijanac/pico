@@ -1,20 +1,13 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { sep as PATH_SEP } from "node:path";
 import { homedir } from "node:os";
+import type { BuiltinCommandEntry, Commands, PromptCommandEntry, SkillCommandEntry } from "@pi-mobile/protocol";
 
 const BUILTIN_COMMANDS: Array<{
   name: string;
   description: string;
   takesArgs?: boolean;
 }> = [];
-
-export interface CommandEntry {
-  kind: "builtin" | "prompt" | "skill";
-  name: string;
-  description: string;
-  takesArgs?: boolean;
-  source?: string;
-}
 
 function parseFrontmatter(text: string): {
   meta: Record<string, string>;
@@ -54,7 +47,7 @@ function readFileSyncUtf8(path: string): string | null {
   }
 }
 
-function loadPromptTemplates(): CommandEntry[] {
+function loadPromptTemplates(): PromptCommandEntry[] {
   const dir = `${homedir()}${PATH_SEP}.pi${PATH_SEP}agent${PATH_SEP}prompts`;
   let files: string[];
   try {
@@ -62,7 +55,7 @@ function loadPromptTemplates(): CommandEntry[] {
   } catch {
     return [];
   }
-  const out: CommandEntry[] = [];
+  const out: PromptCommandEntry[] = [];
   for (const file of files) {
     if (!file.endsWith(".md")) continue;
     const name = file.slice(0, -3);
@@ -85,7 +78,7 @@ function loadPromptTemplates(): CommandEntry[] {
   return out;
 }
 
-function loadSkills(): CommandEntry[] {
+function loadSkills(): SkillCommandEntry[] {
   const dir = `${homedir()}${PATH_SEP}.pi${PATH_SEP}agent${PATH_SEP}skills`;
   let subdirs: string[];
   try {
@@ -93,7 +86,7 @@ function loadSkills(): CommandEntry[] {
   } catch {
     return [];
   }
-  const out: CommandEntry[] = [];
+  const out: SkillCommandEntry[] = [];
   for (const skillDir of subdirs) {
     if (skillDir.startsWith(".")) continue;
     const skillPath = `${dir}${PATH_SEP}${skillDir}`;
@@ -120,12 +113,8 @@ function loadSkills(): CommandEntry[] {
   return out;
 }
 
-export function loadCommands(): {
-  builtins: CommandEntry[];
-  prompts: CommandEntry[];
-  skills: CommandEntry[];
-} {
-  const builtins: CommandEntry[] = BUILTIN_COMMANDS.map((b) => ({
+export function loadCommands(): Commands {
+  const builtins: BuiltinCommandEntry[] = BUILTIN_COMMANDS.map((b) => ({
     kind: "builtin",
     name: b.name,
     description: b.description,

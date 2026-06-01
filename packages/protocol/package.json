@@ -9,12 +9,17 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./trpc": {
+      "types": "./src/trpc.ts",
+      "default": "./src/trpc.ts"
     }
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@trpc/server": "^11.17.0",
     "valibot": "^1.0.0"
   },
   "devDependencies": {

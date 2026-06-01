@@ -1,92 +1,45 @@
-import { Effect, type ManagedRuntime } from "effect";
+import { Cause, Effect, Option } from "effect";
 import type { Hono } from "hono";
-import * as v from "valibot";
+import { SessionNotFound } from "../errors.ts";
+import { PiError } from "../pi.ts";
+import type { BridgeRuntime } from "../runtime.ts";
 import { SessionManager } from "../session.ts";
-import { CompactBody, SessionControlValueBody, TreeJumpBody } from "./schemas.ts";
-import { runJson, runResponse } from "./run.ts";
 
-export function mountSessionActionRoutes(app: Hono, runtime: ManagedRuntime.ManagedRuntime<any, never>): void {
-  app.post("/sessions/:id/compact", async (c) => {
-    const id = c.req.param("id");
-    const body = v.safeParse(CompactBody, await c.req.json().catch(() => ({})));
-    if (!body.success) return c.json({ error: "invalid_body", issues: body.issues }, 400);
-    return runJson(
-      runtime,
-      c,
-      Effect.as(
-        Effect.flatMap(SessionManager, (m) => m.compact(id, body.output.instructions)),
-        { ok: true },
-      ),
-      "compact_failed",
-    );
-  });
+const isDev = process.env.NODE_ENV !== "production";
 
+export function mountSessionActionRoutes(app: Hono, runtime: BridgeRuntime): void {
   app.get("/sessions/:id/export.html", async (c) => {
     const id = c.req.param("id");
-    return runResponse(
-      runtime,
-      c,
-      Effect.flatMap(SessionManager, (m) => m.exportHtml(id)),
-      (html) =>
-        c.body(html.stream, 200, {
-          "content-type": "text/html; charset=utf-8",
-          ...(html.filename ? { "content-disposition": `attachment; filename="${html.filename}"` } : {}),
-          ...(html.size !== undefined ? { "content-length": String(html.size) } : {}),
-        }),
-      "export_failed",
+    const result = await runtime.runPromiseExit(
+      Effect.flatMap(SessionManager, (manager) => manager.exportHtml(id)),
     );
-  });
 
-  app.get("/sessions/:id/commands", async (c) => {
-    const id = c.req.param("id");
-    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.listCommands(id)), "commands_failed");
-  });
+    if (result._tag === "Success") {
+      const html = result.value;
+      return c.body(html.stream, 200, {
+        "content-type": "text/html; charset=utf-8",
+        ...(html.filename ? { "content-disposition": `attachment; filename="${html.filename}"` } : {}),
+        ...(html.size !== undefined ? { "content-length": String(html.size) } : {}),
+      });
+    }
 
-  app.get("/sessions/:id/queue", async (c) => {
-    const id = c.req.param("id");
-    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.getQueue(id)), "queue_failed");
-  });
+    const failure = Option.getOrUndefined(Cause.failureOption(result.cause));
 
-  app.delete("/sessions/:id/queue", async (c) => {
-    const id = c.req.param("id");
-    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.clearQueue(id)), "queue_failed");
-  });
+    if (failure instanceof SessionNotFound) {
+      return c.json({ error: "not_found", message: "Session not found" }, 404);
+    }
 
-  app.get("/sessions/:id/settings", async (c) => {
-    const id = c.req.param("id");
-    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.getSettings(id)), "settings_failed");
-  });
+    if (failure instanceof PiError) {
+      return c.json({ error: "export_failed", message: failure.message || "Request failed" }, 500);
+    }
 
-  app.patch("/sessions/:id/settings/:key", async (c) => {
-    const id = c.req.param("id");
-    const key = c.req.param("key");
-    const body = v.safeParse(SessionControlValueBody, await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "invalid_body", issues: body.issues }, 400);
-    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.patchSetting(id, key, body.output.value)), "settings_failed");
-  });
-
-  app.get("/sessions/:id/stats", async (c) => {
-    const id = c.req.param("id");
-    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.getStats(id)), "stats_failed");
-  });
-
-  app.get("/sessions/:id/tree", async (c) => {
-    const id = c.req.param("id");
-    return runJson(runtime, c, Effect.flatMap(SessionManager, (m) => m.getTree(id)), "tree_failed");
-  });
-
-  app.post("/sessions/:id/tree/jump", async (c) => {
-    const id = c.req.param("id");
-    const body = v.safeParse(TreeJumpBody, await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "invalid_body", issues: body.issues }, 400);
-    return runJson(
-      runtime,
-      c,
-      Effect.as(
-        Effect.flatMap(SessionManager, (m) => m.navigateTree(id, body.output.entryId, body.output.summarize)),
-        { ok: true },
-      ),
-      "tree_jump_failed",
+    return c.json(
+      {
+        error: "export_failed",
+        message: "Internal server error",
+        ...(isDev ? { detail: Cause.pretty(result.cause) } : {}),
+      },
+      500,
     );
   });
 }

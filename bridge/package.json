@@ -13,10 +13,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "^1.13.0",
     "@earendil-works/pi-ai": "^0.75.5",
     "@earendil-works/pi-coding-agent": "^0.75.5",
+    "@hono/node-server": "^1.13.0",
     "@pi-mobile/protocol": "workspace:*",
+    "@trpc/server": "^11.17.0",
     "effect": "^3.18.0",
     "hono": "^4.9.0",
     "tsx": "^4.19.0",

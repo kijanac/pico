@@ -14,7 +14,7 @@ const AUTO_UPDATE = process.env.PI_BRIDGE_AUTO_UPDATE === "1";
 const UPDATE_REQUEST_PATH = process.env.PI_BRIDGE_UPDATE_REQUEST_PATH ?? "/var/lib/pi-bridge/update-request";
 const UPDATE_STATE_PATH = process.env.PI_BRIDGE_UPDATE_STATE_PATH ?? "/var/lib/pi-bridge/update-state.json";
 
-function readUpdateStatus(): BridgeUpdateStatus {
+export function readUpdateStatus(): BridgeUpdateStatus {
   let state: Partial<BridgeUpdateStatus> = {};
   try {
     if (existsSync(UPDATE_STATE_PATH)) {
@@ -39,6 +39,22 @@ function readUpdateStatus(): BridgeUpdateStatus {
   };
 }
 
+export function bridgeSystemInfo() {
+  return {
+    bridgeVersion: PRODUCT_VERSION,
+    protocolVersion: PROTOCOL_VERSION,
+    minMobileVersion: MIN_MOBILE_VERSION,
+    recommendedMobileVersion: RECOMMENDED_MOBILE_VERSION,
+    updateChannel: UPDATE_CHANNEL,
+    autoUpdate: AUTO_UPDATE,
+  };
+}
+
+export function requestBridgeUpdate(): BridgeUpdateStatus {
+  writeFileSync(UPDATE_REQUEST_PATH, `${Date.now()}\n`);
+  return readUpdateStatus();
+}
+
 export function mountSystemRoutes(app: Hono): void {
   app.get("/healthz", (c) => c.text("ok"));
 
@@ -59,21 +75,9 @@ export function mountSystemRoutes(app: Hono): void {
     }
   });
 
-  app.get("/system/info", (c) =>
-    c.json({
-      bridgeVersion: PRODUCT_VERSION,
-      protocolVersion: PROTOCOL_VERSION,
-      minMobileVersion: MIN_MOBILE_VERSION,
-      recommendedMobileVersion: RECOMMENDED_MOBILE_VERSION,
-      updateChannel: UPDATE_CHANNEL,
-      autoUpdate: AUTO_UPDATE,
-    }),
-  );
+  app.get("/system/info", (c) => c.json(bridgeSystemInfo()));
 
   app.get("/system/update", (c) => c.json(readUpdateStatus()));
 
-  app.post("/system/update", (c) => {
-    writeFileSync(UPDATE_REQUEST_PATH, `${Date.now()}\n`);
-    return c.json(readUpdateStatus(), 202);
-  });
+  app.post("/system/update", (c) => c.json(requestBridgeUpdate(), 202));
 }

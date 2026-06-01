@@ -554,20 +554,4 @@ export const decodeClientEvent = (raw: unknown) =>
 export const decodeWireEvent = (raw: unknown) => v.safeParse(WireEvent, raw);
 export const parseWireEvent = (raw: unknown): WireEvent => v.parse(WireEvent, raw);
 
-export const decodeSessionMeta = (raw: unknown) => v.safeParse(SessionMeta, raw);
-export const parseSessionMeta = (raw: unknown): SessionMeta =>
-  v.parse(SessionMeta, raw);
-
-export const parseSessionStats = (raw: unknown): SessionStats =>
-  v.parse(SessionStats, raw);
-
-export const parseCommands = (raw: unknown): Commands =>
-  v.parse(Commands, raw);
-
-export const parseGitBranchesResponse = (raw: unknown): GitBranchesResponse =>
-  v.parse(GitBranchesResponse, raw);
-
-export const parseQueueState = (raw: unknown): QueueState =>
-  v.parse(QueueState, raw);
-
 export const encodeWireEvent = (e: WireEvent): string => JSON.stringify(e);

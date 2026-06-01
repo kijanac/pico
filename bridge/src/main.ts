@@ -1,13 +1,11 @@
-import { Effect, Layer, ManagedRuntime, Logger, LogLevel } from "effect";
+import { Effect } from "effect";
 import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DB_PATH } from "./config.ts";
-import { PiClientFromEnv } from "./pi-env.ts";
-import { ProviderAuthLive } from "./provider-auth.ts";
-import { SessionManager, SessionManagerLive } from "./session.ts";
-import { StoreLive } from "./store.ts";
+import { bridgeRuntime as runtime } from "./runtime.ts";
+import { SessionManager } from "./session.ts";
 import { makeConnectionHandler, type WsBindings } from "./ws.ts";
 import { makeHttpApp } from "./http/app.ts";
 import { authorizeHeaders, isAllowedBrowserOrigin } from "./auth.ts";
@@ -17,14 +15,6 @@ const HOST = "127.0.0.1";
 const USING_MOCK = process.env.PI_USE_MOCK === "1";
 
 mkdirSync(dirname(DB_PATH), { recursive: true });
-
-const SessionLayer = SessionManagerLive.pipe(
-  Layer.provide(Layer.mergeAll(PiClientFromEnv, StoreLive(DB_PATH))),
-);
-const AppLayer = Layer.mergeAll(SessionLayer, ProviderAuthLive);
-const runtime = ManagedRuntime.make(
-  Layer.mergeAll(AppLayer, Logger.minimumLogLevel(LogLevel.Info)),
-);
 
 const app = makeHttpApp(runtime);
 const onConnection = makeConnectionHandler(runtime);
@@ -83,13 +73,10 @@ runtime.runFork(
   Effect.logInfo(
     `pi-bridge listening on http://${HOST}:${PORT}  ${USING_MOCK ? "(mock pi)" : "(live pi)"}\n` +
       `   db   :  ${DB_PATH}\n` +
-      `   REST :  GET    /healthz\n` +
-      `           GET    /sessions?archived=0|1\n` +
-      `           GET    /git/branches?cwd=:path\n` +
-      `           POST   /sessions       { cwd, title, branch? }\n` +
-      `           GET    /sessions/:id\n` +
-      `           PATCH  /sessions/:id   { title?, archived? }\n` +
-      `           DELETE /sessions/:id\n` +
+      `   HTTP :  GET    /healthz, /system/info, /system/update\n` +
+      `           POST   /system/update, /setup/claim\n` +
+      `           GET    /sessions/:id/export.html\n` +
+      `   tRPC :  /trpc/*\n` +
       `   WS   :  /ws?session=:id&cursor=:n`,
   ),
 );
