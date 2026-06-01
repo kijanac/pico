@@ -70,6 +70,7 @@
       ...(images.length > 0 ? { images } : {}),
     });
     value = "";
+    if (textarea) textarea.value = "";
     images = [];
     textBeforeRecording = "";
     autoSize();

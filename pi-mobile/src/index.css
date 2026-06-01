@@ -187,7 +187,8 @@
   }
 
   .edge-swipe-page {
-    min-height: 100dvh;
+    height: 100%;
+    min-height: 0;
     touch-action: pan-y;
   }
 

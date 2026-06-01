@@ -47,7 +47,7 @@
   });
 </script>
 
-<div class="relative min-h-0 flex-1">
+<div class="relative min-h-0 flex-1 overflow-hidden">
   <div bind:this={scroller} onscroll={onScroll} class="scroll-momentum h-full overflow-y-auto py-2" style="padding-bottom: 0.5rem">
     {#each chatLogState.entries as entry (entry.id)}
       {#if entry.kind === "user"}

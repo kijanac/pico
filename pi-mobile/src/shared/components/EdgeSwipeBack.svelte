@@ -29,12 +29,12 @@
   });
 </script>
 
-<div class="edge-swipe-root min-h-dvh bg-[color:var(--color-bg)]">
+<div class="edge-swipe-root flex h-full min-h-0 flex-col bg-[color:var(--color-bg)]">
   <div bind:this={previewEl} aria-hidden="true" class="edge-swipe-preview pointer-events-none fixed inset-0 z-0">
     {@render preview?.()}
     <div bind:this={shade} class="edge-swipe-shade pointer-events-none fixed inset-0 opacity-100"></div>
   </div>
-  <div bind:this={page} class="edge-swipe-page relative z-10 min-h-dvh bg-[color:var(--color-bg)]">
+  <div bind:this={page} class="edge-swipe-page relative z-10 flex h-full min-h-0 flex-col bg-[color:var(--color-bg)]">
     {@render children?.()}
   </div>
 </div>

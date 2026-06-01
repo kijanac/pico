@@ -7,7 +7,6 @@
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
   import NewSessionSheet from "@/features/sessions/components/NewSessionSheet.svelte";
   import RenameSheet from "@/features/sessions/components/RenameSheet.svelte";
-  import SessionActions from "@/features/sessions/components/SessionActions.svelte";
   import StatusDot from "@/shared/components/StatusDot.svelte";
   import PullToRefresh from "@/shared/components/PullToRefresh.svelte";
   import SwipeActionRow from "@/shared/components/SwipeActionRow.svelte";
@@ -19,7 +18,7 @@
   let newSessionOpen = $state(false);
   let renameTarget = $state<SessionMeta | null>(null);
   let deleteTarget = $state<SessionMeta | null>(null);
-  let openSessionActionsId = $state<string | null>(null);
+  let openSwipeSessionId = $state<string | null>(null);
 
   const SESSION_ACTION_WIDTH = 58;
 
@@ -55,25 +54,25 @@
     haptics.heavy();
   }
 
-  function closeOpenSessionActions(event: Event): void {
-    if (!openSessionActionsId) return;
+  function closeOpenSwipeRow(event: Event): void {
+    if (!openSwipeSessionId) return;
     const target = event.target;
     if (target instanceof Element && target.closest("[data-swipe-action-row]")) return;
-    openSessionActionsId = null;
+    openSwipeSessionId = null;
   }
 
   function requestRename(session: SessionMeta): void {
-    openSessionActionsId = null;
+    openSwipeSessionId = null;
     renameTarget = session;
   }
 
   function requestDelete(session: SessionMeta): void {
-    openSessionActionsId = null;
+    openSwipeSessionId = null;
     deleteTarget = session;
   }
 </script>
 
-<main class="flex min-h-0 flex-1 flex-col px-4 py-[calc(env(safe-area-inset-top)+16px)]" ontouchstart={closeOpenSessionActions}>
+<main class="flex min-h-0 flex-1 flex-col px-4 py-[calc(env(safe-area-inset-top)+16px)]" ontouchstart={closeOpenSwipeRow}>
   <header class="flex items-center justify-between gap-3">
     <div class="flex items-baseline gap-2">
       <h1 class="text-[13px] font-medium">{sessionListState.archivedView ? "archived" : "sessions"}</h1>
@@ -118,12 +117,12 @@
       <section class="flex min-h-full flex-col">
         {#each sessionListState.sessions as session (session.id)}
           <SwipeActionRow
-            open={openSessionActionsId === session.id}
+            open={openSwipeSessionId === session.id}
             actionWidth={SESSION_ACTION_WIDTH}
             actionCount={3}
-            onOpen={() => (openSessionActionsId = session.id)}
+            onOpen={() => (openSwipeSessionId = session.id)}
             onClose={() => {
-              if (openSessionActionsId === session.id) openSessionActionsId = null;
+              if (openSwipeSessionId === session.id) openSwipeSessionId = null;
             }}
           >
             {#snippet actions()}
@@ -145,12 +144,6 @@
                   <span class="ml-auto shrink-0 tabular-nums">{formatCost(session.costUsd)}</span>
                 </div>
               </button>
-              <SessionActions
-                {session}
-                onRename={requestRename}
-                onToggleArchive={toggleArchive}
-                onDelete={requestDelete}
-              />
             </div>
           </SwipeActionRow>
         {/each}
