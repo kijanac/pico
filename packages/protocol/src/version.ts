@@ -1,4 +1,4 @@
-export const PRODUCT_VERSION = "0.6.2";
-export const PROTOCOL_VERSION = 3;
-export const MIN_MOBILE_VERSION = "0.6.2";
+export const PRODUCT_VERSION = "0.7.0";
+export const PROTOCOL_VERSION = 4;
+export const MIN_MOBILE_VERSION = "0.7.0";
 export const RECOMMENDED_MOBILE_VERSION = PRODUCT_VERSION;
