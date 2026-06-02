@@ -7,6 +7,7 @@ import {
   setSessionArchived,
   type CreateSessionInput,
 } from "@/features/sessions/api";
+import { clearChatDraft } from "@/features/chat/model/chat-draft";
 
 let sessions = $state<SessionMeta[]>([]);
 let archivedView = $state(false);
@@ -125,6 +126,7 @@ export const sessionListState = {
   async delete(sessionId: string): Promise<void> {
     await mutateSession(sessionId, async () => {
       await deleteSessionRequest(sessionId);
+      await clearChatDraft(sessionId).catch(() => undefined);
       this.removeLocal(sessionId);
     });
   },

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { ArrowUp, ImagePlus, ListTodo, MicOff, Plus, Square, Trash2 } from "@lucide/svelte";
+  import { onDestroy, onMount, tick, untrack } from "svelte";
+  import { ArrowUp, ImagePlus, ListTodo, Mic, MicOff, Plus, Square, Trash2 } from "@lucide/svelte";
   import type { ImageAttachment, QueueState } from "@pi-mobile/protocol";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { createSpeechRecognitionState } from "@/shared/mobile/speech.svelte";
@@ -7,6 +8,7 @@
   import { haptics } from "@/shared/mobile/haptics";
   import { createLongPress } from "@/shared/gestures/long-press";
   import { clearSessionQueue, getSessionQueue } from "@/features/chat/api";
+  import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
   import { Button } from "@/shared/ui/button";
   import * as Sheet from "@/shared/ui/sheet";
   import ImageTray from "@/features/chat/components/ImageTray.svelte";
@@ -14,6 +16,7 @@
 
   const LONG_PRESS_MS = 500;
   const MAX_IMAGES = 4;
+  const DRAFT_SAVE_DELAY_MS = 350;
 
   let { sessionId }: { sessionId: string } = $props();
 
@@ -30,9 +33,20 @@
   let queueError = $state<string | null>(null);
   let clearing = $state(false);
   let queueRequestId = 0;
+  let draftLoadRequestId = 0;
+  let draftLoadedFor = $state<string | null>(null);
+  let draftEditVersion = 0;
 
   const stt = createSpeechRecognitionState();
   let textBeforeRecording = "";
+
+  onMount(() => {
+    void stt.checkAvailability();
+  });
+
+  onDestroy(() => {
+    stt.destroy();
+  });
 
   const busy = $derived(activeSessionState.status === "thinking" || activeSessionState.status === "tool");
   const hasText = $derived(value.trim().length > 0);
@@ -43,6 +57,7 @@
   $effect(() => {
     if (!stt.listening) return;
     const transcript = stt.transcript;
+    draftEditVersion += 1;
     value = textBeforeRecording ? `${textBeforeRecording.trimEnd()} ${transcript}` : transcript;
     autoSize();
   });
@@ -52,10 +67,46 @@
     void refreshQueueCount();
   });
 
+  $effect(() => {
+    const id = sessionId;
+    untrack(() => void restoreDraft(id));
+  });
+
+  $effect(() => {
+    const id = sessionId;
+    const draftText = value;
+    if (draftLoadedFor !== id) return;
+
+    const timer = window.setTimeout(() => {
+      void saveChatDraft(id, draftText);
+    }, DRAFT_SAVE_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  });
+
   function autoSize(): void {
     if (!textarea) return;
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+  }
+
+  async function restoreDraft(id: string): Promise<void> {
+    const requestId = ++draftLoadRequestId;
+    const editVersion = draftEditVersion;
+    draftLoadedFor = null;
+    value = "";
+    images = [];
+    textBeforeRecording = "";
+    autoSize();
+
+    const draftText = await loadChatDraft(id).catch(() => "");
+    if (requestId !== draftLoadRequestId || id !== sessionId) return;
+
+    if (draftEditVersion === editVersion) {
+      value = draftText;
+    }
+    draftLoadedFor = id;
+    autoSize();
   }
 
   function submit(mode: "steer" | "follow_up"): void {
@@ -70,9 +121,9 @@
       ...(images.length > 0 ? { images } : {}),
     });
     value = "";
-    if (textarea) textarea.value = "";
     images = [];
     textBeforeRecording = "";
+    void clearChatDraft(sessionId);
     autoSize();
     if (queued) window.setTimeout(() => void refreshQueueCount(), 120);
     haptics.light();
@@ -92,16 +143,18 @@
   }
 
   function insertCommand(text: string): void {
+    draftEditVersion += 1;
     const slash = value.lastIndexOf("/");
     const before = slash >= 0 ? value.slice(0, slash) : value;
     const prefix = before.length === 0 || /\s$/.test(before) ? before : `${before} `;
     value = prefix + text;
     autoSize();
     paletteOpen = false;
-    queueMicrotask(() => textarea?.focus());
+    void tick().then(() => textarea?.focus());
   }
 
   function handleInput(next: string): void {
+    draftEditVersion += 1;
     value = next;
     autoSize();
 
@@ -202,7 +255,7 @@
     <div class="min-h-9 flex-1 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] focus-within:border-[color:var(--color-border-strong)]">
       <textarea
         bind:this={textarea}
-        value={value}
+        bind:value
         oninput={(event) => handleInput(event.currentTarget.value)}
         oncompositionstart={() => (composing = true)}
         oncompositionend={() => (composing = false)}
@@ -255,6 +308,11 @@
           <ImagePlus class="size-5 text-[color:var(--color-fg-muted)]" />
           <span class="text-[12px] font-medium">image</span>
           <span class="text-[10px] text-[color:var(--color-fg-faint)]">{images.length >= MAX_IMAGES ? `max ${MAX_IMAGES}` : "attach photo"}</span>
+        </button>
+        <button type="button" onclick={() => { actionsOpen = false; void toggleMic(); }} disabled={stt.available === false} class="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-center active:bg-[color:var(--color-surface-2)] disabled:opacity-40">
+          <Mic class="size-5 text-[color:var(--color-fg-muted)]" />
+          <span class="text-[12px] font-medium">dictate</span>
+          <span class="text-[10px] text-[color:var(--color-fg-faint)]">{stt.available === false ? "unavailable" : "speech to text"}</span>
         </button>
         <button type="button" onclick={() => { actionsOpen = false; void loadQueue(); queueOpen = true; }} class="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-center active:bg-[color:var(--color-surface-2)]">
           <span class="relative">
