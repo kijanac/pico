@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Archive, Info, KeyRound, ListTree, Settings, SlidersHorizontal } from "@lucide/svelte";
+  import { Archive, Download, Info, KeyRound, ListTree, Settings, SlidersHorizontal } from "@lucide/svelte";
 
   let {
     onModels,
@@ -8,6 +8,7 @@
     onTree,
     onSettings,
     onInfo,
+    onExport,
   }: {
     onModels: () => void;
     onAuth: () => void;
@@ -15,6 +16,7 @@
     onTree: () => void;
     onSettings: () => void;
     onInfo: () => void;
+    onExport: () => void;
   } = $props();
 </script>
 
@@ -28,13 +30,14 @@
 
   <div class="label px-1 pt-2">session</div>
   {@render MenuButton("settings", "thinking, queueing, compaction, and retry behavior", onSettings, "settings")}
+  {@render MenuButton("export to HTML", "download a standalone transcript", onExport, "export")}
   {@render MenuButton("info", "file, cwd, tokens, cost, and message counts", onInfo, "info")}
 </div>
 
-{#snippet MenuButton(title: string, description: string, onClick: () => void, icon: "model" | "auth" | "compact" | "tree" | "settings" | "info")}
+{#snippet MenuButton(title: string, description: string, onClick: () => void, icon: "model" | "auth" | "compact" | "tree" | "settings" | "export" | "info")}
   <button type="button" onclick={onClick} class="hairline-b flex w-full items-start gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-left active:bg-[color:var(--color-surface-2)]">
     <span class="mt-0.5 text-[color:var(--color-fg-muted)]">
-      {#if icon === "model"}<SlidersHorizontal class="size-3.5" />{:else if icon === "auth"}<KeyRound class="size-3.5" />{:else if icon === "compact"}<Archive class="size-3.5" />{:else if icon === "tree"}<ListTree class="size-3.5" />{:else if icon === "settings"}<Settings class="size-3.5" />{:else}<Info class="size-3.5" />{/if}
+      {#if icon === "model"}<SlidersHorizontal class="size-3.5" />{:else if icon === "auth"}<KeyRound class="size-3.5" />{:else if icon === "compact"}<Archive class="size-3.5" />{:else if icon === "tree"}<ListTree class="size-3.5" />{:else if icon === "settings"}<Settings class="size-3.5" />{:else if icon === "export"}<Download class="size-3.5" />{:else}<Info class="size-3.5" />{/if}
     </span>
     <span class="min-w-0 flex-1">
       <span class="block text-[12.5px] font-medium">{title}</span>

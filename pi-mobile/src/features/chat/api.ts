@@ -1,3 +1,5 @@
+import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import type { ApiClient } from "@/shared/lib/api-client";
 import type { QueueState, Commands, SessionControls, SessionStats, SessionTree } from "@pi-mobile/protocol";
 import { getBridgeClient } from "@/shared/lib/bridge-client";
@@ -34,8 +36,33 @@ export function getSessionStats(sessionId: string): Promise<SessionStats> {
   return client().getSessionStats(sessionId);
 }
 
-export function sessionExportHtmlUrl(sessionId: string): string {
-  return client().sessionExportHtmlUrl(sessionId);
+const safeFilenamePart = (value: string): string =>
+  value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "session";
+
+export async function exportSessionHtml(sessionId: string): Promise<void> {
+  const url = client().sessionExportHtmlUrl(sessionId);
+  const response = await fetch(url);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: response.statusText }));
+    throw new Error(`export failed (${response.status}): ${body.error ?? "unknown"}`);
+  }
+
+  const filename = `pi-session-${safeFilenamePart(sessionId)}.html`;
+  const path = `exports/${filename}`;
+  await Filesystem.writeFile({
+    path,
+    directory: Directory.Cache,
+    data: await response.text(),
+    encoding: Encoding.UTF8,
+    recursive: true,
+  });
+  const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache });
+  await Share.share({
+    title: "Export to HTML",
+    text: filename,
+    files: [uri],
+    dialogTitle: "Export to HTML",
+  });
 }
 
 export function getSessionTree(sessionId: string): Promise<SessionTree> {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { MoreHorizontal } from "@lucide/svelte";
   import { createAgentActionsState } from "@/features/chat/actions/agent-actions.state.svelte";
+  import { exportSessionHtml } from "@/features/chat/api";
   import AgentActionSheet from "@/features/chat/actions/AgentActionSheet.svelte";
   import AuthView from "@/features/chat/actions/AuthView.svelte";
   import CompactView from "@/features/chat/actions/CompactView.svelte";
@@ -12,6 +13,16 @@
   let { sessionId }: { sessionId: string } = $props();
 
   const actions = createAgentActionsState();
+
+  async function exportToHtml(): Promise<void> {
+    actions.setError(null);
+    try {
+      await exportSessionHtml(sessionId);
+      actions.done();
+    } catch (error) {
+      actions.setError(error instanceof Error ? error.message : String(error));
+    }
+  }
 </script>
 
 <button
@@ -39,6 +50,7 @@
         onTree={() => actions.setView("tree")}
         onSettings={() => actions.setView("settings")}
         onInfo={() => actions.setView("info")}
+        onExport={exportToHtml}
       />
     {:else if actions.view === "models"}
       <SessionSettingsView {sessionId} onError={actions.setError} filterKeys={["model"]} />

@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { Download } from "@lucide/svelte";
   import type { SessionStats } from "@pi-mobile/protocol";
-  import { getSessionStats, sessionExportHtmlUrl } from "@/features/chat/api";
+  import { getSessionStats } from "@/features/chat/api";
   import { formatCost, formatTokens } from "@/shared/lib/format";
 
   let { sessionId }: { sessionId: string } = $props();
@@ -29,16 +28,6 @@
   function formatContextPercent(percent: number | null): string {
     return percent === null ? "" : ` · ${Math.round(percent)}%`;
   }
-
-  function downloadHtmlExport(): void {
-    const anchor = document.createElement("a");
-    anchor.href = sessionExportHtmlUrl(sessionId);
-    anchor.download = `pi-session-${sessionId}.html`;
-    anchor.rel = "noreferrer";
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-  }
 </script>
 
 <div class="flex-1 overflow-y-auto px-3 py-3">
@@ -58,10 +47,6 @@
       {#if stats.contextUsage?.tokens !== null && stats.contextUsage}
         {@render InfoRow("context", `${formatTokens(stats.contextUsage.tokens!)} / ${formatTokens(stats.contextUsage.contextWindow)}${formatContextPercent(stats.contextUsage.percent)}`)}
       {/if}
-      <button type="button" onclick={downloadHtmlExport} class="flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border-strong)] text-[12px] font-medium active:bg-[color:var(--color-surface)]">
-        <Download class="size-3.5" />
-        download HTML export
-      </button>
     </div>
   {/if}
 </div>
