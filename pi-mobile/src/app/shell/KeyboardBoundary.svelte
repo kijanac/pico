@@ -9,6 +9,11 @@
 
   const bottomInset = $derived(mode === "manual" ? keyboardState.height : 0);
 
+  $effect(() => {
+    document.documentElement.style.setProperty("--keyboard-bottom-inset", `${bottomInset}px`);
+    return () => document.documentElement.style.removeProperty("--keyboard-bottom-inset");
+  });
+
   onMount(() => {
     keyboardState.install();
     if (mode === "manual") keyboardState.acquireManualResize();
