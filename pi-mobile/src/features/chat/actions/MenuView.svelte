@@ -20,28 +20,25 @@
   } = $props();
 </script>
 
-<div class="space-y-2 px-3 py-3">
-  {@render MenuButton("model", "choose the model for this session", onModels, "model")}
-  {@render MenuButton("providers", "configure model provider auth", onAuth, "auth")}
+<div class="space-y-1.5 px-3 py-3">
+  {@render MenuItem("model", onModels, "model")}
+  {@render MenuItem("providers", onAuth, "auth")}
 
   <div class="label px-1 pt-2">context</div>
-  {@render MenuButton("compact", "summarize older context for future turns", onCompact, "compact")}
-  {@render MenuButton("tree", "branch from an earlier point in this conversation", onTree, "tree")}
+  {@render MenuItem("compact context", onCompact, "compact")}
+  {@render MenuItem("conversation tree", onTree, "tree")}
 
   <div class="label px-1 pt-2">session</div>
-  {@render MenuButton("settings", "thinking, queueing, compaction, and retry behavior", onSettings, "settings")}
-  {@render MenuButton("export to HTML", "download a standalone transcript", onExport, "export")}
-  {@render MenuButton("info", "file, cwd, tokens, cost, and message counts", onInfo, "info")}
+  {@render MenuItem("settings", onSettings, "settings")}
+  {@render MenuItem("export to HTML", onExport, "export")}
+  {@render MenuItem("info", onInfo, "info")}
 </div>
 
-{#snippet MenuButton(title: string, description: string, onClick: () => void, icon: "model" | "auth" | "compact" | "tree" | "settings" | "export" | "info")}
-  <button type="button" onclick={onClick} class="hairline-b flex w-full items-start gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-left active:bg-[color:var(--color-surface-2)]">
-    <span class="mt-0.5 text-[color:var(--color-fg-muted)]">
+{#snippet MenuItem(title: string, onClick: () => void, icon: "model" | "auth" | "compact" | "tree" | "settings" | "export" | "info")}
+  <button type="button" onclick={onClick} class="hairline-b flex min-h-11 w-full items-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2.5 text-left active:bg-[color:var(--color-surface-2)]">
+    <span class="text-[color:var(--color-fg-muted)]">
       {#if icon === "model"}<SlidersHorizontal class="size-3.5" />{:else if icon === "auth"}<KeyRound class="size-3.5" />{:else if icon === "compact"}<Archive class="size-3.5" />{:else if icon === "tree"}<ListTree class="size-3.5" />{:else if icon === "settings"}<Settings class="size-3.5" />{:else if icon === "export"}<Download class="size-3.5" />{:else}<Info class="size-3.5" />{/if}
     </span>
-    <span class="min-w-0 flex-1">
-      <span class="block text-[12.5px] font-medium">{title}</span>
-      <span class="block text-[11px] text-[color:var(--color-fg-muted)]">{description}</span>
-    </span>
+    <span class="min-w-0 flex-1 truncate text-[12.5px] font-medium">{title}</span>
   </button>
 {/snippet}
