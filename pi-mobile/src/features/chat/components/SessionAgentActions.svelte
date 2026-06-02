@@ -34,18 +34,18 @@
     {#if actions.view === "menu"}
       <MenuView
         onModels={() => actions.setView("models")}
-        onCompact={() => actions.setView("compact")}
-        onSettings={() => actions.setView("settings")}
-        onTree={() => actions.setView("tree")}
-        onInfo={() => actions.setView("info")}
         onAuth={() => actions.setView("auth")}
+        onCompact={() => actions.setView("compact")}
+        onTree={() => actions.setView("tree")}
+        onSettings={() => actions.setView("settings")}
+        onInfo={() => actions.setView("info")}
       />
     {:else if actions.view === "models"}
       <SessionSettingsView {sessionId} onError={actions.setError} filterKeys={["model"]} />
     {:else if actions.view === "compact"}
       <CompactView {sessionId} onDone={actions.done} onError={actions.setError} />
     {:else if actions.view === "settings"}
-      <SessionSettingsView {sessionId} onError={actions.setError} />
+      <SessionSettingsView {sessionId} onError={actions.setError} excludeKeys={["model"]} />
     {:else if actions.view === "tree"}
       <TreeView {sessionId} onDone={actions.done} onError={actions.setError} />
     {:else if actions.view === "info"}

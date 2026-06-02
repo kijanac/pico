@@ -11,7 +11,7 @@
     compact: "compact context",
     settings: "session settings",
     tree: "tree",
-    auth: "provider sign-in",
+    auth: "providers",
     info: "session info",
   };
 

@@ -58,7 +58,7 @@
   {/if}
 
   {#if showActions}
-    <div class="mt-1 flex justify-start gap-1 text-[color:var(--color-fg-faint)]">
+    <div class="mt-0.5 flex justify-start gap-0 text-[color:var(--color-fg-faint)]">
       <Button type="button" variant="ghost" size="icon-sm" aria-label={copied ? "Copied" : "Copy message"} title={copied ? "Copied" : "Copy message"} onclick={copyText}>
         {#if copied}<Check class="size-3.5" />{:else}<Copy class="size-3.5" />{/if}
       </Button>

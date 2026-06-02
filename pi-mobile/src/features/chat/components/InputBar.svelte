@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack } from "svelte";
-  import { ArrowUp, ImagePlus, ListTodo, Mic, MicOff, Plus, Square, Trash2 } from "@lucide/svelte";
+  import { ArrowUp, Hash, ImagePlus, ListTodo, Mic, MicOff, Plus, Square, Trash2 } from "@lucide/svelte";
   import type { ImageAttachment, QueueState } from "@pi-mobile/protocol";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { createSpeechRecognitionState } from "@/shared/mobile/speech.svelte";
@@ -144,28 +144,27 @@
 
   function insertCommand(text: string): void {
     draftEditVersion += 1;
-    const slash = value.lastIndexOf("/");
-    const before = slash >= 0 ? value.slice(0, slash) : value;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const before = value.slice(0, start);
+    const after = value.slice(end);
     const prefix = before.length === 0 || /\s$/.test(before) ? before : `${before} `;
-    value = prefix + text;
+    const needsSuffixSpace = after.length > 0 && !/^\s/.test(after) && !/\s$/.test(text);
+    const suffix = needsSuffixSpace ? ` ${after}` : after;
+    value = `${prefix}${text}${suffix}`;
     autoSize();
     paletteOpen = false;
-    void tick().then(() => textarea?.focus());
+    void tick().then(() => {
+      textarea?.focus();
+      const cursor = prefix.length + text.length + (needsSuffixSpace ? 1 : 0);
+      textarea?.setSelectionRange(cursor, cursor);
+    });
   }
 
   function handleInput(next: string): void {
     draftEditVersion += 1;
     value = next;
     autoSize();
-
-    const slash = next.lastIndexOf("/");
-    if (slash < 0) return;
-
-    const before = slash === 0 ? "" : next[slash - 1];
-    const token = next.slice(slash);
-    if ((slash === 0 || /\s/.test(before)) && !/\s/.test(token.slice(1))) {
-      paletteOpen = true;
-    }
   }
 
   const sendPress = createLongPress({
@@ -182,6 +181,12 @@
   function handleSendClick(): void {
     if (sendPress.consumeClick()) return;
     submit("steer");
+  }
+
+  async function openCommands(): Promise<void> {
+    actionsOpen = false;
+    await tick();
+    paletteOpen = true;
   }
 
   async function attachImages(): Promise<void> {
@@ -243,13 +248,8 @@
   <ImageTray {images} onRemove={removeImage} />
 
   <div class="flex items-start gap-1.5 px-2 py-2">
-    <button type="button" onclick={() => { void refreshQueueCount(); actionsOpen = true; }} class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]" aria-label="More input actions" title="More input actions">
+    <button type="button" onclick={() => { void refreshQueueCount(); actionsOpen = true; }} class="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]" aria-label="More input actions" title="More input actions">
       <Plus class="size-4" />
-      {#if queueCount > 0}
-        <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-bg)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[9px] font-medium leading-none text-[color:var(--color-bg)]">
-          {queueCount > 99 ? "99+" : queueCount}
-        </span>
-      {/if}
     </button>
 
     <div class="min-h-9 flex-1 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] focus-within:border-[color:var(--color-border-strong)]">
@@ -269,6 +269,15 @@
         class="w-full resize-none bg-transparent px-3 py-[7px] text-[13px] leading-[20px] text-[color:var(--color-fg)] focus:outline-none"
       ></textarea>
     </div>
+
+    {#if queueCount > 0}
+      <button type="button" onclick={() => { void loadQueue(); queueOpen = true; }} class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]" aria-label="Queued messages" title="Queued messages">
+        <ListTodo class="size-4" />
+        <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-bg)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[9px] font-medium leading-none text-[color:var(--color-bg)]">
+          {queueCount > 99 ? "99+" : queueCount}
+        </span>
+      </button>
+    {/if}
 
     {#if stt.listening}
       <Button type="button" size="icon" onclick={toggleMic} class="rounded-[var(--radius-sm)] bg-[color:var(--color-danger)] text-[color:var(--color-bg)] pulse-accent active:opacity-80" aria-label="Stop dictation" title="Stop dictation">
@@ -303,7 +312,7 @@
   <Sheet.Root bind:open={actionsOpen}>
     <Sheet.Content side="bottom" class="flex max-h-[45dvh] flex-col gap-0 overflow-hidden rounded-t-[12px] border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)] p-0 text-[color:var(--color-fg)] shadow-none" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
       <Sheet.Header class="hairline-b space-y-0 px-3 py-3 pr-12 text-left"><Sheet.Title class="min-w-0 flex-1 px-1 text-[13px] font-medium">add</Sheet.Title></Sheet.Header>
-      <div class="grid grid-cols-2 gap-2 px-3 py-3">
+      <div class="grid grid-cols-3 gap-2 px-3 py-3">
         <button type="button" onclick={() => { actionsOpen = false; void attachImages(); }} disabled={images.length >= MAX_IMAGES} class="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-center active:bg-[color:var(--color-surface-2)] disabled:opacity-40">
           <ImagePlus class="size-5 text-[color:var(--color-fg-muted)]" />
           <span class="text-[12px] font-medium">image</span>
@@ -314,14 +323,12 @@
           <span class="text-[12px] font-medium">dictate</span>
           <span class="text-[10px] text-[color:var(--color-fg-faint)]">{stt.available === false ? "unavailable" : "speech to text"}</span>
         </button>
-        <button type="button" onclick={() => { actionsOpen = false; void loadQueue(); queueOpen = true; }} class="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-center active:bg-[color:var(--color-surface-2)]">
-          <span class="relative">
-            <ListTodo class="size-5 text-[color:var(--color-fg-muted)]" />
-            {#if queueCount > 0}<span class="absolute -right-2 -top-2 flex min-w-4 items-center justify-center rounded-full bg-[color:var(--color-accent)] px-1 py-0.5 text-[9px] font-medium leading-none text-[color:var(--color-bg)]">{queueCount > 99 ? "99+" : queueCount}</span>{/if}
-          </span>
-          <span class="text-[12px] font-medium">queue</span>
-          <span class="text-[10px] text-[color:var(--color-fg-faint)]">{queueCount > 0 ? `${queueCount} pending` : "empty"}</span>
+        <button type="button" onclick={() => void openCommands()} class="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-center active:bg-[color:var(--color-surface-2)]">
+          <Hash class="size-5 text-[color:var(--color-fg-muted)]" />
+          <span class="text-[12px] font-medium">commands</span>
+          <span class="text-[10px] text-[color:var(--color-fg-faint)]">slash palette</span>
         </button>
+
       </div>
     </Sheet.Content>
   </Sheet.Root>

@@ -8,17 +8,23 @@
     sessionId,
     onError,
     filterKeys,
+    excludeKeys,
   }: {
     sessionId: string;
     onError: ActionErrorHandler;
     filterKeys?: readonly string[];
+    excludeKeys?: readonly string[];
   } = $props();
 
   let saving = $state<string | null>(null);
   let settings = $state<SessionControls | null>(null);
   let loading = $state(false);
 
-  const visibleControls = $derived((settings?.controls ?? []).filter((control: SessionControl) => !filterKeys || filterKeys.includes(control.key)));
+  const visibleControls = $derived(
+    (settings?.controls ?? []).filter((control: SessionControl) =>
+      (!filterKeys || filterKeys.includes(control.key)) && !excludeKeys?.includes(control.key),
+    ),
+  );
 
   $effect(() => {
     void loadSettings();

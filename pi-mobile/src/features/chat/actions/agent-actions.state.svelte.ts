@@ -50,6 +50,7 @@ export function createAgentActionsState(): AgentActionsState {
     },
     setView(next: AgentActionView) {
       view = next;
+      error = null;
     },
     setError(message: string | null) {
       error = message;
