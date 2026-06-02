@@ -224,6 +224,7 @@ const makeMockSession = (opts: {
           tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
           cost: 0,
         }),
+      getLog: () => Effect.succeed([]),
       getTree: () => Effect.succeed({ currentId: null, entries: [] }),
       navigateTree: () => Effect.void,
       close: () =>

@@ -6,7 +6,6 @@
   import ToolResult from "@/features/chat/components/ToolResult.svelte";
 
   let { msg }: { msg: ToolCallMessage } = $props();
-  // Initial expansion is based on the first rendered tool call kind.
   // svelte-ignore state_referenced_locally
   let open = $state(msg.toolKind === "builtin" && msg.tool === "edit");
 

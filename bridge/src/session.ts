@@ -204,6 +204,8 @@ const make = Effect.gen(function* () {
               });
               return next;
             });
+          } else if (event.t === "log_reset") {
+            yield* Ref.set(ms.deltaBuffers, new Map());
           } else if (event.t === "assistant_end") {
             const buffers = yield* Ref.get(ms.deltaBuffers);
             const buf = buffers.get(event.id);
@@ -349,33 +351,34 @@ const make = Effect.gen(function* () {
 
   const get = (id: string) => Effect.map(store.getSession(id), Option.map(toSessionMeta));
 
-  const subscribe = (id: string, fromCursor: number) =>
+  const subscribe = (id: string, _fromCursor: number) =>
     Stream.unwrapScoped(
       Effect.gen(function* () {
         const ms = yield* lookupOrReattach(id);
         const liveQueue = yield* PubSub.subscribe(ms.pubsub);
         const currentMeta = yield* Ref.get(ms.meta);
         const cursorAtSubscribe = yield* Ref.get(ms.seq);
-        const replay = yield* store.loadEventsAfter(id, fromCursor);
-        const replayCursor = replay.reduce(
-          (max, event) => Math.max(max, event.seq),
-          cursorAtSubscribe,
-        );
+        const entries = yield* ms.pi.getLog();
 
         const helloEvent: WireEvent = {
           t: "hello",
           seq: 0,
           session: currentMeta,
-          cursor: replayCursor,
+          cursor: cursorAtSubscribe,
+        };
+        const snapshotEvent: WireEvent = {
+          t: "log_reset",
+          seq: cursorAtSubscribe,
+          entries,
         };
 
         const liveStream = pipe(
           Stream.fromQueue(liveQueue),
-          Stream.filter((e) => e.seq > replayCursor),
+          Stream.filter((e) => e.seq > cursorAtSubscribe),
         );
 
         return pipe(
-          Stream.fromIterable<WireEvent>([helloEvent, ...replay]),
+          Stream.fromIterable<WireEvent>([helloEvent, snapshotEvent]),
           Stream.concat(liveStream),
         );
       }),

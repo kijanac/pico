@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Check, Copy, Info } from "@lucide/svelte";
+  import { Check, Copy, GitBranch, Info, Loader2 } from "@lucide/svelte";
   import type { AssistantMessage } from "@pi-mobile/protocol";
   import { Button } from "@/shared/ui/button";
   import * as Sheet from "@/shared/ui/sheet";
@@ -7,11 +7,14 @@
   import StreamingMarkdown from "@/features/chat/components/StreamingMarkdown.svelte";
   import MessageInfoRow from "@/features/chat/components/MessageInfoRow.svelte";
   import AssistantErrorBanner from "@/features/chat/components/AssistantErrorBanner.svelte";
+  import { navigateSessionTree } from "@/features/chat/api";
 
-  let { msg }: { msg: AssistantMessage } = $props();
+  let { msg, sessionId }: { msg: AssistantMessage; sessionId: string } = $props();
 
   let copied = $state(false);
   let detailsOpen = $state(false);
+  let branching = $state(false);
+  let branchError = $state<string | null>(null);
 
   const showBanner = $derived(msg.stopReason === "error" || msg.stopReason === "aborted" || msg.stopReason === "length");
   const showActions = $derived(!msg.streaming && msg.text.length > 0);
@@ -22,6 +25,19 @@
     window.setTimeout(() => {
       copied = false;
     }, 900);
+  }
+
+  async function branchFromHere(): Promise<void> {
+    if (branching) return;
+    branching = true;
+    branchError = null;
+    try {
+      await navigateSessionTree(sessionId, { entryId: msg.id });
+    } catch (error) {
+      branchError = String(error);
+    } finally {
+      branching = false;
+    }
   }
 </script>
 
@@ -37,10 +53,17 @@
     <AssistantErrorBanner stopReason={msg.stopReason} errorMessage={msg.errorMessage} />
   {/if}
 
+  {#if branchError}
+    <div class="mt-1 text-[11px] text-[color:var(--color-danger)]">{branchError}</div>
+  {/if}
+
   {#if showActions}
     <div class="mt-1 flex justify-start gap-1 text-[color:var(--color-fg-faint)]">
       <Button type="button" variant="ghost" size="icon-sm" aria-label={copied ? "Copied" : "Copy message"} title={copied ? "Copied" : "Copy message"} onclick={copyText}>
         {#if copied}<Check class="size-3.5" />{:else}<Copy class="size-3.5" />{/if}
+      </Button>
+      <Button type="button" variant="ghost" size="icon-sm" aria-label="Branch from here" title="Branch from here" disabled={branching} onclick={branchFromHere}>
+        {#if branching}<Loader2 class="size-3.5 animate-spin" />{:else}<GitBranch class="size-3.5" />{/if}
       </Button>
       <Button type="button" variant="ghost" size="icon-sm" aria-label="Message details" title="Message details" onclick={() => (detailsOpen = true)}>
         <Info class="size-3.5" />

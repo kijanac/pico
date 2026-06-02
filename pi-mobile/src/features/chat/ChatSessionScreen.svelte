@@ -77,7 +77,7 @@
       <Button type="button" variant="outline" size="sm" class="mt-2" onclick={() => navigateTo(routePaths.sessions)}>back to sessions</Button>
     </div>
   {:else}
-    <MessageList />
+    <MessageList {sessionId} />
     <InputBar {sessionId} />
   {/if}
 </main>

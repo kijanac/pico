@@ -7,6 +7,8 @@
   import ToolCallView from "@/features/chat/components/ToolCall.svelte";
   import PermissionGate from "@/features/chat/components/PermissionGate.svelte";
 
+  let { sessionId }: { sessionId: string } = $props();
+
   const STICK_THRESHOLD_PX = 64;
 
   let scroller = $state<HTMLDivElement | null>(null);
@@ -53,7 +55,7 @@
       {#if entry.kind === "user"}
         <UserMessageView msg={entry} />
       {:else if entry.kind === "assistant"}
-        <AssistantMessageView msg={entry} />
+        <AssistantMessageView msg={entry} {sessionId} />
       {:else if entry.kind === "tool_call"}
         <ToolCallView msg={entry} />
       {:else if entry.kind === "permission"}

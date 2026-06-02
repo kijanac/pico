@@ -15,7 +15,6 @@
     class?: string;
   } = $props();
 
-  // These callbacks are intentionally captured for the lifetime of this view instance.
   // svelte-ignore state_referenced_locally
   const auth = createProviderAuthState({ onError, onConfigured });
 

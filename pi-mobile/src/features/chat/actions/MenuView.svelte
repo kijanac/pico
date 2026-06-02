@@ -22,7 +22,7 @@
   {@render MenuButton("provider sign-in", "configure model provider auth from the phone", onAuth)}
   {@render MenuButton("model", "choose the model for this session", onModels)}
   {@render MenuButton("compact context", "summarize older context for future turns", onCompact)}
-  {@render MenuButton("tree", "jump to an earlier node in this conversation", onTree, "tree")}
+  {@render MenuButton("tree", "branch from an earlier point in this conversation", onTree, "tree")}
   {@render MenuButton("session settings", "model, thinking, queueing, compaction, and retry behavior", onSettings, "settings")}
   {@render MenuButton("session info", "file, tokens, cost, and message counts", onInfo, "info")}
 </div>

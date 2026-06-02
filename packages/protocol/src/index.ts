@@ -475,6 +475,7 @@ export const WireEvent = v.variant("t", [
     cursor: v.number(),
   }),
   v.object({ t: v.literal("user_message"), ...Seq, entry: UserMessage }),
+  v.object({ t: v.literal("log_reset"), ...Seq, entries: v.array(LogEntry) }),
   v.object({
     t: v.literal("assistant_delta"),
     ...Seq,

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Archive, ArchiveRestore, Pencil, Plus, RefreshCw, Settings as SettingsIcon, Trash2 } from "@lucide/svelte";
+  import { Archive, ArchiveRestore, Pencil, Plus, Settings as SettingsIcon, Trash2 } from "@lucide/svelte";
   import type { SessionMeta } from "@pi-mobile/protocol";
   import { navigateTo, routePaths } from "@/app/routes";
   import { settingsState } from "@/features/settings/settings.state.svelte";
@@ -79,9 +79,6 @@
       <span class="text-[10px] text-[color:var(--color-fg-faint)]">{sessionListState.visibleCount}</span>
     </div>
     <div class="flex items-center gap-1">
-      <Button type="button" variant="ghost" size="icon-sm" aria-label="Refresh" onclick={() => sessionListState.refresh()}>
-        <RefreshCw class={`size-3.5 ${sessionListState.refreshing ? "animate-spin" : ""}`} />
-      </Button>
       <Button type="button" variant="ghost" size="icon-sm" aria-label="Toggle archived" onclick={() => sessionListState.switchArchivedView(!sessionListState.archivedView)}>
         {#if sessionListState.archivedView}
           <ArchiveRestore class="size-3.5" />

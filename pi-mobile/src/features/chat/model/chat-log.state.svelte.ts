@@ -124,6 +124,14 @@ function reconcileQueuedMessages(log: SessionLog, event: Extract<WireEvent, { t:
 function applyWireEventForSession(sessionId: string, event: WireEvent): void {
   const log = getLog(sessionId);
 
+  if (event.t === "log_reset") {
+    log.cursor = event.seq;
+    log.entries = [...event.entries];
+    log.indexById = new Map(log.entries.map((entry, i) => [entry.id, i]));
+    bumpActivity(log);
+    return;
+  }
+
   if (event.t !== "hello" && event.seq > 0 && event.seq <= log.cursor) return;
   if (event.seq > log.cursor) log.cursor = event.seq;
 

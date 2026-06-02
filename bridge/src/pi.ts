@@ -19,7 +19,7 @@ import {
   type SessionEntry,
   type WriteToolInput,
 } from "@earendil-works/pi-coding-agent";
-import type { Model, Usage } from "@earendil-works/pi-ai";
+import type { AssistantMessage as PiAssistantMessage, Model } from "@earendil-works/pi-ai";
 import * as v from "valibot";
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -31,6 +31,7 @@ import {
   CustomToolArgs,
   type Commands,
   EditToolArgs,
+  type LogEntry,
   ReadToolArgs,
   WriteToolArgs,
   type PermissionChoice,
@@ -50,6 +51,7 @@ import { setupFauxIfEnabled } from "./pi-faux.ts";
 
 
 export type PiEmission =
+  | { t: "log_reset"; entries: LogEntry[] }
   | { t: "assistant_delta"; id: string; text: string }
   | {
       t: "assistant_end";
@@ -61,6 +63,14 @@ export type PiEmission =
         | "error"
         | "aborted";
       errorMessage?: string;
+      usage?: {
+        input: number;
+        output: number;
+        cacheRead: number;
+        cacheWrite: number;
+        total: number;
+        cost: number;
+      };
     }
   | { t: "tool_call"; entry: ToolCallMessage }
   | {
@@ -127,6 +137,7 @@ export interface PiSession {
   readonly patchSession: (patch: { title?: string }) => Effect.Effect<void, PiError>;
   readonly patchSetting: (key: string, value: string | boolean) => Effect.Effect<SessionControls, PiError>;
   readonly getStats: () => Effect.Effect<SessionStats, PiError>;
+  readonly getLog: () => Effect.Effect<LogEntry[], PiError>;
   readonly getTree: () => Effect.Effect<SessionTree, PiError>;
   readonly navigateTree: (entryId: string, summarize?: boolean) => Effect.Effect<void, PiError>;
   readonly close: () => Effect.Effect<void>;
@@ -353,7 +364,8 @@ const flattenSessionTree = (piSession: AgentSession): SessionTree => {
         ...(node.label ? { label: node.label } : {}),
         childCount: node.children.length,
       });
-      visit(node.children, depth + 1);
+
+      visit(node.children, node.children.length > 1 ? depth + 1 : depth);
     }
   };
   visit(roots, 0);
@@ -401,6 +413,74 @@ const normalizeToolCall = (
   }
 };
 
+const assistantText = (content: PiAssistantMessage["content"]): string =>
+  content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("");
+
+const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
+  const logEntries: LogEntry[] = [];
+  const byToolCallId = new Map<string, ToolCallMessage>();
+
+  for (const entry of piSession.sessionManager.getBranch()) {
+    if (entry.type !== "message") continue;
+    const at = new Date(entry.timestamp).getTime();
+    const message = entry.message;
+
+    if (message.role === "user") {
+      logEntries.push({
+        kind: "user",
+        id: entry.id,
+        at,
+        text: textFromContent(message.content),
+      });
+      continue;
+    }
+
+    if (message.role === "assistant") {
+      logEntries.push({
+        kind: "assistant",
+        id: entry.id,
+        at,
+        text: assistantText(message.content),
+        streaming: false,
+        ...(message.stopReason ? { stopReason: message.stopReason } : {}),
+        ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
+        ...(message.usage
+          ? {
+              usage: {
+                input: message.usage.input,
+                output: message.usage.output,
+                cacheRead: message.usage.cacheRead,
+                cacheWrite: message.usage.cacheWrite,
+                total: message.usage.totalTokens,
+                cost: message.usage.cost.total,
+              },
+            }
+          : {}),
+      });
+
+      for (const part of message.content) {
+        if (part.type !== "toolCall") continue;
+        const toolCall = normalizeToolCall(part.id, part.name, part.arguments);
+        byToolCallId.set(part.id, toolCall);
+        logEntries.push(toolCall);
+      }
+      continue;
+    }
+
+    if (message.role === "toolResult") {
+      const toolCall = byToolCallId.get(message.toolCallId);
+      if (!toolCall) continue;
+      toolCall.status = message.isError ? "error" : "ok";
+      toolCall.result = textFromContent(message.content);
+      toolCall.durationMs = 0;
+    }
+  }
+
+  return logEntries;
+};
 
 const wirePiSession = (
   piSession: AgentSession,
@@ -411,6 +491,12 @@ const wirePiSession = (
 
     let assistantId: string | null = null;
     const toolStarts = new Map<string, { startedAt: number }>();
+
+    const queueBranchSnapshot = (): void => {
+      queueMicrotask(() => {
+        Queue.unsafeOffer(q, { t: "log_reset", entries: logEntriesFromCurrentBranch(piSession) });
+      });
+    };
 
     const mapEvent = (event: AgentSessionEvent): void => {
       switch (event.type) {
@@ -427,51 +513,22 @@ const wirePiSession = (
         }
 
         case "message_end": {
-          const msg = event.message as {
-            role?: string;
-            stopReason?:
-              | "stop"
-              | "length"
-              | "toolUse"
-              | "error"
-              | "aborted";
-            errorMessage?: string;
-            usage?: Usage;
-          };
+          const msg = event.message as { role?: string };
+          if (msg.role !== "user" && msg.role !== "assistant" && msg.role !== "toolResult") return;
 
-          if (msg.role !== "assistant") return;
+          queueBranchSnapshot();
 
-          let id = assistantId;
-          if (!id) {
-            id = nextId("m");
+          if (msg.role === "assistant") {
+            assistantId = null;
+
+            const stats = piSession.getSessionStats();
+            Queue.unsafeOffer(q, {
+              t: "cost",
+              tokensIn: stats.tokens.input,
+              tokensOut: stats.tokens.output,
+              costUsd: stats.cost,
+            });
           }
-          Queue.unsafeOffer(q, {
-            t: "assistant_end",
-            id,
-            ...(msg.stopReason ? { stopReason: msg.stopReason } : {}),
-            ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
-            ...(msg.usage
-              ? {
-                  usage: {
-                    input: msg.usage.input,
-                    output: msg.usage.output,
-                    cacheRead: msg.usage.cacheRead,
-                    cacheWrite: msg.usage.cacheWrite,
-                    total: msg.usage.totalTokens,
-                    cost: msg.usage.cost.total,
-                  },
-                }
-              : {}),
-          });
-          assistantId = null;
-
-          const stats = piSession.getSessionStats();
-          Queue.unsafeOffer(q, {
-            t: "cost",
-            tokensIn: stats.tokens.input,
-            tokensOut: stats.tokens.output,
-            costUsd: stats.cost,
-          });
           return;
         }
 
@@ -683,11 +740,13 @@ const wirePiSession = (
           catch: (e) => e instanceof PiError ? e : new PiError(`patchSetting failed: ${String(e)}`),
         }),
       getStats: () => Effect.sync(() => piSession.getSessionStats() as SessionStats),
+      getLog: () => Effect.sync(() => logEntriesFromCurrentBranch(piSession)),
       getTree: () => Effect.sync(() => flattenSessionTree(piSession)),
       navigateTree: (entryId, summarize) =>
         Effect.tryPromise({
           try: async () => {
             await piSession.navigateTree(entryId, { summarize });
+            Queue.unsafeOffer(q, { t: "log_reset", entries: logEntriesFromCurrentBranch(piSession) });
           },
           catch: (e) => new PiError(`navigateTree failed: ${String(e)}`),
         }),

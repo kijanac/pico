@@ -126,7 +126,6 @@ export const removeSessionWorktree = (opts: {
     try {
       await execFileAsync("git", ["-C", opts.repoRoot, "worktree", "remove", opts.worktreePath]);
     } catch {
-      // If git refuses because the tree is dirty or metadata is gone, leave files and branch in place.
       return;
     }
 

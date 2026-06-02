@@ -152,7 +152,6 @@
       const next = await getSessionQueue(sessionId);
       if (requestId === queueRequestId) queueState = next;
     } catch {
-      // Queue count is non-critical in the collapsed input bar.
     }
   }
 

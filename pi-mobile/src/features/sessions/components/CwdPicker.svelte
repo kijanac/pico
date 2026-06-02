@@ -7,7 +7,6 @@
 
   let { initial, onSelect }: { initial?: string; onSelect: (path: string) => void } = $props();
 
-  // Initial is intentionally captured only when the picker instance is created.
   // svelte-ignore state_referenced_locally
   let path = $state<string | undefined>(initial);
   let listing = $state<FsListing | null>(null);
