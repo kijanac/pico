@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack } from "svelte";
-  import { ArrowUp, Hash, ImagePlus, ListTodo, Mic, MicOff, Plus, Square, Trash2 } from "@lucide/svelte";
+  import { ArrowUp, ListTodo, MicOff, Plus, Square } from "@lucide/svelte";
   import type { ImageAttachment, QueueState } from "@pi-mobile/protocol";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { createSpeechRecognitionState } from "@/shared/mobile/speech.svelte";
@@ -10,8 +10,9 @@
   import { clearSessionQueue, getSessionQueue } from "@/features/chat/api";
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
   import { Button } from "@/shared/ui/button";
-  import * as Sheet from "@/shared/ui/sheet";
   import ImageTray from "@/features/chat/components/ImageTray.svelte";
+  import InputAddSheet from "@/features/chat/components/InputAddSheet.svelte";
+  import QueuedMessagesSheet from "@/features/chat/components/QueuedMessagesSheet.svelte";
   import SlashPalette from "@/features/chat/components/SlashPalette.svelte";
 
   const LONG_PRESS_MS = 500;
@@ -59,7 +60,6 @@
     const transcript = stt.transcript;
     draftEditVersion += 1;
     value = textBeforeRecording ? `${textBeforeRecording.trimEnd()} ${transcript}` : transcript;
-    autoSize();
   });
 
   $effect(() => {
@@ -84,10 +84,14 @@
     return () => window.clearTimeout(timer);
   });
 
-  function autoSize(): void {
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+  function autosize(node: HTMLTextAreaElement, _value: string) {
+    const resize = () => {
+      node.style.height = "auto";
+      node.style.height = `${Math.min(node.scrollHeight, 180)}px`;
+    };
+
+    resize();
+    return { update: resize };
   }
 
   async function restoreDraft(id: string): Promise<void> {
@@ -97,7 +101,6 @@
     value = "";
     images = [];
     textBeforeRecording = "";
-    autoSize();
 
     const draftText = await loadChatDraft(id).catch(() => "");
     if (requestId !== draftLoadRequestId || id !== sessionId) return;
@@ -106,7 +109,6 @@
       value = draftText;
     }
     draftLoadedFor = id;
-    autoSize();
   }
 
   function submit(mode: "steer" | "follow_up"): void {
@@ -124,7 +126,6 @@
     images = [];
     textBeforeRecording = "";
     void clearChatDraft(sessionId);
-    autoSize();
     if (queued) window.setTimeout(() => void refreshQueueCount(), 120);
     haptics.light();
   }
@@ -152,7 +153,6 @@
     const needsSuffixSpace = after.length > 0 && !/^\s/.test(after) && !/\s$/.test(text);
     const suffix = needsSuffixSpace ? ` ${after}` : after;
     value = `${prefix}${text}${suffix}`;
-    autoSize();
     paletteOpen = false;
     void tick().then(() => {
       textarea?.focus();
@@ -161,11 +161,6 @@
     });
   }
 
-  function handleInput(next: string): void {
-    draftEditVersion += 1;
-    value = next;
-    autoSize();
-  }
 
   const sendPress = createLongPress({
     delayMs: LONG_PRESS_MS,
@@ -183,9 +178,7 @@
     submit("steer");
   }
 
-  async function openCommands(): Promise<void> {
-    actionsOpen = false;
-    await tick();
+  function openCommands(): void {
     paletteOpen = true;
   }
 
@@ -239,9 +232,6 @@
     }
   }
 
-  $effect(() => {
-    if (queueOpen) void loadQueue();
-  });
 </script>
 
 <div class="hairline-t sticky bottom-0 z-20 bg-[color:var(--color-bg)]/95 backdrop-blur-md" style="padding-bottom: env(safe-area-inset-bottom)">
@@ -256,7 +246,8 @@
       <textarea
         bind:this={textarea}
         bind:value
-        oninput={(event) => handleInput(event.currentTarget.value)}
+        use:autosize={value}
+        oninput={() => (draftEditVersion += 1)}
         oncompositionstart={() => (composing = true)}
         oncompositionend={() => (composing = false)}
         onkeydown={(event) => {
@@ -271,7 +262,7 @@
     </div>
 
     {#if queueCount > 0}
-      <button type="button" onclick={() => { void loadQueue(); queueOpen = true; }} class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]" aria-label="Queued messages" title="Queued messages">
+      <button type="button" onclick={() => (queueOpen = true)} class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]" aria-label="Queued messages" title="Queued messages">
         <ListTodo class="size-4" />
         <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-bg)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[9px] font-medium leading-none text-[color:var(--color-bg)]">
           {queueCount > 99 ? "99+" : queueCount}
@@ -309,63 +300,23 @@
 
   <SlashPalette bind:open={paletteOpen} {sessionId} onPick={insertCommand} />
 
-  <Sheet.Root bind:open={actionsOpen}>
-    <Sheet.Content side="bottom" class="flex max-h-[45dvh] flex-col gap-0 overflow-hidden rounded-t-[12px] border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)] p-0 text-[color:var(--color-fg)] shadow-none" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
-      <Sheet.Header class="hairline-b space-y-0 px-3 py-3 pr-12 text-left"><Sheet.Title class="min-w-0 flex-1 px-1 text-[13px] font-medium">add</Sheet.Title></Sheet.Header>
-      <div class="grid grid-cols-3 gap-2 px-3 py-3">
-        <button type="button" onclick={() => { actionsOpen = false; void attachImages(); }} disabled={images.length >= MAX_IMAGES} class="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-center active:bg-[color:var(--color-surface-2)] disabled:opacity-40">
-          <ImagePlus class="size-5 text-[color:var(--color-fg-muted)]" />
-          <span class="text-[12px] font-medium">image</span>
-          <span class="text-[10px] text-[color:var(--color-fg-faint)]">{images.length >= MAX_IMAGES ? `max ${MAX_IMAGES}` : "attach photo"}</span>
-        </button>
-        <button type="button" onclick={() => { actionsOpen = false; void toggleMic(); }} disabled={stt.available === false} class="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-center active:bg-[color:var(--color-surface-2)] disabled:opacity-40">
-          <Mic class="size-5 text-[color:var(--color-fg-muted)]" />
-          <span class="text-[12px] font-medium">dictate</span>
-          <span class="text-[10px] text-[color:var(--color-fg-faint)]">{stt.available === false ? "unavailable" : "speech to text"}</span>
-        </button>
-        <button type="button" onclick={() => void openCommands()} class="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-center active:bg-[color:var(--color-surface-2)]">
-          <Hash class="size-5 text-[color:var(--color-fg-muted)]" />
-          <span class="text-[12px] font-medium">commands</span>
-          <span class="text-[10px] text-[color:var(--color-fg-faint)]">slash palette</span>
-        </button>
+  <InputAddSheet
+    bind:open={actionsOpen}
+    imageCount={images.length}
+    maxImages={MAX_IMAGES}
+    speechAvailable={stt.available}
+    onAttachImages={attachImages}
+    onToggleMic={toggleMic}
+    onOpenCommands={openCommands}
+  />
 
-      </div>
-    </Sheet.Content>
-  </Sheet.Root>
-
-  <Sheet.Root bind:open={queueOpen}>
-    <Sheet.Content side="bottom" class="flex max-h-[75dvh] flex-col gap-0 overflow-hidden rounded-t-[12px] border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)] p-0 text-[color:var(--color-fg)] shadow-none" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
-      <Sheet.Header class="hairline-b space-y-0 px-3 py-3 pr-12 text-left"><Sheet.Title class="min-w-0 flex-1 px-1 text-[13px] font-medium">queued messages</Sheet.Title></Sheet.Header>
-      <div class="flex-1 overflow-y-auto px-3 py-3">
-        {#if queueLoading}<div class="text-[12px] text-[color:var(--color-fg-faint)]">loading queue…</div>{/if}
-        {#if queueError}<div class="text-[12px] text-[color:var(--color-danger)]">{queueError}</div>{/if}
-        {#if queueState && queueCount === 0}<div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-center text-[12px] text-[color:var(--color-fg-faint)]">no queued messages</div>{/if}
-        {#if queueState}
-          {@render QueueSection("steering", queueState.steering)}
-          {@render QueueSection("follow-up", queueState.followUp)}
-        {/if}
-      </div>
-      {#if queueCount > 0}
-        <div class="hairline-t px-3 py-2">
-          <Button type="button" variant="destructive" disabled={clearing} onclick={clearQueuedMessages} class="w-full bg-transparent text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface)]">
-            <Trash2 class="size-3.5" />
-            {clearing ? "clearing…" : "clear queued messages"}
-          </Button>
-        </div>
-      {/if}
-    </Sheet.Content>
-  </Sheet.Root>
+  <QueuedMessagesSheet
+    bind:open={queueOpen}
+    queue={queueState}
+    loading={queueLoading}
+    error={queueError}
+    {clearing}
+    onLoad={loadQueue}
+    onClear={clearQueuedMessages}
+  />
 </div>
-
-{#snippet QueueSection(label: string, items: string[])}
-  {#if items.length > 0}
-    <div class="mb-3">
-      <div class="label mb-1.5">{label}</div>
-      <div class="space-y-1.5">
-        {#each items as item}
-          <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[12px] text-[color:var(--color-fg)]">{item}</div>
-        {/each}
-      </div>
-    </div>
-  {/if}
-{/snippet}
