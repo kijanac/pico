@@ -6,7 +6,7 @@
   import * as Sheet from "@/shared/ui/sheet";
 
   const titles: Record<AgentActionView, string> = {
-    menu: "agent",
+    menu: "session",
     models: "model",
     compact: "compact context",
     settings: "session settings",

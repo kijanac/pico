@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Home } from "@lucide/svelte";
+  import type { ContextUsage, SessionStats } from "@pi-mobile/protocol";
   import { navigateTo, routePaths } from "@/app/routes";
   import {
     activeSessionState,
@@ -10,6 +11,7 @@
   import MessageList from "@/features/chat/components/MessageList.svelte";
   import InputBar from "@/features/chat/components/InputBar.svelte";
   import SessionAgentActions from "@/features/chat/components/SessionAgentActions.svelte";
+  import { getSessionStats } from "@/features/chat/api";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
   import { formatCost, formatTokens } from "@/shared/lib/format";
   import { cwdDisplayName } from "@/shared/lib/path-display";
@@ -20,13 +22,42 @@
 
   let { sessionId }: { sessionId: string } = $props();
 
+  let stats = $state<SessionStats>();
+  let statsRequestId = 0;
+
   const session = $derived(sessionListState.sessions.find((candidate) => candidate.id === sessionId) ?? null);
+  const contextStats = $derived(
+    stats?.sessionId === sessionId && stats.contextUsage
+      ? { cost: stats.cost, usage: stats.contextUsage }
+      : undefined,
+  );
 
   onMount(() => {
     const session = createChatSessionState(sessionId);
     void session.start();
     return () => session.stop();
   });
+
+  $effect(() => {
+    sessionId;
+    activeSessionState.status;
+    void loadStats();
+  });
+
+  async function loadStats(): Promise<void> {
+    const requestId = ++statsRequestId;
+    try {
+      const next = await getSessionStats(sessionId);
+      if (requestId === statsRequestId) stats = next;
+    } catch {
+    }
+  }
+
+  function formatContextUsage(usage: ContextUsage): string {
+    const tokens = usage.tokens === null ? "?" : formatTokens(usage.tokens);
+    const percent = usage.percent === null ? "" : ` (${Math.round(usage.percent)}%)`;
+    return `context ${tokens} / ${formatTokens(usage.contextWindow)}${percent}`;
+  }
 </script>
 
 <EdgeSwipeBack href="/">
@@ -60,11 +91,10 @@
     </div>
   </header>
 
-  {#if session}
-    <div class="hairline-b flex items-center gap-3 px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">
-      <span>in <span class="tabular-nums text-[color:var(--color-fg-muted)]">{formatTokens(session.tokens.in)}</span></span>
-      <span>out <span class="tabular-nums text-[color:var(--color-fg-muted)]">{formatTokens(session.tokens.out)}</span></span>
-      <span class="ml-auto tabular-nums text-[color:var(--color-fg-muted)]">{formatCost(session.costUsd)}</span>
+  {#if contextStats}
+    <div class="hairline-b flex items-center gap-2 px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">
+      <span class="truncate">{formatContextUsage(contextStats.usage)}</span>
+      <span class="ml-auto shrink-0 tabular-nums text-[color:var(--color-fg-muted)]">{formatCost(contextStats.cost)}</span>
     </div>
   {/if}
 
