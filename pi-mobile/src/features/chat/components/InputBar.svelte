@@ -283,14 +283,17 @@
   <div class="flex items-start gap-1.5 px-2 py-2">
     <div class="relative shrink-0" data-input-actions>
       {#if actionsOpen}
-        <div class="absolute bottom-10 left-0 z-40 flex flex-col gap-1.5 pb-1">
+        <div class="absolute bottom-[calc(100%+0.75rem)] left-0 z-40 flex flex-col gap-1.5">
           {@render ActionFab("Compact context", false, () => runAction(openCompactSheet), "compact")}
           {@render ActionFab("Attach image", images.length >= MAX_IMAGES, () => runAction(attachImages), "image")}
           {@render ActionFab("Dictate", stt.available === false, () => runAction(toggleMic), "mic")}
         </div>
       {/if}
-      <button type="button" onpointerdown={(event) => event.preventDefault()} onclick={toggleActions} class={`flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] transition-transform active:bg-[color:var(--color-surface)] ${actionsOpen ? "rotate-45 bg-[color:var(--color-surface)]" : ""}`} aria-label="More input actions" title="More input actions" aria-expanded={actionsOpen}>
-        <Plus class="size-4" />
+      <button type="button" onpointerdown={(event) => event.preventDefault()} onclick={toggleActions} class="relative flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]" aria-label="More input actions" title="More input actions" aria-expanded={actionsOpen}>
+        {#if actionsOpen}
+          <span class="absolute h-7 w-7 rotate-45 rounded-[var(--radius-sm)] bg-[color:var(--color-surface)]" aria-hidden="true"></span>
+        {/if}
+        <Plus class={`relative size-4 transition-transform ${actionsOpen ? "rotate-45" : ""}`} />
       </button>
     </div>
 
@@ -374,7 +377,7 @@
 </div>
 
 {#snippet ActionFab(label: string, disabled: boolean, onClick: () => void | Promise<void>, icon: "compact" | "image" | "mic")}
-  <button type="button" onpointerdown={(event) => event.preventDefault()} onclick={() => void onClick()} {disabled} class="flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)] shadow-lg backdrop-blur-md active:bg-[color:var(--color-surface-2)] disabled:opacity-40" aria-label={label} title={label}>
+  <button type="button" onpointerdown={(event) => event.preventDefault()} onclick={() => void onClick()} {disabled} class="flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)] shadow-lg shadow-black/20 backdrop-blur-md active:opacity-85 disabled:border-[color:var(--color-border)] disabled:bg-[color:var(--color-surface)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-60" aria-label={label} title={label}>
     {#if icon === "compact"}<Archive class="size-4" />{:else if icon === "image"}<ImagePlus class="size-4" />{:else}<Mic class="size-4" />{/if}
   </button>
 {/snippet}
