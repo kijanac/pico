@@ -1,7 +1,7 @@
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import type { ApiClient } from "@/shared/lib/api-client";
-import type { QueueState, Commands, SessionControls, SessionStats, SessionTree } from "@pi-mobile/protocol";
+import type { QueueState, SessionControls, SessionStats, SessionTree } from "@pi-mobile/protocol";
 import { getBridgeClient } from "@/shared/lib/bridge-client";
 
 function client(): ApiClient {
@@ -18,10 +18,6 @@ export function getSessionQueue(sessionId: string): Promise<QueueState> {
 
 export function clearSessionQueue(sessionId: string): Promise<QueueState> {
   return client().clearSessionQueue(sessionId);
-}
-
-export function listSessionCommands(sessionId: string): Promise<Commands> {
-  return client().listCommands(sessionId);
 }
 
 export function getSessionSettings(sessionId: string): Promise<SessionControls> {

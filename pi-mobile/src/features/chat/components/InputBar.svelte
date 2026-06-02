@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick, untrack } from "svelte";
-  import { ArrowUp, ListTodo, MicOff, Plus, Square } from "@lucide/svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
+  import { ArrowUp, ImagePlus, ListTodo, Mic, MicOff, Plus, Square } from "@lucide/svelte";
   import type { ImageAttachment, QueueState } from "@pi-mobile/protocol";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { createSpeechRecognitionState } from "@/shared/mobile/speech.svelte";
@@ -11,9 +11,7 @@
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
   import { Button } from "@/shared/ui/button";
   import ImageTray from "@/features/chat/components/ImageTray.svelte";
-  import InputAddSheet from "@/features/chat/components/InputAddSheet.svelte";
   import QueuedMessagesSheet from "@/features/chat/components/QueuedMessagesSheet.svelte";
-  import SlashPalette from "@/features/chat/components/SlashPalette.svelte";
 
   const LONG_PRESS_MS = 500;
   const MAX_IMAGES = 4;
@@ -21,11 +19,9 @@
 
   let { sessionId }: { sessionId: string } = $props();
 
-  let textarea = $state<HTMLTextAreaElement | null>(null);
   let value = $state("");
   let composing = $state(false);
   let holding = $state(false);
-  let paletteOpen = $state(false);
   let actionsOpen = $state(false);
   let queueOpen = $state(false);
   let images = $state<ImageAttachment[]>([]);
@@ -82,6 +78,19 @@
     }, DRAFT_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
+  });
+
+  $effect(() => {
+    if (!actionsOpen) return;
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-input-actions]")) return;
+      actionsOpen = false;
+    };
+
+    window.addEventListener("pointerdown", closeOnOutsidePointerDown, { capture: true });
+    return () => window.removeEventListener("pointerdown", closeOnOutsidePointerDown, { capture: true });
   });
 
   function autosize(node: HTMLTextAreaElement, _value: string) {
@@ -143,25 +152,6 @@
     }
   }
 
-  function insertCommand(text: string): void {
-    draftEditVersion += 1;
-    const start = textarea?.selectionStart ?? value.length;
-    const end = textarea?.selectionEnd ?? value.length;
-    const before = value.slice(0, start);
-    const after = value.slice(end);
-    const prefix = before.length === 0 || /\s$/.test(before) ? before : `${before} `;
-    const needsSuffixSpace = after.length > 0 && !/^\s/.test(after) && !/\s$/.test(text);
-    const suffix = needsSuffixSpace ? ` ${after}` : after;
-    value = `${prefix}${text}${suffix}`;
-    paletteOpen = false;
-    void tick().then(() => {
-      textarea?.focus();
-      const cursor = prefix.length + text.length + (needsSuffixSpace ? 1 : 0);
-      textarea?.setSelectionRange(cursor, cursor);
-    });
-  }
-
-
   const sendPress = createLongPress({
     delayMs: LONG_PRESS_MS,
     enabled: () => hasSendable && canSend,
@@ -178,8 +168,13 @@
     submit("steer");
   }
 
-  function openCommands(): void {
-    paletteOpen = true;
+  function toggleActions(): void {
+    actionsOpen = !actionsOpen;
+  }
+
+  async function runAction(action: () => void | Promise<void>): Promise<void> {
+    actionsOpen = false;
+    await action();
   }
 
   async function attachImages(): Promise<void> {
@@ -238,13 +233,20 @@
   <ImageTray {images} onRemove={removeImage} />
 
   <div class="flex items-start gap-1.5 px-2 py-2">
-    <button type="button" onclick={() => { void refreshQueueCount(); actionsOpen = true; }} class="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]" aria-label="More input actions" title="More input actions">
-      <Plus class="size-4" />
-    </button>
+    <div class="relative shrink-0" data-input-actions>
+      {#if actionsOpen}
+        <div class="absolute bottom-10 left-0 z-40 flex flex-col gap-1.5 pb-1">
+          {@render ActionFab("Attach image", images.length >= MAX_IMAGES, () => runAction(attachImages), "image")}
+          {@render ActionFab("Dictate", stt.available === false, () => runAction(toggleMic), "mic")}
+        </div>
+      {/if}
+      <button type="button" onpointerdown={(event) => event.preventDefault()} onclick={toggleActions} class={`flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] transition-transform active:bg-[color:var(--color-surface)] ${actionsOpen ? "rotate-45 bg-[color:var(--color-surface)]" : ""}`} aria-label="More input actions" title="More input actions" aria-expanded={actionsOpen}>
+        <Plus class="size-4" />
+      </button>
+    </div>
 
     <div class="min-h-9 flex-1 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] focus-within:border-[color:var(--color-border-strong)]">
       <textarea
-        bind:this={textarea}
         bind:value
         use:autosize={value}
         oninput={() => (draftEditVersion += 1)}
@@ -298,18 +300,6 @@
     {/if}
   </div>
 
-  <SlashPalette bind:open={paletteOpen} {sessionId} onPick={insertCommand} />
-
-  <InputAddSheet
-    bind:open={actionsOpen}
-    imageCount={images.length}
-    maxImages={MAX_IMAGES}
-    speechAvailable={stt.available}
-    onAttachImages={attachImages}
-    onToggleMic={toggleMic}
-    onOpenCommands={openCommands}
-  />
-
   <QueuedMessagesSheet
     bind:open={queueOpen}
     queue={queueState}
@@ -320,3 +310,9 @@
     onClear={clearQueuedMessages}
   />
 </div>
+
+{#snippet ActionFab(label: string, disabled: boolean, onClick: () => void | Promise<void>, icon: "image" | "mic")}
+  <button type="button" onpointerdown={(event) => event.preventDefault()} onclick={() => void onClick()} {disabled} class="flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)] shadow-lg backdrop-blur-md active:bg-[color:var(--color-surface-2)] disabled:opacity-40" aria-label={label} title={label}>
+    {#if icon === "image"}<ImagePlus class="size-4" />{:else}<Mic class="size-4" />{/if}
+  </button>
+{/snippet}
