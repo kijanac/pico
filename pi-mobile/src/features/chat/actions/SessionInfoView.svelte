@@ -48,6 +48,7 @@
     <div class="space-y-2 text-[12px]">
       {@render InfoRow("session id", stats.sessionId)}
       {@render InfoRow("file", stats.sessionFile ?? "ephemeral")}
+      {@render InfoRow("cwd", stats.cwd)}
       {@render InfoRow("messages", String(stats.totalMessages))}
       {@render InfoRow("user / assistant", `${stats.userMessages} / ${stats.assistantMessages}`)}
       {@render InfoRow("tools", `${stats.toolCalls} calls · ${stats.toolResults} results`)}

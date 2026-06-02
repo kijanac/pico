@@ -17,6 +17,7 @@ import {
   type EditToolInput,
   type ReadToolInput,
   type SessionEntry,
+  type SessionStats as PiSdkSessionStats,
   type WriteToolInput,
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage as PiAssistantMessage, Model } from "@earendil-works/pi-ai";
@@ -419,6 +420,20 @@ const assistantText = (content: PiAssistantMessage["content"]): string =>
     .map((part) => part.text)
     .join("");
 
+const sessionStatsWithCwd = (stats: PiSdkSessionStats, cwd: string): SessionStats => ({
+  ...(stats.sessionFile ? { sessionFile: stats.sessionFile } : {}),
+  sessionId: stats.sessionId,
+  cwd,
+  userMessages: stats.userMessages,
+  assistantMessages: stats.assistantMessages,
+  toolCalls: stats.toolCalls,
+  toolResults: stats.toolResults,
+  totalMessages: stats.totalMessages,
+  tokens: { ...stats.tokens },
+  cost: stats.cost,
+  ...(stats.contextUsage ? { contextUsage: stats.contextUsage } : {}),
+});
+
 const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
   const logEntries: LogEntry[] = [];
   const byToolCallId = new Map<string, ToolCallMessage>();
@@ -739,7 +754,7 @@ const wirePiSession = (
           try: () => setSessionSetting(piSession, key, value),
           catch: (e) => e instanceof PiError ? e : new PiError(`patchSetting failed: ${String(e)}`),
         }),
-      getStats: () => Effect.sync(() => piSession.getSessionStats() as SessionStats),
+      getStats: () => Effect.sync(() => sessionStatsWithCwd(piSession.getSessionStats(), meta.cwd)),
       getLog: () => Effect.sync(() => logEntriesFromCurrentBranch(piSession)),
       getTree: () => Effect.sync(() => flattenSessionTree(piSession)),
       navigateTree: (entryId, summarize) =>

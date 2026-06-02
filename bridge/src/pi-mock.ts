@@ -216,6 +216,7 @@ const makeMockSession = (opts: {
       getStats: () =>
         Effect.succeed({
           sessionId: meta.id,
+          cwd: meta.cwd,
           userMessages: 0,
           assistantMessages: 0,
           toolCalls: 0,

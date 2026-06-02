@@ -11,7 +11,8 @@
   import InputBar from "@/features/chat/components/InputBar.svelte";
   import SessionAgentActions from "@/features/chat/components/SessionAgentActions.svelte";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
-  import { formatCost, formatTokens, shortPath } from "@/shared/lib/format";
+  import { formatCost, formatTokens } from "@/shared/lib/format";
+  import { cwdDisplayName } from "@/shared/lib/path-display";
   import StatusDot from "@/shared/components/StatusDot.svelte";
   import { Button } from "@/shared/ui/button";
   import EdgeSwipeBack from "@/shared/components/EdgeSwipeBack.svelte";
@@ -45,7 +46,7 @@
           <div class="min-w-0 flex-1">
             <div class="truncate text-[13px] font-medium leading-tight">{session.title}</div>
             <div class="truncate text-[10px] text-[color:var(--color-fg-faint)]">
-              {shortPath(session.cwd, 2)}{session.branch ? ` · ${session.branch}` : ""}
+              {cwdDisplayName(session.cwd)}{session.branch ? ` · ${session.branch}` : ""}
             </div>
           </div>
         </div>

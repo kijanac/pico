@@ -355,6 +355,7 @@ export type ContextUsage = v.InferOutput<typeof ContextUsage>;
 export const SessionStats = v.object({
   sessionFile: v.optional(v.string()),
   sessionId: v.string(),
+  cwd: v.string(),
   userMessages: v.number(),
   assistantMessages: v.number(),
   toolCalls: v.number(),

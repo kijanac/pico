@@ -2,7 +2,8 @@
   import { GitBranch, Plus, Settings as SettingsIcon } from "@lucide/svelte";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
   import StatusDot from "@/shared/components/StatusDot.svelte";
-  import { formatCost, relativeTime, shortPath } from "@/shared/lib/format";
+  import { formatCost, relativeTime } from "@/shared/lib/format";
+  import { cwdDisplayName } from "@/shared/lib/path-display";
 </script>
 
 <div class="flex min-h-dvh flex-col bg-[color:var(--color-bg)]">
@@ -26,7 +27,7 @@
             <span class="text-[10px] tabular-nums text-[color:var(--color-fg-faint)]">{relativeTime(session.updatedAt)}</span>
           </div>
           <div class="flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
-            <span class="truncate">{shortPath(session.cwd, 2)}</span>
+            <span class="truncate">{cwdDisplayName(session.cwd)}</span>
             {#if session.branch}
               <span class="flex shrink-0 items-center gap-1">
                 <GitBranch class="size-2.5" />

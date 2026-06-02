@@ -11,7 +11,8 @@
   import PullToRefresh from "@/shared/components/PullToRefresh.svelte";
   import SwipeActionRow from "@/shared/components/SwipeActionRow.svelte";
   import { haptics } from "@/shared/mobile/haptics";
-  import { formatCost, relativeTime, shortPath } from "@/shared/lib/format";
+  import { formatCost, relativeTime } from "@/shared/lib/format";
+  import { cwdDisplayName } from "@/shared/lib/path-display";
   import { Button } from "@/shared/ui/button";
   import * as Dialog from "@/shared/ui/dialog";
 
@@ -72,8 +73,11 @@
   }
 </script>
 
-<main class="flex min-h-0 flex-1 flex-col px-4 py-[calc(env(safe-area-inset-top)+16px)]" ontouchstart={closeOpenSwipeRow}>
-  <header class="flex items-center justify-between gap-3">
+<main
+  class="flex min-h-0 flex-1 flex-col pt-[calc(env(safe-area-inset-top)+16px)]"
+  ontouchstart={closeOpenSwipeRow}
+>
+  <header class="flex items-center justify-between gap-3 px-3">
     <div class="flex items-baseline gap-2">
       <h1 class="text-[13px] font-medium">{sessionListState.archivedView ? "archived" : "sessions"}</h1>
       <span class="text-[10px] text-[color:var(--color-fg-faint)]">{sessionListState.visibleCount}</span>
@@ -93,7 +97,9 @@
   </header>
 
   {#if sessionListState.error}
-    <div class="mt-4 rounded-[var(--radius-sm)] border border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/8 px-3 py-2 text-[12px] text-[color:var(--color-danger)]">
+    <div
+      class="mx-3 mt-4 rounded-[var(--radius-sm)] border border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/8 px-3 py-2 text-[12px] text-[color:var(--color-danger)]"
+    >
       {sessionListState.error}
       <button type="button" class="ml-2 underline opacity-70" onclick={() => sessionListState.refresh()}>
         retry
@@ -136,7 +142,7 @@
                   <span class="text-[10px] tabular-nums text-[color:var(--color-fg-faint)]">{relativeTime(session.updatedAt)}</span>
                 </div>
                 <div class="flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
-                  <span class="truncate">{shortPath(session.cwd, 2)}</span>
+                  <span class="truncate">{cwdDisplayName(session.cwd)}</span>
                   {#if session.branch}<span class="shrink-0">{session.branch}</span>{/if}
                   <span class="ml-auto shrink-0 tabular-nums">{formatCost(session.costUsd)}</span>
                 </div>
@@ -148,8 +154,13 @@
     {/if}
   </PullToRefresh>
 
-  <div class="pt-3" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem)">
-    <Button type="button" class="h-10 w-full" disabled={sessionListState.creating} onclick={() => (newSessionOpen = true)}>
+  <div class="p-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
+    <Button
+      type="button"
+      class="h-10 w-full"
+      disabled={sessionListState.creating}
+      onclick={() => (newSessionOpen = true)}
+    >
       <Plus class="size-3.5" />
       new session
     </Button>
