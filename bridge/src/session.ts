@@ -41,7 +41,6 @@ interface ManagedSessionState {
   readonly pi: PiSession;
   readonly pubsub: PubSub.PubSub<WireEvent>;
   readonly seq: Ref.Ref<number>;
-  readonly deltaBuffers: Ref.Ref<Map<string, { text: string; seq: number }>>;
   readonly pendingSends: Ref.Ref<PendingSend[]>;
   readonly compacting: Ref.Ref<boolean>;
 }
@@ -276,39 +275,7 @@ const make = Effect.gen(function* () {
             yield* Ref.update(ms.meta, (m) => ({ ...m, updatedAt: new Date().toISOString() }));
           }
 
-          if (event.t === "assistant_delta") {
-            yield* Ref.update(ms.deltaBuffers, (m) => {
-              const next = new Map(m);
-              const cur = next.get(event.id);
-              next.set(event.id, {
-                text: cur ? cur.text + event.text : event.text,
-                seq: event.seq,
-              });
-              return next;
-            });
-          } else if (event.t === "log_reset") {
-            yield* Ref.set(ms.deltaBuffers, new Map());
-          } else if (event.t === "assistant_end") {
-            const buffers = yield* Ref.get(ms.deltaBuffers);
-            const buf = buffers.get(event.id);
-            if (buf) {
-              const coalesced: WireEvent = {
-                t: "assistant_delta",
-                seq: buf.seq,
-                id: event.id,
-                text: buf.text,
-              };
-              yield* store.appendEvent(sessionId, coalesced);
-              yield* Ref.update(ms.deltaBuffers, (m) => {
-                const next = new Map(m);
-                next.delete(event.id);
-                return next;
-              });
-            }
-            yield* store.appendEvent(sessionId, event);
-          } else {
-            yield* store.appendEvent(sessionId, event);
-          }
+          yield* store.appendEvent(sessionId, event);
 
           yield* PubSub.publish(ms.pubsub, event);
 
@@ -334,9 +301,6 @@ const make = Effect.gen(function* () {
         pi: piSession,
         pubsub: yield* PubSub.unbounded<WireEvent>(),
         seq: yield* Ref.make(yield* store.maxSeq(sessionId)),
-        deltaBuffers: yield* Ref.make(
-          new Map<string, { text: string; seq: number }>(),
-        ),
         pendingSends: yield* Ref.make<PendingSend[]>([]),
         compacting: yield* Ref.make(false),
       };
@@ -421,7 +385,7 @@ const make = Effect.gen(function* () {
 
   const get = (id: string) => Effect.map(store.getSession(id), Option.map(toSessionMeta));
 
-  const subscribe = (id: string, _fromCursor: number) =>
+  const subscribe = (id: string, fromCursor: number) =>
     Stream.unwrapScoped(
       Effect.gen(function* () {
         const ms = yield* lookupOrReattach(id);
@@ -429,7 +393,6 @@ const make = Effect.gen(function* () {
         const currentMeta = yield* Ref.get(ms.meta);
         const cursorAtSubscribe = yield* Ref.get(ms.seq);
         const pending = yield* Ref.get(ms.pendingSends);
-        const entries = withPendingUserEntries(yield* ms.pi.getLog(), pending);
 
         const helloEvent: WireEvent = {
           t: "hello",
@@ -437,12 +400,19 @@ const make = Effect.gen(function* () {
           session: currentMeta,
           cursor: cursorAtSubscribe,
         };
-        const snapshotEvent: WireEvent = {
-          t: "log_reset",
-          seq: cursorAtSubscribe,
-          entries,
-        };
         const queueSnapshotEvent = queueEvent(0, pending);
+
+        let replayEvents: WireEvent[];
+        if (fromCursor < 0 || fromCursor > cursorAtSubscribe) {
+          replayEvents = [{
+            t: "log_reset",
+            seq: cursorAtSubscribe,
+            entries: withPendingUserEntries(yield* ms.pi.getLog(), pending),
+          }];
+        } else {
+          const storedEvents = yield* store.loadEventsAfter(id, fromCursor);
+          replayEvents = storedEvents.filter((event) => event.seq <= cursorAtSubscribe);
+        }
 
         const liveStream = pipe(
           Stream.fromQueue(liveQueue),
@@ -450,7 +420,7 @@ const make = Effect.gen(function* () {
         );
 
         return pipe(
-          Stream.fromIterable<WireEvent>([helloEvent, snapshotEvent, queueSnapshotEvent]),
+          Stream.fromIterable<WireEvent>([helloEvent, ...replayEvents, queueSnapshotEvent]),
           Stream.concat(liveStream),
         );
       }),

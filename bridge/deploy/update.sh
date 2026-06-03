@@ -110,6 +110,14 @@ PREVIOUS=""
 [[ ! -L "$CURRENT_LINK" ]] || PREVIOUS="$(readlink -f "$CURRENT_LINK")"
 ln -sfn "$TARGET" "$CURRENT_LINK"
 
+run_release_migrations() {
+  local usage_migration="$CURRENT_LINK/bridge/deploy/migrate-message-usage-shape.mjs"
+  if [[ -f "$usage_migration" ]]; then
+    log "running message usage migration"
+    BRIDGE_DB="$DATA_DIR/bridge.db" node "$usage_migration" "$DATA_DIR/bridge.db"
+  fi
+}
+
 rollback() {
   local reason="$1"
   state_set "$VERSION" failed "$reason"
@@ -137,6 +145,8 @@ sync_deploy_files() {
     log "skipping systemd unit refresh; /etc/systemd/system is not writable in this sandbox"
   fi
 }
+
+run_release_migrations
 
 log "restarting pi-bridge on $VERSION"
 if ! systemctl restart pi-bridge; then

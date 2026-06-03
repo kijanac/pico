@@ -166,6 +166,20 @@ systemctl start pi-bridge-update.service     # check now
 systemctl disable --now pi-bridge-update.timer
 ```
 
+For the message-usage wire-shape migration, release updates run the bundled
+SQLite migration before restarting the bridge. If you need a one-shot manual
+server command after publishing a release, run:
+
+```sh
+systemctl start pi-bridge-update.service && \
+  systemctl stop pi-bridge && \
+  node /opt/pi-mobile-workspace/current/bridge/deploy/migrate-message-usage-shape.mjs /var/lib/pi-bridge/bridge.db && \
+  systemctl start pi-bridge && \
+  curl -fsS http://127.0.0.1:7777/healthz
+```
+
+The migration is idempotent and intentionally does not create a DB backup.
+
 The installer also enables `pi-bridge-update.path`. The mobile app's
 Settings → `update now` button touches `/var/lib/pi-bridge/update-request`,
 which triggers the same signed, checksum-verified updater idempotently.

@@ -84,8 +84,8 @@
           <MessageInfoRow label="output" value={formatTokens(msg.usage.output)} />
           <MessageInfoRow label="cache read" value={formatTokens(msg.usage.cacheRead)} />
           <MessageInfoRow label="cache write" value={formatTokens(msg.usage.cacheWrite)} />
-          <MessageInfoRow label="total" value={formatTokens(msg.usage.total)} />
-          <MessageInfoRow label="cost" value={formatCost(msg.usage.cost)} />
+          <MessageInfoRow label="total" value={formatTokens(msg.usage.totalTokens)} />
+          <MessageInfoRow label="cost" value={formatCost(msg.usage.cost.total)} />
         </div>
       {:else}
         <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-[12px] text-[color:var(--color-fg-faint)]">

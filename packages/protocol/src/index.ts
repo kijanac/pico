@@ -63,8 +63,14 @@ export const MessageUsage = v.object({
   output: v.number(),
   cacheRead: v.number(),
   cacheWrite: v.number(),
-  total: v.number(),
-  cost: v.number(),
+  totalTokens: v.number(),
+  cost: v.object({
+    input: v.number(),
+    output: v.number(),
+    cacheRead: v.number(),
+    cacheWrite: v.number(),
+    total: v.number(),
+  }),
 });
 export type MessageUsage = v.InferOutput<typeof MessageUsage>;
 

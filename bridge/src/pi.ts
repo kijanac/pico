@@ -66,14 +66,7 @@ export type PiEmission =
         | "error"
         | "aborted";
       errorMessage?: string;
-      usage?: {
-        input: number;
-        output: number;
-        cacheRead: number;
-        cacheWrite: number;
-        total: number;
-        cost: number;
-      };
+      usage?: PiAssistantMessage["usage"];
     }
   | { t: "tool_call"; entry: ToolCallMessage }
   | {
@@ -487,18 +480,7 @@ const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
         streaming: false,
         ...(message.stopReason ? { stopReason: message.stopReason } : {}),
         ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
-        ...(message.usage
-          ? {
-              usage: {
-                input: message.usage.input,
-                output: message.usage.output,
-                cacheRead: message.usage.cacheRead,
-                cacheWrite: message.usage.cacheWrite,
-                total: message.usage.totalTokens,
-                cost: message.usage.cost.total,
-              },
-            }
-          : {}),
+        ...(message.usage ? { usage: message.usage } : {}),
       });
 
       for (const part of message.content) {
@@ -533,12 +515,6 @@ const wirePiSession = (
     let compactionId: string | null = null;
     const toolStarts = new Map<string, { startedAt: number }>();
 
-    const queueBranchSnapshot = (): void => {
-      queueMicrotask(() => {
-        Queue.unsafeOffer(q, { t: "log_reset", entries: logEntriesFromCurrentBranch(piSession) });
-      });
-    };
-
     const mapEvent = (event: AgentSessionEvent): void => {
       switch (event.type) {
         case "message_update": {
@@ -554,22 +530,31 @@ const wirePiSession = (
         }
 
         case "message_end": {
-          const msg = event.message as { role?: string };
-          if (msg.role !== "user" && msg.role !== "assistant" && msg.role !== "toolResult") return;
+          const message = event.message;
+          if (message.role !== "assistant") return;
 
-          queueBranchSnapshot();
-
-          if (msg.role === "assistant") {
-            assistantId = null;
-
-            const stats = piSession.getSessionStats();
-            Queue.unsafeOffer(q, {
-              t: "cost",
-              tokensIn: stats.tokens.input,
-              tokensOut: stats.tokens.output,
-              costUsd: stats.cost,
-            });
+          const id = assistantId ?? nextId("m");
+          if (!assistantId) {
+            const text = assistantText(message.content);
+            if (text.length > 0) Queue.unsafeOffer(q, { t: "assistant_delta", id, text });
           }
+
+          Queue.unsafeOffer(q, {
+            t: "assistant_end",
+            id,
+            ...(message.stopReason ? { stopReason: message.stopReason } : {}),
+            ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
+            ...(message.usage ? { usage: message.usage } : {}),
+          });
+          assistantId = null;
+
+          const stats = piSession.getSessionStats();
+          Queue.unsafeOffer(q, {
+            t: "cost",
+            tokensIn: stats.tokens.input,
+            tokensOut: stats.tokens.output,
+            costUsd: stats.cost,
+          });
           return;
         }
 

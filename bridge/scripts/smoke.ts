@@ -49,11 +49,15 @@ function unwrapTrpc<T>(path: string, res: Response, body: TrpcEnvelope<T>): T {
   return body.result.data;
 }
 
+type SmokeWireEvent = { t?: string; seq?: number; session?: { id?: string } };
+
+function sessionWsUrl(wsUrl: string, sessionId: string, cursor: number): string {
+  return `${wsUrl}/ws?session=${encodeURIComponent(sessionId)}&cursor=${cursor}`;
+}
+
 async function expectWsHello(wsUrl: string, sessionId: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const ws = new WebSocket(`${wsUrl}/ws?session=${encodeURIComponent(sessionId)}&cursor=0`, {
-      headers: authHeaders,
-    });
+    const ws = new WebSocket(sessionWsUrl(wsUrl, sessionId, 0), { headers: authHeaders });
     const timeout = setTimeout(() => {
       ws.close();
       reject(new Error("timed out waiting for websocket hello"));
@@ -62,7 +66,7 @@ async function expectWsHello(wsUrl: string, sessionId: string): Promise<void> {
     ws.once("error", reject);
     ws.once("message", (raw) => {
       clearTimeout(timeout);
-      const event = JSON.parse(raw.toString()) as { t?: string; session?: { id?: string } };
+      const event = JSON.parse(raw.toString()) as SmokeWireEvent;
       try {
         assert.equal(event.t, "hello");
         assert.equal(event.session?.id, sessionId);
@@ -74,6 +78,61 @@ async function expectWsHello(wsUrl: string, sessionId: string): Promise<void> {
       }
     });
   });
+}
+
+async function sendPromptOverWs(wsUrl: string, sessionId: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const ws = new WebSocket(sessionWsUrl(wsUrl, sessionId, 0), { headers: authHeaders });
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error("timed out waiting for assistant response"));
+    }, 10_000);
+
+    ws.on("error", reject);
+    ws.on("message", (raw) => {
+      const event = JSON.parse(raw.toString()) as SmokeWireEvent;
+      if (event.t === "hello") {
+        ws.send(JSON.stringify({ t: "send", text: "smoke prompt" }));
+      }
+      if (event.t === "assistant_end") {
+        clearTimeout(timeout);
+        ws.close();
+        resolve();
+      }
+    });
+  });
+}
+
+async function collectInitialReplay(wsUrl: string, sessionId: string, cursor: number): Promise<SmokeWireEvent[]> {
+  return await new Promise<SmokeWireEvent[]>((resolve, reject) => {
+    const events: SmokeWireEvent[] = [];
+    const ws = new WebSocket(sessionWsUrl(wsUrl, sessionId, cursor), { headers: authHeaders });
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error("timed out waiting for websocket replay"));
+    }, 5_000);
+
+    ws.on("error", reject);
+    ws.on("message", (raw) => {
+      const event = JSON.parse(raw.toString()) as SmokeWireEvent;
+      events.push(event);
+      if (event.t === "queue" && event.seq === 0) {
+        clearTimeout(timeout);
+        ws.close();
+        resolve(events);
+      }
+    });
+  });
+}
+
+async function expectIncrementalWsReplay(wsUrl: string, sessionId: string): Promise<void> {
+  await sendPromptOverWs(wsUrl, sessionId);
+
+  const replay = await collectInitialReplay(wsUrl, sessionId, 0);
+  assert.equal(replay[0]?.t, "hello");
+  assert(replay.some((event) => event.t === "user_message"), "replay should include journaled user message");
+  assert(replay.some((event) => event.t === "assistant_end"), "replay should include journaled assistant end");
+  assert(!replay.some((event) => event.t === "log_reset"), "fresh cursor replay should not need a full log_reset");
 }
 
 try {
@@ -156,6 +215,7 @@ try {
     assert.match(await exportRes.text(), /<!doctype html>/i);
 
     await expectWsHello(wsUrl, session.id);
+    await expectIncrementalWsReplay(wsUrl, session.id);
 
     await trpcMutation<void>(baseUrl, "sessions.remove", { id: session.id });
     const listAfter = await trpcQuery<unknown[]>(baseUrl, "sessions.list");
