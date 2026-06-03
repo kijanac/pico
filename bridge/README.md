@@ -7,7 +7,7 @@ and the [pi.dev](https://pi.dev) coding agent.
 
 | Layer          | Pick                              |
 | -------------- | --------------------------------- |
-| Runtime        | Node 24+ (run via `tsx`)          |
+| Runtime        | Node 26.1+ (run via `tsx`)        |
 | HTTP           | Hono via `@hono/node-server`      |
 | WebSocket      | `ws` package, upgrade routed via Node `server.on('upgrade')` |
 | Concurrency    | Effect — Stream / PubSub / Fiber  |

@@ -3,7 +3,7 @@
 #
 # What it does:
 #   - creates the pi-bridge system user + data dir
-#   - installs node 24+, pnpm (via corepack), tailscale if missing
+#   - installs node 26.1+, pnpm (via corepack), tailscale if missing
 #   - drops the systemd unit
 #   - seeds /etc/pi-bridge/env from env.example (only if it doesn't exist;
 #     existing secrets are preserved across re-runs)
@@ -62,18 +62,18 @@ echo "  $DATA_DIR      (db + pi sessions, HOME for $USER_NAME)"
 echo "  $WORKSPACES_DIR (git repos shown in the mobile cwd picker)"
 echo "  $ETC_DIR       (secrets, mode 0750)"
 
-step "node 24+"
-if command -v node >/dev/null 2>&1 && node --version | grep -qE '^v(2[4-9]|[3-9][0-9])\.'; then
+step "node 26.1+"
+if command -v node >/dev/null 2>&1 && node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 26 || (major === 26 && minor >= 1) ? 0 : 1)' >/dev/null 2>&1; then
   echo "  $(node --version) ok"
 else
   # NodeSource setup for Debian/Ubuntu. Skip on other distros — operator
-  # can install node 24+ by hand and re-run.
+  # can install node 26.1+ by hand and re-run.
   if command -v apt-get >/dev/null 2>&1; then
-    curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+    curl -fsSL https://deb.nodesource.com/setup_26.x | bash -
     apt-get install -y nodejs
   else
-    echo "  ERROR: node 24+ not found and this isn't an apt-based distro." >&2
-    echo "  install node 24+ manually and re-run install.sh." >&2
+    echo "  ERROR: node 26.1+ not found and this isn't an apt-based distro." >&2
+    echo "  install node 26.1+ manually and re-run install.sh." >&2
     exit 1
   fi
 fi

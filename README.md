@@ -12,7 +12,7 @@ This repository contains the mobile client and local bridge for using the pi cod
 
 ## Requirements
 
-- Node.js 24+
+- Node.js 26.1+
 - pnpm 10.5.2+
 - pi provider credentials for live bridge mode, or `PI_USE_MOCK=1` for mock mode
 

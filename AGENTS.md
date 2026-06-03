@@ -4,7 +4,7 @@
 
 This is a pnpm monorepo with two workspace packages:
 
-- `bridge/` (`pi-bridge`): Node 24+ TypeScript bridge. Main checks: `pnpm --filter pi-bridge typecheck`.
+- `bridge/` (`pi-bridge`): Node 26.1+ TypeScript bridge. Main checks: `pnpm --filter pi-bridge typecheck`.
 - `pi-mobile/` (`pi-mobile`): Solid + Capacitor client. Main check: `pnpm --filter pi-mobile build`.
 - `packages/protocol/` (`@pi-mobile/protocol`): Shared REST/WS Valibot schemas and derived TypeScript types.
 

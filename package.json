@@ -4,7 +4,7 @@
   "version": "0.9.2",
   "packageManager": "pnpm@10.5.2",
   "engines": {
-    "node": ">=24"
+    "node": ">=26.1.0"
   },
   "scripts": {
     "dev:bridge": "BRIDGE_DB=data/bridge.db PI_WORKSPACES_DIR=. pnpm --filter pi-bridge dev",

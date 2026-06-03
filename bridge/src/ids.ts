@@ -1,42 +1,13 @@
-import { randomBytes } from "node:crypto";
+import * as crypto from "node:crypto";
 
-let lastTimestamp = -Infinity;
-let sequence = 0;
-
-const formatUuid = (bytes: Uint8Array): string => {
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
-  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
+type CryptoWithUuidV7 = typeof crypto & {
+  randomUUIDv7?: () => string;
 };
 
 export function uuidv7(): string {
-  const random = randomBytes(16);
-  const timestamp = Date.now();
-
-  if (timestamp > lastTimestamp) {
-    sequence = random[6] * 0x1000000 + random[7] * 0x10000 + random[8] * 0x100 + random[9];
-    lastTimestamp = timestamp;
-  } else {
-    sequence = (sequence + 1) >>> 0;
-    if (sequence === 0) lastTimestamp += 1;
+  const randomUUIDv7 = (crypto as CryptoWithUuidV7).randomUUIDv7;
+  if (!randomUUIDv7) {
+    throw new Error("Node 26.1+ is required: node:crypto.randomUUIDv7() is unavailable");
   }
-
-  const bytes = new Uint8Array(16);
-  bytes[0] = (lastTimestamp / 0x10000000000) & 0xff;
-  bytes[1] = (lastTimestamp / 0x100000000) & 0xff;
-  bytes[2] = (lastTimestamp / 0x1000000) & 0xff;
-  bytes[3] = (lastTimestamp / 0x10000) & 0xff;
-  bytes[4] = (lastTimestamp / 0x100) & 0xff;
-  bytes[5] = lastTimestamp & 0xff;
-  bytes[6] = 0x70 | ((sequence >>> 28) & 0x0f);
-  bytes[7] = (sequence >>> 20) & 0xff;
-  bytes[8] = 0x80 | ((sequence >>> 14) & 0x3f);
-  bytes[9] = (sequence >>> 6) & 0xff;
-  bytes[10] = ((sequence & 0x3f) << 2) | (random[10] & 0x03);
-  bytes[11] = random[11];
-  bytes[12] = random[12];
-  bytes[13] = random[13];
-  bytes[14] = random[14];
-  bytes[15] = random[15];
-
-  return formatUuid(bytes);
+  return randomUUIDv7();
 }

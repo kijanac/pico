@@ -67,7 +67,7 @@ ssh root@YOURBOX 'bash /tmp/pi-bridge-deploy/install.sh'
 
 1. Creates the `pi-bridge` system user, `/opt/pi-mobile-workspace` source dir,
    `/var/lib/pi-bridge` data dir, and `/var/lib/pi-bridge/workspaces` for git repos.
-2. Installs node 24+ (NodeSource), pnpm 10.5.2 (via corepack), git,
+2. Installs node 26.1+ (NodeSource), pnpm 10.5.2 (via corepack), git,
    and tailscale (via the official install script) if any are missing.
 3. Drops the systemd unit, enables it (doesn't start it yet).
 4. Seeds `/etc/pi-bridge/env` from `env.example` *only if it doesn't
