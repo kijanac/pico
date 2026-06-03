@@ -41,6 +41,8 @@ interface ManagedSessionState {
   readonly pi: PiSession;
   readonly pubsub: PubSub.PubSub<WireEvent>;
   readonly seq: Ref.Ref<number>;
+  readonly subscribers: Ref.Ref<number>;
+  readonly idleEvictionTimer: Ref.Ref<ReturnType<typeof setTimeout> | null>;
   readonly pendingSends: Ref.Ref<PendingSend[]>;
   readonly compacting: Ref.Ref<boolean>;
 }
@@ -171,6 +173,8 @@ export class SessionManager extends Context.Tag("SessionManager")<
 
 export { SessionNotFound } from "./errors.ts";
 
+const IDLE_EVICT_MS = 15 * 60 * 1000;
+
 const make = Effect.gen(function* () {
   const pi = yield* PiClient;
   const store = yield* Store;
@@ -233,6 +237,54 @@ const make = Effect.gen(function* () {
       );
     });
 
+  const isEvictable = (ms: ManagedSession): Effect.Effect<boolean> =>
+    Effect.gen(function* () {
+      const [subscribers, pending, compacting, meta] = yield* Effect.all([
+        Ref.get(ms.subscribers),
+        Ref.get(ms.pendingSends),
+        Ref.get(ms.compacting),
+        Ref.get(ms.meta),
+      ]);
+
+      return subscribers === 0 &&
+        pending.length === 0 &&
+        !compacting &&
+        (meta.status === "idle" || meta.status === "error");
+    });
+
+  const clearIdleEviction = (ms: ManagedSessionState): Effect.Effect<void> =>
+    Ref.modify(ms.idleEvictionTimer, (timer) => {
+      if (timer) clearTimeout(timer);
+      return [undefined, null];
+    });
+
+  const evictIfIdle = (sessionId: string): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const map = yield* Ref.get(sessions);
+      const current = HashMap.get(map, sessionId);
+      if (Option.isNone(current)) return;
+
+      const ms = current.value;
+      yield* Ref.set(ms.idleEvictionTimer, null);
+      if (!(yield* isEvictable(ms))) return;
+
+      yield* Effect.logInfo(`[session] evict idle session=${sessionId}`);
+      yield* Fiber.interrupt(ms.pumpFiber);
+      yield* ms.pi.close();
+      yield* Ref.update(sessions, (m) => HashMap.remove(m, sessionId));
+    });
+
+  const scheduleIdleEviction = (sessionId: string, ms: ManagedSessionState): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      yield* clearIdleEviction(ms);
+      yield* Ref.set(
+        ms.idleEvictionTimer,
+        setTimeout(() => {
+          void Effect.runPromise(evictIfIdle(sessionId).pipe(Effect.ignoreLogged));
+        }, IDLE_EVICT_MS).unref(),
+      );
+    });
+
   const startPump = (
     ms: ManagedSessionState,
     sessionId: string,
@@ -282,10 +334,16 @@ const make = Effect.gen(function* () {
           if (event.t === "compaction") {
             if (event.entry.status === "running") {
               yield* Ref.set(ms.compacting, true);
+              yield* clearIdleEviction(ms);
             } else {
               yield* Ref.set(ms.compacting, false);
               yield* flushCompactionQueue(ms, sessionId, { willRetry: event.entry.willRetry });
+              yield* scheduleIdleEviction(sessionId, ms);
             }
+          } else if (event.t === "status" && (event.status === "idle" || event.status === "error")) {
+            yield* scheduleIdleEviction(sessionId, ms);
+          } else if (event.t === "status") {
+            yield* clearIdleEviction(ms);
           }
         }),
       ),
@@ -301,6 +359,8 @@ const make = Effect.gen(function* () {
         pi: piSession,
         pubsub: yield* PubSub.unbounded<WireEvent>(),
         seq: yield* Ref.make(yield* store.maxSeq(sessionId)),
+        subscribers: yield* Ref.make(0),
+        idleEvictionTimer: yield* Ref.make<ReturnType<typeof setTimeout> | null>(null),
         pendingSends: yield* Ref.make<PendingSend[]>([]),
         compacting: yield* Ref.make(false),
       };
@@ -419,9 +479,17 @@ const make = Effect.gen(function* () {
           Stream.filter((e) => e.seq > cursorAtSubscribe),
         );
 
+        yield* clearIdleEviction(ms);
+        yield* Ref.update(ms.subscribers, (n) => n + 1);
+
         return pipe(
           Stream.fromIterable<WireEvent>([helloEvent, ...replayEvents, queueSnapshotEvent]),
           Stream.concat(liveStream),
+          Stream.ensuring(
+            Ref.update(ms.subscribers, (n) => Math.max(0, n - 1)).pipe(
+              Effect.andThen(scheduleIdleEviction(id, ms)),
+            ),
+          ),
         );
       }),
     );
@@ -581,6 +649,7 @@ const make = Effect.gen(function* () {
       const map = yield* Ref.get(sessions);
       const live = HashMap.get(map, id);
       if (Option.isSome(live)) {
+        yield* clearIdleEviction(live.value);
         yield* Fiber.interrupt(live.value.pumpFiber);
         yield* live.value.pi.close();
         yield* Ref.update(sessions, (m) => HashMap.remove(m, id));
@@ -593,6 +662,7 @@ const make = Effect.gen(function* () {
       const map = yield* Ref.get(sessions);
       yield* Effect.forEach(HashMap.values(map), (live) =>
         Effect.all([
+          clearIdleEviction(live),
           Fiber.interrupt(live.pumpFiber),
           live.pi.close(),
         ], { discard: true }).pipe(Effect.ignoreLogged),

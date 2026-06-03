@@ -2,24 +2,23 @@
 
 This note captures the biggest principled performance opportunities observed in the pi-mobile workspace, with emphasis on scenarios where each optimization is likely to matter most.
 
-## 1. Make the bridge session log/reconnect path incremental
+## 1. ✅ Make the bridge session log/reconnect path incremental
+
+**Status:** shipped in `v0.9.2`.
 
 **Likely high-impact scenarios:** long-running sessions, large tool outputs, many read/write/edit events, flaky mobile connectivity, repeated background/foreground reconnects over cellular or Tailscale.
 
-The bridge currently does a lot of full-session work:
+Completed:
 
-- `bridge/src/pi.ts` emits full `log_reset` snapshots from the current branch on message boundaries.
-- `bridge/src/session.ts` subscribes clients with `hello + log_reset + queue snapshot` and does not use the requested cursor for incremental replay.
-- `bridge/src/store.ts` stores event payloads as JSON, so full snapshots can become repeated large rows.
-- `store.loadEventsAfter()` exists but is not used by the WebSocket subscribe path.
+- Removed routine full `log_reset` snapshots from normal `message_end` handling.
+- `SessionManager.subscribe(...)` now uses the requested cursor and replays `store.loadEventsAfter(sessionId, cursor)` for valid cursors.
+- `log_reset` remains available for true reset/fallback cases such as branch navigation or invalid/ahead cursors.
+- Assistant usage shape now matches pi-ai's usage shape directly, avoiding bridge-side translation.
+- Added a one-shot/idempotent SQLite migration for old message-usage payloads.
+- Added smoke coverage that verifies valid cursor replay uses journaled events instead of `log_reset`.
 
-This can create O(n²)-style write/storage amplification as a transcript grows, and O(n) reconnect payloads even when the client only missed a few events.
+Remaining follow-up ideas:
 
-Principled direction:
-
-- Treat the event table as an incremental journal.
-- Use the client cursor to replay `loadEventsAfter(sessionId, cursor)` when possible.
-- Reserve `log_reset` for true branch changes, compaction, or explicit checkpoints.
 - Add snapshot/checkpoint compaction: keep a latest snapshot plus incremental events after it, then prune old redundant snapshots.
 - Avoid storing very large tool results repeatedly; store large blobs once and reference them when appropriate.
 
@@ -81,21 +80,22 @@ Principled direction:
 
 ## 6. Add bridge idle eviction and backpressure
 
+**Status:** partial. A coarse idle-session eviction pass is implemented locally: when a managed session has no subscribers, no pending sends, is not compacting, and is idle/error for 15 minutes, the bridge closes the `PiSession` and removes it from the in-memory session map. Reopening the session resumes it from disk.
+
 **Likely high-impact scenarios:** bridge running for days or weeks, many historical sessions, slow or unstable clients, multiple reconnecting mobile devices.
 
 Managed sessions are cached in memory once created or resumed, and several queues/pubsubs are unbounded. WebSocket sends do not currently account for client-side backpressure.
 
-Principled direction:
+Remaining direction:
 
-- Track subscriber counts per managed session.
-- Close/evict idle `PiSession`s after a timeout; resume on demand.
 - Bound queues and define overflow behavior.
 - Monitor WebSocket `bufferedAmount`; batch, pause, or disconnect slow clients.
 - Batch SQLite writes after the full-snapshot issue is addressed.
+- Make eviction tunable/observable if needed.
 
 ## Expected priority order
 
-1. Bridge journal/reconnect protocol.
+1. ✅ Bridge journal/reconnect protocol — shipped in `v0.9.2`.
 2. Mobile chat virtualization plus large-result collapsing.
 3. Streaming delta batching.
 4. Lazy/off-thread highlighting and diffing.
