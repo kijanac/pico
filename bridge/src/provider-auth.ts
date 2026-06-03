@@ -1,7 +1,7 @@
+import { randomUUIDv7 } from "node:crypto";
 import { Context, Effect, Layer } from "effect";
 import type { AuthLoginJob, AuthProvider, AuthProviders } from "@pi-mobile/protocol";
 import { getAgentServices, PiError, reloadAgentAuth } from "./pi.ts";
-import { uuidv7 } from "./ids.ts";
 
 interface AuthJobState {
   job: AuthLoginJob;
@@ -85,7 +85,7 @@ export const ProviderAuthLive = Layer.effect(
           Effect.sync(() => {
             const provider = services.modelRegistry.authStorage.getOAuthProviders().find((p) => p.id === providerId);
             if (!provider) throw new PiError(`auth provider not found: ${providerId}`);
-            const id = uuidv7();
+            const id = randomUUIDv7();
             const abort = new AbortController();
             const state: AuthJobState = {
               abort,

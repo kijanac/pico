@@ -1,3 +1,4 @@
+import { randomUUIDv7 } from "node:crypto";
 import { Effect, Fiber, Layer, Queue, Random, Ref, Stream } from "effect";
 import type { SessionControls, SessionMeta } from "@pi-mobile/protocol";
 import { SessionNotFound } from "./errors.ts";
@@ -7,7 +8,6 @@ import {
   type PiEmission,
   type PiSession,
 } from "./pi.ts";
-import { uuidv7 } from "./ids.ts";
 
 const sleepRand = (minMs: number, spreadMs: number) =>
   Effect.flatMap(Random.next, (r) =>
@@ -66,14 +66,14 @@ const scriptedFlow = (q: Queue.Queue<PiEmission>, userText: string) =>
     yield* Queue.offer(q, { t: "status", status: "thinking" });
     yield* Effect.sleep("400 millis");
 
-    const id1 = uuidv7();
+    const id1 = randomUUIDv7();
     for (const chunk of chunks(SCRIPT_REPLY_1, 3, 5)) {
       yield* Queue.offer(q, { t: "assistant_delta", id: id1, text: chunk });
       yield* sleepRand(25, 60);
     }
     yield* Queue.offer(q, { t: "assistant_end", id: id1 });
 
-    const tcId = uuidv7();
+    const tcId = randomUUIDv7();
     yield* Queue.offer(q, {
       t: "tool_call",
       entry: {
@@ -95,14 +95,14 @@ const scriptedFlow = (q: Queue.Queue<PiEmission>, userText: string) =>
       durationMs: 14,
     });
 
-    const id2 = uuidv7();
+    const id2 = randomUUIDv7();
     for (const chunk of chunks(SCRIPT_REPLY_2, 3, 5)) {
       yield* Queue.offer(q, { t: "assistant_delta", id: id2, text: chunk });
       yield* sleepRand(20, 50);
     }
     yield* Queue.offer(q, { t: "assistant_end", id: id2 });
 
-    const editId = uuidv7();
+    const editId = randomUUIDv7();
     yield* Queue.offer(q, {
       t: "tool_call",
       entry: {
@@ -132,7 +132,7 @@ const scriptedFlow = (q: Queue.Queue<PiEmission>, userText: string) =>
       entry: {
         kind: "permission",
         toolKind: "builtin",
-        id: uuidv7(),
+        id: randomUUIDv7(),
         at: Date.now(),
         tool: "bash",
         args: { command: "openssl genrsa -out keys/private.pem 2048" },
@@ -154,7 +154,7 @@ const makeMockSession = (opts: {
     > | null>(null);
 
     const meta: SessionMeta = {
-      id: uuidv7(),
+      id: randomUUIDv7(),
       title: opts.title,
       cwd: opts.cwd,
       status: "idle",
