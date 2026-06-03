@@ -16,8 +16,10 @@ import { PiClient, type PiSession, type PiEmission, type ExportedHtml, PiError, 
 import { parseWireEvent } from "@pi-mobile/protocol";
 import type {
   Commands,
+  LogEntry,
   PermissionChoice,
   SessionMeta,
+  QueuedMessage,
   QueueState,
   SessionControls,
   SessionStats,
@@ -26,9 +28,11 @@ import type {
 } from "@pi-mobile/protocol";
 import { Store } from "./store.ts";
 import { toSessionMeta } from "./session-record.ts";
+import { SessionNotFound } from "./errors.ts";
 
-type QueuedUserMessage = Extract<WireEvent, { t: "queue" }>["queued"][number];
-interface QueuedCompactionMessage extends QueuedUserMessage {
+interface PendingSend extends QueuedMessage {
+  readonly at: number;
+  readonly phase: "held_for_compaction" | "sdk_queue";
   readonly images?: SendImage[];
 }
 
@@ -38,14 +42,17 @@ interface ManagedSessionState {
   readonly pubsub: PubSub.PubSub<WireEvent>;
   readonly seq: Ref.Ref<number>;
   readonly deltaBuffers: Ref.Ref<Map<string, { text: string; seq: number }>>;
-  readonly queuedMessages: Ref.Ref<QueuedUserMessage[]>;
-  readonly compactionQueuedMessages: Ref.Ref<QueuedCompactionMessage[]>;
+  readonly pendingSends: Ref.Ref<PendingSend[]>;
   readonly compacting: Ref.Ref<boolean>;
 }
 
 interface ManagedSession extends ManagedSessionState {
   readonly pumpFiber: Fiber.RuntimeFiber<void, PiError>;
 }
+
+type ReattachWaiter = Deferred.Deferred<ManagedSession, PiError | SessionNotFound>;
+type ReattachMap = HashMap.HashMap<string, ReattachWaiter>;
+type ReattachDecision = readonly [ReattachWaiter, ReattachMap];
 
 function queuedCounts(values: string[]): Map<string, number> {
   const counts = new Map<string, number>();
@@ -61,16 +68,21 @@ function consumeQueued(counts: Map<string, number>, text: string): boolean {
   return true;
 }
 
-function reconcileQueuedMessages(
-  pending: QueuedUserMessage[],
+function reconcileSdkQueue(
+  pending: PendingSend[],
   queue: { steering: readonly string[]; followUp: readonly string[] },
-): QueuedUserMessage[] {
+): PendingSend[] {
   const steering = queuedCounts([...queue.steering]);
   const followUp = queuedCounts([...queue.followUp]);
-  const next: QueuedUserMessage[] = [];
+  const next: PendingSend[] = [];
 
   for (let index = pending.length - 1; index >= 0; index -= 1) {
     const message = pending[index];
+    if (message.phase === "held_for_compaction") {
+      next.push(message);
+      continue;
+    }
+
     const counts = message.queueKind === "follow_up" ? followUp : steering;
     if (consumeQueued(counts, message.text)) next.push(message);
   }
@@ -78,15 +90,25 @@ function reconcileQueuedMessages(
   return next.reverse();
 }
 
-function publicCompactionQueue(messages: readonly QueuedCompactionMessage[]): QueuedUserMessage[] {
-  return messages.map(({ id, text, queueKind }) => ({ id, text, queueKind }));
+function projectQueue(pending: readonly PendingSend[]): QueueState {
+  return {
+    queued: pending.map(({ id, text, queueKind }) => ({ id, text, queueKind })),
+  };
 }
 
-function queueTexts(messages: readonly QueuedUserMessage[]): QueueState {
-  return {
-    steering: messages.filter((message) => message.queueKind === "steer").map((message) => message.text),
-    followUp: messages.filter((message) => message.queueKind === "follow_up").map((message) => message.text),
-  };
+function withPendingUserEntries(entries: readonly LogEntry[], pending: readonly PendingSend[]): LogEntry[] {
+  const ids = new Set(entries.map((entry) => entry.id));
+  const pendingEntries: LogEntry[] = pending
+    .filter((message) => !ids.has(message.id))
+    .map(({ id, at, text, queueKind }) => ({
+      kind: "user",
+      id,
+      at,
+      text,
+      queued: true,
+      queueKind,
+    }));
+  return [...entries, ...pendingEntries];
 }
 
 export class SessionManager extends Context.Tag("SessionManager")<
@@ -149,7 +171,6 @@ export class SessionManager extends Context.Tag("SessionManager")<
 >() {}
 
 export { SessionNotFound } from "./errors.ts";
-import { SessionNotFound } from "./errors.ts";
 
 const make = Effect.gen(function* () {
   const pi = yield* PiClient;
@@ -163,19 +184,16 @@ const make = Effect.gen(function* () {
     >(),
   );
 
+  const queueEvent = (seq: number, pending: readonly PendingSend[]): WireEvent =>
+    parseWireEvent({ t: "queue", seq, ...projectQueue(pending) });
+
   const publishQueueSnapshot = (
     ms: ManagedSessionState,
     sessionId: string,
   ): Effect.Effect<void, PiError> =>
     Effect.gen(function* () {
       const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
-      const queued = yield* Ref.get(ms.queuedMessages);
-      const compactionQueued = yield* Ref.get(ms.compactionQueuedMessages);
-      const event = parseWireEvent({
-        t: "queue",
-        seq,
-        queued: [...queued, ...publicCompactionQueue(compactionQueued)],
-      });
+      const event = queueEvent(seq, yield* Ref.get(ms.pendingSends));
       yield* store.appendEvent(sessionId, event);
       yield* PubSub.publish(ms.pubsub, event);
     });
@@ -186,23 +204,29 @@ const make = Effect.gen(function* () {
     opts?: { willRetry?: boolean },
   ): Effect.Effect<void, PiError> =>
     Effect.gen(function* () {
-      const queued = yield* Ref.getAndSet(ms.compactionQueuedMessages, []);
-      if (queued.length === 0) return;
+      const pending = yield* Ref.get(ms.pendingSends);
+      const held = pending.filter((message) => message.phase === "held_for_compaction");
+      if (held.length === 0) return;
 
-      const messagesForSdk = queued.map(({ text, queueKind, images }) => ({
+      const unheld = pending.filter((message) => message.phase !== "held_for_compaction");
+      const sdkQueued = (opts?.willRetry ? held : held.slice(1)).map(
+        (message): PendingSend => ({ ...message, phase: "sdk_queue" }),
+      );
+      const afterFlush = [...unheld, ...sdkQueued];
+      const messagesForSdk = held.map(({ text, queueKind, images }) => ({
         text,
-        mode: queueKind === "follow_up" ? "follow_up" as const : "steer" as const,
+        mode: queueKind,
         ...(images && images.length > 0 ? { images } : {}),
       }));
-      const stillQueued = publicCompactionQueue(opts?.willRetry ? queued : queued.slice(1));
+
       yield* ms.pi.flushAfterCompaction(messagesForSdk, opts).pipe(
         Effect.tap(() =>
-          Ref.update(ms.queuedMessages, (pending) => [...pending, ...stillQueued]).pipe(
+          Ref.set(ms.pendingSends, afterFlush).pipe(
             Effect.andThen(publishQueueSnapshot(ms, sessionId)),
           ),
         ),
         Effect.catchAll((error) =>
-          Ref.set(ms.compactionQueuedMessages, queued).pipe(
+          Ref.set(ms.pendingSends, pending).pipe(
             Effect.andThen(publishQueueSnapshot(ms, sessionId)),
             Effect.andThen(Effect.logError("[session] failed to flush compaction queue", error)),
           ),
@@ -220,16 +244,10 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
           const event = emission.t === "queue"
-            ? parseWireEvent({
-                t: "queue",
+            ? queueEvent(
                 seq,
-                queued: [
-                  ...(yield* Ref.updateAndGet(ms.queuedMessages, (pending) =>
-                    reconcileQueuedMessages(pending, emission),
-                  )),
-                  ...publicCompactionQueue(yield* Ref.get(ms.compactionQueuedMessages)),
-                ],
-              })
+                yield* Ref.updateAndGet(ms.pendingSends, (pending) => reconcileSdkQueue(pending, emission)),
+              )
             : parseWireEvent({ ...emission, seq });
 
           if (event.t === "status") {
@@ -319,8 +337,7 @@ const make = Effect.gen(function* () {
         deltaBuffers: yield* Ref.make(
           new Map<string, { text: string; seq: number }>(),
         ),
-        queuedMessages: yield* Ref.make<QueuedUserMessage[]>([]),
-        compactionQueuedMessages: yield* Ref.make<QueuedCompactionMessage[]>([]),
+        pendingSends: yield* Ref.make<PendingSend[]>([]),
         compacting: yield* Ref.make(false),
       };
       const pumpFiber = yield* Effect.forkDaemon(startPump(state, sessionId));
@@ -381,10 +398,10 @@ const make = Effect.gen(function* () {
         ManagedSession,
         PiError | SessionNotFound
       >();
-      const leader = yield* Ref.modify(reattachInFlight, (m) =>
+      const leader = yield* Ref.modify(reattachInFlight, (m): ReattachDecision =>
         Option.match(HashMap.get(m, id), {
-          onNone: () => [ours, HashMap.set(m, id, ours)] as const,
-          onSome: (existing) => [existing, m] as const,
+          onNone: (): ReattachDecision => [ours, HashMap.set(m, id, ours)],
+          onSome: (existing): ReattachDecision => [existing, m],
         }),
       );
 
@@ -411,7 +428,8 @@ const make = Effect.gen(function* () {
         const liveQueue = yield* PubSub.subscribe(ms.pubsub);
         const currentMeta = yield* Ref.get(ms.meta);
         const cursorAtSubscribe = yield* Ref.get(ms.seq);
-        const entries = yield* ms.pi.getLog();
+        const pending = yield* Ref.get(ms.pendingSends);
+        const entries = withPendingUserEntries(yield* ms.pi.getLog(), pending);
 
         const helloEvent: WireEvent = {
           t: "hello",
@@ -424,6 +442,7 @@ const make = Effect.gen(function* () {
           seq: cursorAtSubscribe,
           entries,
         };
+        const queueSnapshotEvent = queueEvent(0, pending);
 
         const liveStream = pipe(
           Stream.fromQueue(liveQueue),
@@ -431,7 +450,7 @@ const make = Effect.gen(function* () {
         );
 
         return pipe(
-          Stream.fromIterable<WireEvent>([helloEvent, snapshotEvent]),
+          Stream.fromIterable<WireEvent>([helloEvent, snapshotEvent, queueSnapshotEvent]),
           Stream.concat(liveStream),
         );
       }),
@@ -448,8 +467,9 @@ const make = Effect.gen(function* () {
       const currentMeta = yield* Ref.get(ms.meta);
       const compacting = (yield* Ref.get(ms.compacting)) || (yield* ms.pi.isCompacting());
       const queued = compacting || currentMeta.status === "thinking" || currentMeta.status === "tool";
-      const queueKind: QueuedUserMessage["queueKind"] = mode === "follow_up" ? "follow_up" : "steer";
+      const queueKind: QueuedMessage["queueKind"] = mode === "follow_up" ? "follow_up" : "steer";
       const userMessageId = `u_${randomUUID()}`;
+      const at = Date.now();
       const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
       const userEvent: WireEvent = {
         t: "user_message",
@@ -457,7 +477,7 @@ const make = Effect.gen(function* () {
         entry: {
           kind: "user",
           id: userMessageId,
-          at: Date.now(),
+          at,
           text,
           ...(queued ? { queued: true, queueKind } : {}),
         },
@@ -466,20 +486,34 @@ const make = Effect.gen(function* () {
       yield* PubSub.publish(ms.pubsub, userEvent);
 
       if (compacting) {
-        yield* Ref.update(ms.compactionQueuedMessages, (pending) => [
-          ...pending,
-          { id: userMessageId, text, queueKind, ...(images && images.length > 0 ? { images } : {}) },
-        ]);
+        const pendingSend: PendingSend = {
+          id: userMessageId,
+          at,
+          text,
+          queueKind,
+          phase: "held_for_compaction",
+          ...(images && images.length > 0 ? { images } : {}),
+        };
+        yield* Ref.update(ms.pendingSends, (pending) => [...pending, pendingSend]);
         yield* publishQueueSnapshot(ms, id);
         return;
       }
 
       if (queued) {
-        yield* Ref.update(ms.queuedMessages, (pending) => [
-          ...pending,
-          { id: userMessageId, text, queueKind },
-        ]);
+        const pendingSend: PendingSend = { id: userMessageId, at, text, queueKind, phase: "sdk_queue" };
+        yield* Ref.update(ms.pendingSends, (pending) => [...pending, pendingSend]);
+        yield* publishQueueSnapshot(ms, id);
+        yield* ms.pi.send(text, mode, images).pipe(
+          Effect.catchAll((error) =>
+            Ref.update(ms.pendingSends, (pending) => pending.filter((message) => message.id !== userMessageId)).pipe(
+              Effect.andThen(publishQueueSnapshot(ms, id)),
+              Effect.andThen(Effect.fail(error)),
+            ),
+          ),
+        );
+        return;
       }
+
       yield* ms.pi.send(text, mode, images);
     });
 
@@ -512,22 +546,16 @@ const make = Effect.gen(function* () {
   const getQueue = (id: string) =>
     Effect.gen(function* () {
       const ms = yield* lookupOrReattach(id);
-      const normal = yield* ms.pi.getQueue();
-      const compaction = queueTexts(publicCompactionQueue(yield* Ref.get(ms.compactionQueuedMessages)));
-      return {
-        steering: [...normal.steering, ...compaction.steering],
-        followUp: [...normal.followUp, ...compaction.followUp],
-      };
+      return projectQueue(yield* Ref.get(ms.pendingSends));
     });
 
   const clearQueue = (id: string) =>
     Effect.gen(function* () {
       const ms = yield* lookupOrReattach(id);
-      yield* Ref.set(ms.queuedMessages, []);
-      yield* Ref.set(ms.compactionQueuedMessages, []);
+      yield* Ref.set(ms.pendingSends, []);
       yield* ms.pi.clearQueue();
       yield* publishQueueSnapshot(ms, id);
-      return { steering: [], followUp: [] };
+      return { queued: [] };
     });
 
   const getSettings = (id: string) =>

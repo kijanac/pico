@@ -406,9 +406,15 @@ export const Commands = v.object({
 });
 export type Commands = v.InferOutput<typeof Commands>;
 
+export const QueuedMessage = v.object({
+  id: v.string(),
+  text: v.string(),
+  queueKind: v.picklist(["steer", "follow_up"]),
+});
+export type QueuedMessage = v.InferOutput<typeof QueuedMessage>;
+
 export const QueueState = v.object({
-  steering: v.array(v.string()),
-  followUp: v.array(v.string()),
+  queued: v.array(QueuedMessage),
 });
 export type QueueState = v.InferOutput<typeof QueueState>;
 
@@ -499,11 +505,7 @@ export const WireEvent = v.variant("t", [
   v.object({
     t: v.literal("queue"),
     ...Seq,
-    queued: v.array(v.object({
-      id: v.string(),
-      text: v.string(),
-      queueKind: v.picklist(["steer", "follow_up"]),
-    })),
+    queued: v.array(QueuedMessage),
   }),
   v.object({
     t: v.literal("cost"),

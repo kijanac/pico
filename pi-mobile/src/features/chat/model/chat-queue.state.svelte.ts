@@ -1,26 +1,19 @@
-import type { QueueState, WireEvent } from "@pi-mobile/protocol";
+import type { QueuedMessage, QueueState, WireEvent } from "@pi-mobile/protocol";
 
 type QueueBySession = Record<string, QueueState | undefined>;
 
 let queues = $state<QueueBySession>({});
 
-function queueSnapshot(queue: QueueState = { steering: [], followUp: [] }): QueueState {
+const emptyQueue: QueueState = { queued: [] };
+
+function queueSnapshot(queue: QueueState = emptyQueue): QueueState {
   return {
-    steering: [...queue.steering],
-    followUp: [...queue.followUp],
+    queued: queue.queued.map(({ id, text, queueKind }) => ({ id, text, queueKind })),
   };
 }
 
-function fromWireQueue(event: Extract<WireEvent, { t: "queue" }>): QueueState {
-  const steering: string[] = [];
-  const followUp: string[] = [];
-
-  for (const message of event.queued) {
-    if (message.queueKind === "follow_up") followUp.push(message.text);
-    else steering.push(message.text);
-  }
-
-  return { steering, followUp };
+function queueItems(sessionId: string): QueuedMessage[] {
+  return queues[sessionId]?.queued ?? emptyQueue.queued;
 }
 
 export const chatQueueState = {
@@ -29,8 +22,15 @@ export const chatQueueState = {
   },
 
   count(sessionId: string): number {
-    const queue = queues[sessionId];
-    return (queue?.steering.length ?? 0) + (queue?.followUp.length ?? 0);
+    return queueItems(sessionId).length;
+  },
+
+  steering(sessionId: string): QueuedMessage[] {
+    return queueItems(sessionId).filter((message) => message.queueKind === "steer");
+  },
+
+  followUp(sessionId: string): QueuedMessage[] {
+    return queueItems(sessionId).filter((message) => message.queueKind === "follow_up");
   },
 
   set(sessionId: string, queue: QueueState): void {
@@ -43,6 +43,6 @@ export const chatQueueState = {
 
   applyWireEvent(sessionId: string, event: WireEvent): void {
     if (event.t !== "queue") return;
-    queues = { ...queues, [sessionId]: fromWireQueue(event) };
+    queues = { ...queues, [sessionId]: queueSnapshot({ queued: event.queued }) };
   },
 };

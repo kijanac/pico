@@ -38,7 +38,6 @@ import {
   WriteToolArgs,
   type PermissionChoice,
   type PermissionRequest,
-  type QueueState,
   type SessionControls,
   type SessionMeta,
   type SessionStats,
@@ -51,6 +50,8 @@ import { SessionNotFound } from "./errors.ts";
 import { BRIDGE_DATA_DIR } from "./config.ts";
 import { setupFauxIfEnabled } from "./pi-faux.ts";
 
+
+export type SdkQueueState = Pick<Extract<AgentSessionEvent, { type: "queue_update" }>, "steering" | "followUp">;
 
 export type PiEmission =
   | { t: "log_reset"; entries: LogEntry[] }
@@ -85,7 +86,7 @@ export type PiEmission =
   | { t: "permission"; entry: PermissionRequest }
   | { t: "compaction"; entry: ProtocolCompactionEntry }
   | { t: "status"; status: SessionStatus }
-  | { t: "queue"; steering: string[]; followUp: string[] }
+  | ({ t: "queue" } & SdkQueueState)
   | { t: "cost"; tokensIn: number; tokensOut: number; costUsd: number }
   | {
       t: "auto_retry_start";
@@ -145,8 +146,8 @@ export interface PiSession {
   readonly compact: (instructions?: string) => Effect.Effect<void, PiError>;
   readonly exportHtml: () => Effect.Effect<ExportedHtml, PiError>;
   readonly listCommands: () => Effect.Effect<Commands, PiError>;
-  readonly getQueue: () => Effect.Effect<QueueState, PiError>;
-  readonly clearQueue: () => Effect.Effect<QueueState, PiError>;
+  readonly getQueue: () => Effect.Effect<SdkQueueState, PiError>;
+  readonly clearQueue: () => Effect.Effect<SdkQueueState, PiError>;
   readonly getSettings: () => Effect.Effect<SessionControls, PiError>;
   readonly patchSession: (patch: { title?: string }) => Effect.Effect<void, PiError>;
   readonly patchSetting: (key: string, value: string | boolean) => Effect.Effect<SessionControls, PiError>;
