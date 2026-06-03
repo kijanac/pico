@@ -97,7 +97,7 @@
     <Dialog.Header>
       <Dialog.Title>delete session?</Dialog.Title>
       <Dialog.Description>
-        This permanently deletes {deleteTarget?.title ?? "this session"} from the bridge.
+        This permanently deleted this session.
       </Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer>
