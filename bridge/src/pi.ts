@@ -48,7 +48,6 @@ import {
 } from "@pi-mobile/protocol";
 import { SessionNotFound } from "./errors.ts";
 import { BRIDGE_DATA_DIR } from "./config.ts";
-import { setupFauxIfEnabled } from "./pi-faux.ts";
 
 
 export type SdkQueueState = Pick<Extract<AgentSessionEvent, { type: "queue_update" }>, "steering" | "followUp">;
@@ -168,7 +167,6 @@ export class PiClient extends Context.Tag("PiClient")<
 const EXPORT_DIR = join(BRIDGE_DATA_DIR, "exports");
 const EXPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const authStorage = AuthStorage.create();
-const fauxModel = setupFauxIfEnabled(authStorage);
 const servicesByCwd = new Map<string, Promise<AgentSessionServices>>();
 
 export const reloadAgentAuth = (): void => authStorage.reload();
@@ -852,7 +850,6 @@ const wirePiSession = (
 
 const makeLiveSession = (
   services: AgentSessionServices,
-  fauxModel: Model<any> | null,
   opts: {
     cwd: string;
     title: string;
@@ -869,7 +866,6 @@ const makeLiveSession = (
         const { session } = await createAgentSessionFromServices({
           services,
           sessionManager,
-          model: fauxModel ?? undefined,
         });
 
         return session;
@@ -893,7 +889,6 @@ const makeLiveSession = (
 
 const makeResumedSession = (
   services: AgentSessionServices,
-  fauxModel: Model<any> | null,
   storedRecord: import("./session-record.ts").SessionRecord,
 ): Effect.Effect<PiSession, PiError | SessionNotFound> =>
   Effect.gen(function* () {
@@ -913,7 +908,6 @@ const makeResumedSession = (
         const { session } = await createAgentSessionFromServices({
           services,
           sessionManager,
-          model: fauxModel ?? undefined,
         });
 
         return session;
@@ -948,11 +942,11 @@ const loadServices = (cwd: string) =>
 export const PiClientLive = Layer.succeed(PiClient, {
   create: (opts) =>
     Effect.flatMap(loadServices(opts.cwd), (services) =>
-      makeLiveSession(services, fauxModel, opts),
+      makeLiveSession(services, opts),
     ),
   resume: (storedMeta) =>
     Effect.flatMap(loadServices(storedMeta.cwd), (services) =>
-      makeResumedSession(services, fauxModel, storedMeta),
+      makeResumedSession(services, storedMeta),
     ),
 });
 

@@ -2,25 +2,15 @@
   import { onMount } from "svelte";
   import { navigateTo, routePaths } from "@/app/routes";
   import { settingsState } from "@/features/settings/settings.state.svelte";
-  import BridgeConnectionCard from "@/features/settings/components/BridgeConnectionCard.svelte";
+  import BridgeStatusCard from "@/features/settings/components/BridgeStatusCard.svelte";
   import GuidedOnboardingCard from "@/features/settings/components/GuidedOnboardingCard.svelte";
-  import AdvancedCloudInitCard from "@/features/settings/components/AdvancedCloudInitCard.svelte";
   import { Button } from "@/shared/ui/button";
   import EdgeSwipeBack from "@/shared/components/EdgeSwipeBack.svelte";
   import HomePreview from "@/features/sessions/components/HomePreview.svelte";
 
-  let bridgeUrlDraft = $state(settingsState.bridgeUrl);
-
   onMount(() => {
-    void (async () => {
-      await settingsState.load();
-      bridgeUrlDraft = settingsState.bridgeUrl;
-    })();
+    void settingsState.load();
   });
-
-  function useBridgeUrl(url: string): void {
-    bridgeUrlDraft = url;
-  }
 </script>
 
 <EdgeSwipeBack href="/">
@@ -45,13 +35,16 @@
     {/if}
 
     {#if settingsState.loaded}
-      <BridgeConnectionCard bind:url={bridgeUrlDraft} />
+      {#if settingsState.bridgeUrlConfigured}
+        <BridgeStatusCard />
+        <GuidedOnboardingCard />
+      {:else}
+        <GuidedOnboardingCard />
+        <BridgeStatusCard />
+      {/if}
     {:else}
       <div class="py-8 text-center text-[12px] text-[color:var(--color-fg-faint)]">loading settings…</div>
     {/if}
-
-    <GuidedOnboardingCard />
-    <AdvancedCloudInitCard onUseBridgeUrl={useBridgeUrl} />
   </div>
 </main>
 </EdgeSwipeBack>

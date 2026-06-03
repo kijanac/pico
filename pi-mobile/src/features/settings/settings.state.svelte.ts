@@ -19,6 +19,7 @@ export interface OnboardingDraft {
 
 let loaded = $state(false);
 let bridgeUrl = $state(DEFAULT_BRIDGE_URL);
+let bridgeUrlConfigured = $state(false);
 let onboardingDraft = $state<Partial<OnboardingDraft>>({});
 let saving = $state(false);
 let error = $state<string | null>(null);
@@ -30,6 +31,10 @@ export const settingsState = {
 
   get bridgeUrl() {
     return bridgeUrl;
+  },
+
+  get bridgeUrlConfigured() {
+    return bridgeUrlConfigured;
   },
 
   get onboardingDraft() {
@@ -46,7 +51,9 @@ export const settingsState = {
 
   async load(): Promise<void> {
     try {
-      bridgeUrl = normalizeBridgeUrl(await getPreference(BRIDGE_URL_KEY));
+      const savedBridgeUrl = await getPreference(BRIDGE_URL_KEY);
+      bridgeUrlConfigured = Boolean(savedBridgeUrl?.trim());
+      bridgeUrl = normalizeBridgeUrl(savedBridgeUrl);
       onboardingDraft = await getJsonPreference<Partial<OnboardingDraft>>(ONBOARDING_DRAFT_KEY, {});
       error = null;
     } catch (caught) {
@@ -60,6 +67,7 @@ export const settingsState = {
     saving = true;
     try {
       bridgeUrl = normalizeBridgeUrl(nextUrl);
+      bridgeUrlConfigured = true;
       await setPreference(BRIDGE_URL_KEY, bridgeUrl);
       error = null;
     } catch (caught) {

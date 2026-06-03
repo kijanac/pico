@@ -31,7 +31,7 @@ The bridge listens on `:7777` (override with `$PORT`).
 | Env                       | Behavior |
 | ------------------------- | -------- |
 | (none)                    | Live pi via `@earendil-works/pi-coding-agent`. Sessions persisted to `~/.pi/agent/sessions/`. Requires LLM provider credentials configured via `pi auth …` or env (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …). |
-| `PI_USE_MOCK=1`           | Scripted in-process flow. No API keys needed. Same wire shape — useful for client UI work. |
+| `PI_USE_MOCK=1`           | Scripted in-process flow. No API keys needed. Same wire shape — useful for client UI work. Blocked under `NODE_ENV=production` unless `PI_ALLOW_UNSAFE_TEST_CLIENT=1` is also set. |
 | `PI_EPHEMERAL=1`          | Live pi but in-memory; sessions vanish on restart. |
 
 ### Smoke test
@@ -84,7 +84,7 @@ The default is already the real pi. `src/pi.ts` exports two Layers:
   - `turn_start` / `turn_end` → `status` updates + `cost` when usage is present
 - `PiClientMock` — the scripted demo flow, no API needed
 
-The active pick is `PiClientFromEnv` based on `$PI_USE_MOCK`.
+The active pick is `PiClientFromEnv`: live by default, or scripted mock when `$PI_USE_MOCK=1`.
 
 ### Known gaps in v0 live integration
 
@@ -127,5 +127,6 @@ and slots into `SessionManager.create()` cleanly.
 | ------------------ | ------------------ | --- |
 | `PORT`             | 7777               | HTTP/WS listen port |
 | `BRIDGE_DB`        | `data/bridge.db`   | SQLite file path (WAL mode) |
-| `PI_USE_MOCK`      | unset              | `=1` to use the scripted mock pi (no API keys) |
+| `PI_USE_MOCK`      | unset              | `=1` to use the scripted mock pi (no API keys). Disabled in production unless explicitly allowed. |
+| `PI_ALLOW_UNSAFE_TEST_CLIENT` | unset       | `=1` to intentionally allow the mock test client with `NODE_ENV=production`. |
 | `PI_EPHEMERAL`     | unset              | `=1` to use pi's in-memory session manager instead of disk |
