@@ -35,7 +35,7 @@
   {#if !auth.job && !auth.apiKeyProvider}
     <div class="space-y-2">
       {#if auth.loading}
-        <div class="text-[12px] text-[color:var(--color-fg-faint)]">loading providers…</div>
+        <div class="text-copy text-[color:var(--color-fg-muted)]">loading providers…</div>
       {/if}
 
       {#each auth.providers as provider (provider.id)}
@@ -46,12 +46,12 @@
           class="hairline-b flex w-full items-center gap-3 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-left active:bg-[color:var(--color-surface-2)] disabled:opacity-70"
         >
           <span class="min-w-0 flex-1">
-            <span class="block text-[12.5px] font-medium">{provider.name}</span>
-            <span class="block text-[11px] text-[color:var(--color-fg-muted)]">
+            <span class="block text-copy font-medium">{provider.name}</span>
+            <span class="block text-meta text-[color:var(--color-fg-muted)]">
               {provider.configured ? `configured${provider.source ? ` via ${provider.source}` : ""}` : provider.authType === "oauth" ? "subscription sign-in" : provider.authType === "api_key" ? "API key" : "bridge setup required"}
             </span>
           </span>
-          <span class="rounded-full border border-[color:var(--color-border)] px-2 py-0.5 text-[9px] uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">
+          <span class="rounded-full border border-[color:var(--color-border)] px-2 py-0.5 text-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">
             {provider.authType === "oauth" ? "sign in" : provider.authType === "api_key" ? "key" : "setup"}
           </span>
           {#if provider.configured}
@@ -64,7 +64,7 @@
       {/each}
     </div>
   {:else if auth.apiKeyProvider}
-    <div class="space-y-3 text-[12px]">
+    <div class="space-y-3 text-copy">
       {@render InfoRow("provider", auth.apiKeyProvider.name)}
       <div>
         <label class="label mb-1.5 block" for="auth_api_key">API key</label>
@@ -74,7 +74,7 @@
           value={auth.apiKeyInput}
           oninput={(event) => auth.setApiKeyInput(event.currentTarget.value)}
           placeholder="paste API key"
-          class="min-h-0 text-[12px]"
+          class="min-h-0 text-copy"
         />
       </div>
       <Button type="button" class="w-full" disabled={!auth.apiKeyInput.trim() || auth.savingApiKey} onclick={() => auth.saveApiKey()}>
@@ -84,7 +84,7 @@
       <Button type="button" variant="outline" class="w-full text-[color:var(--color-fg-muted)]" onclick={() => auth.selectApiKeyProvider(null)}>cancel</Button>
     </div>
   {:else if auth.job}
-    <div class="space-y-3 text-[12px]">
+    <div class="space-y-3 text-copy">
       {@render InfoRow("provider", auth.job.providerName ?? auth.job.providerId)}
       {@render InfoRow("status", auth.job.status)}
 
@@ -98,13 +98,13 @@
         {@render InfoRow("device code", auth.job.userCode)}
       {/if}
       {#if auth.job.instructions}
-        <p class="text-[11px] leading-relaxed text-[color:var(--color-fg-muted)]">{auth.job.instructions}</p>
+        <p class="text-copy text-[color:var(--color-fg-muted)]">{auth.job.instructions}</p>
       {/if}
       {#if auth.job.progress}
-        <p class="text-[11px] text-[color:var(--color-fg-muted)]">{auth.job.progress}</p>
+        <p class="text-meta text-[color:var(--color-fg-muted)]">{auth.job.progress}</p>
       {/if}
       {#if auth.job.error}
-        <p class="text-[11px] text-[color:var(--color-danger)]">{auth.job.error}</p>
+        <p class="text-meta text-[color:var(--color-danger)]">{auth.job.error}</p>
       {/if}
 
       {#if auth.job.status === "prompt" || auth.job.status === "manual"}
@@ -116,7 +116,7 @@
             value={auth.input}
             oninput={(event) => auth.setInput(event.currentTarget.value)}
             placeholder={auth.job.promptPlaceholder ?? "paste code or redirect URL"}
-            class="min-h-0 text-[12px]"
+            class="min-h-0 text-copy"
           />
         </div>
         <Button type="button" class="w-full" onclick={() => auth.submit()}>submit</Button>
@@ -131,6 +131,6 @@
 {#snippet InfoRow(label: string, value: string)}
   <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2">
     <div class="label">{label}</div>
-    <div class="mt-1 break-words text-[12px] text-[color:var(--color-fg)]">{value}</div>
+    <div class="mt-1 break-words text-copy text-[color:var(--color-fg)]">{value}</div>
   </div>
 {/snippet}

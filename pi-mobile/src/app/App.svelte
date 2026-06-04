@@ -30,8 +30,8 @@
     <OnboardingPage />
   {:else}
     <main class="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
-      <p class="text-[13px] font-medium">route not found</p>
-      <p class="text-[11px] text-[color:var(--color-fg-muted)]">{route.params.path}</p>
+      <p class="text-title font-medium">route not found</p>
+      <p class="text-meta text-[color:var(--color-fg-muted)]">{route.params.path}</p>
     </main>
   {/if}
 </AppShell>

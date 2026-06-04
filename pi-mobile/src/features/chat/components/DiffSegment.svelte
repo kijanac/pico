@@ -140,7 +140,7 @@
   }
 </script>
 
-<div class="overflow-hidden rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-bg)] font-mono text-[11.5px] leading-[1.55]">
+<div class="text-code overflow-hidden rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-bg)] font-mono">
   {#each segments as segment}
     {#if segment.kind === "hunk"}
       {#each segment.lines ?? [] as line}
@@ -156,7 +156,7 @@
         </div>
       {/each}
     {:else}
-      <div class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 text-[10px] text-[color:var(--color-fg-faint)]">
+      <div class="text-label uppercase tracking-[0.08em] border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-0.5 text-[color:var(--color-fg-faint)]">
         … {segment.skipped} unchanged
       </div>
     {/if}

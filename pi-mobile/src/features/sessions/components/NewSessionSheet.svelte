@@ -49,7 +49,7 @@
       {:else}
         <div class="h-9 w-9"></div>
       {/if}
-      <Sheet.Title class="min-w-0 flex-1 px-1 text-[13px] font-medium">
+      <Sheet.Title class="text-title min-w-0 flex-1 px-1 font-medium">
         {pickerOpen ? "choose directory" : "new session"}
       </Sheet.Title>
     </Sheet.Header>
@@ -73,9 +73,9 @@
           >
             <Folder class="size-3.5 shrink-0 text-[color:var(--color-fg-muted)]" />
             {#if cwd}
-              <span class="min-w-0 flex-1 truncate text-[12.5px]">{cwd}</span>
+              <span class="text-copy min-w-0 flex-1 truncate">{cwd}</span>
             {:else}
-              <span class="text-[12.5px] text-[color:var(--color-fg-faint)]">choose a directory…</span>
+              <span class="text-copy text-[color:var(--color-fg-muted)]">choose a directory…</span>
             {/if}
           </button>
         </label>

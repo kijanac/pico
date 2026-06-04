@@ -322,14 +322,14 @@
           }
         }}
         rows="1"
-        class="w-full resize-none bg-transparent px-3 py-[7px] text-[13px] leading-[20px] text-[color:var(--color-fg)] focus:outline-none"
+        class="text-input w-full resize-none bg-transparent px-3 py-[7px] text-[color:var(--color-fg)] focus:outline-none"
       ></textarea>
     </div>
 
     {#if queueCount > 0}
       <button type="button" onclick={() => (queueOpen = true)} class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]" aria-label="Queued messages" title="Queued messages">
         <ListTodo class="size-4" />
-        <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-bg)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[9px] font-medium leading-none text-[color:var(--color-bg)]">
+        <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-bg)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[0.625rem] font-medium leading-none text-[color:var(--color-bg)]">
           {queueCount > 99 ? "99+" : queueCount}
         </span>
       </button>

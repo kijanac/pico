@@ -41,7 +41,7 @@
   }
 </script>
 
-<div class="px-3 py-1.5 text-[13px] leading-[1.6] text-[color:var(--color-fg)]">
+<div class="text-message font-readable px-3 py-1.5 text-[color:var(--color-fg)]">
   {#if msg.text.length > 0}
     <StreamingMarkdown text={msg.text} done={!msg.streaming} />
   {/if}
@@ -54,7 +54,7 @@
   {/if}
 
   {#if branchError}
-    <div class="mt-1 text-[11px] text-[color:var(--color-danger)]">{branchError}</div>
+    <div class="text-meta mt-1 text-[color:var(--color-danger)]">{branchError}</div>
   {/if}
 
   {#if showActions}
@@ -75,11 +75,11 @@
 <Sheet.Root bind:open={detailsOpen}>
   <Sheet.BottomContent>
     <Sheet.Header class="hairline-b space-y-0 px-3 py-3 pr-12 text-left">
-      <Sheet.Title class="min-w-0 flex-1 px-1 text-[13px] font-medium">message details</Sheet.Title>
+      <Sheet.Title class="text-title min-w-0 flex-1 px-1 font-medium">message details</Sheet.Title>
     </Sheet.Header>
     <div class="px-3 pb-3">
       {#if msg.usage}
-        <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-[12px]">
+        <div class="text-meta rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
           <MessageInfoRow label="input" value={formatTokens(msg.usage.input)} />
           <MessageInfoRow label="output" value={formatTokens(msg.usage.output)} />
           <MessageInfoRow label="cache read" value={formatTokens(msg.usage.cacheRead)} />
@@ -88,7 +88,7 @@
           <MessageInfoRow label="cost" value={formatCost(msg.usage.cost.total)} />
         </div>
       {:else}
-        <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-[12px] text-[color:var(--color-fg-faint)]">
+        <div class="text-meta rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-[color:var(--color-fg-muted)]">
           usage is not available for this message
         </div>
       {/if}

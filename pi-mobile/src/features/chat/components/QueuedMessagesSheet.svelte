@@ -33,11 +33,11 @@
 
 <Sheet.Root bind:open>
   <Sheet.BottomContent class="max-h-[75dvh]">
-    <Sheet.Header class="hairline-b space-y-0 px-3 py-3 pr-12 text-left"><Sheet.Title class="min-w-0 flex-1 px-1 text-[13px] font-medium">queued messages</Sheet.Title></Sheet.Header>
+    <Sheet.Header class="hairline-b space-y-0 px-3 py-3 pr-12 text-left"><Sheet.Title class="text-title min-w-0 flex-1 px-1 font-medium">queued messages</Sheet.Title></Sheet.Header>
     <div class="flex-1 overflow-y-auto px-3 py-3">
-      {#if loading}<div class="text-[12px] text-[color:var(--color-fg-faint)]">loading queue…</div>{/if}
-      {#if error}<div class="text-[12px] text-[color:var(--color-danger)]">{error}</div>{/if}
-      {#if queue && queueCount === 0}<div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-center text-[12px] text-[color:var(--color-fg-faint)]">no queued messages</div>{/if}
+      {#if loading}<div class="text-copy text-[color:var(--color-fg-muted)]">loading queue…</div>{/if}
+      {#if error}<div class="text-copy text-[color:var(--color-danger)]">{error}</div>{/if}
+      {#if queue && queueCount === 0}<div class="text-copy rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-center text-[color:var(--color-fg-muted)]">no queued messages</div>{/if}
       {#if queue}
         {@render QueueSection("steering", steering)}
         {@render QueueSection("follow-up", followUp)}
@@ -60,7 +60,7 @@
       <div class="label mb-1.5">{label}</div>
       <div class="space-y-1.5">
         {#each items as item (item.id)}
-          <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[12px] text-[color:var(--color-fg)]">{item.text}</div>
+          <div class="text-copy rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[color:var(--color-fg)]">{item.text}</div>
         {/each}
       </div>
     </div>

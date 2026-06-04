@@ -82,7 +82,7 @@
           <button
             type="button"
             onclick={() => (path = segment.path)}
-            class="rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
+            class="text-meta rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
           >
             {segment.name}
           </button>
@@ -102,26 +102,26 @@
 
   <div class="flex-1 overflow-y-auto">
     {#if loading}
-      <div class="px-3 py-3 text-[12px] text-[color:var(--color-fg-faint)]">loading…</div>
+      <div class="text-copy px-3 py-3 text-[color:var(--color-fg-muted)]">loading…</div>
     {/if}
     {#if error}
-      <div class="px-3 py-3 text-[12px] text-[color:var(--color-danger)]">{error}</div>
+      <div class="text-copy px-3 py-3 text-[color:var(--color-danger)]">{error}</div>
     {/if}
     {#if listing}
       {#if listing.parent !== null}
         <button type="button" onclick={goUp} class="hairline-b flex w-full items-center gap-2 px-3 py-2.5 text-left active:bg-[color:var(--color-surface)]">
           <ChevronLeft class="size-3.5 text-[color:var(--color-fg-muted)]" />
-          <span class="text-[12.5px] text-[color:var(--color-fg-muted)]">..</span>
+          <span class="text-copy text-[color:var(--color-fg-muted)]">..</span>
         </button>
       {/if}
       {#each listing.entries as entry (entry.name)}
         <button type="button" onclick={() => drill(entry.name)} class="hairline-b flex w-full items-center gap-2 px-3 py-2.5 text-left active:bg-[color:var(--color-surface)]">
           <Folder class="size-3.5 shrink-0 text-[color:var(--color-fg-muted)]" />
-          <span class="min-w-0 flex-1 truncate text-[12.5px]">{entry.name}</span>
+          <span class="text-copy min-w-0 flex-1 truncate">{entry.name}</span>
           <ChevronRight class="size-3 shrink-0 text-[color:var(--color-fg-faint)]" />
         </button>
       {:else}
-        <div class="px-3 py-3 text-[12px] text-[color:var(--color-fg-faint)]">(no subdirectories)</div>
+        <div class="text-copy px-3 py-3 text-[color:var(--color-fg-muted)]">(no subdirectories)</div>
       {/each}
     {/if}
   </div>

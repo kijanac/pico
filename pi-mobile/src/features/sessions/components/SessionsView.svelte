@@ -60,8 +60,8 @@
 >
   <header class="flex items-center justify-between gap-3 px-3">
     <div class="flex items-baseline gap-2">
-      <h1 class="text-[13px] font-medium">{archivedView ? "archived" : "sessions"}</h1>
-      <span class="text-[10px] text-[color:var(--color-fg-faint)]">{visibleCount}</span>
+      <h1 class="text-title font-medium">{archivedView ? "archived" : "sessions"}</h1>
+      <span class="text-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">{visibleCount}</span>
     </div>
     <div class="flex items-center gap-1">
       <Button type="button" variant="ghost" size="icon-sm" aria-label="Toggle archived" onclick={() => void onToggleArchived()}>
@@ -79,7 +79,7 @@
 
   {#if error}
     <div
-      class="mx-3 mt-4 rounded-[var(--radius-sm)] border border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/8 px-3 py-2 text-[12px] text-[color:var(--color-danger)]"
+      class="text-meta mx-3 mt-4 rounded-[var(--radius-sm)] border border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/8 px-3 py-2 text-[color:var(--color-danger)]"
     >
       {error}
       <button type="button" class="ml-2 underline opacity-70" onclick={() => void onRefresh()}>
@@ -90,10 +90,10 @@
 
   <PullToRefresh onRefresh={onRefresh} class="mt-4 min-h-0 flex-1">
     {#if refreshing && sessions.length === 0}
-      <section class="flex min-h-full items-center justify-center text-[12px] text-[color:var(--color-fg-faint)]">loading sessions…</section>
+      <section class="text-copy flex min-h-full items-center justify-center text-[color:var(--color-fg-muted)]">loading sessions…</section>
     {:else if sessions.length === 0}
       <section class="flex min-h-full items-center justify-center px-6 text-center">
-        <p class="max-w-[32ch] text-[12px] text-[color:var(--color-fg-faint)]">
+        <p class="text-copy max-w-[32ch] text-[color:var(--color-fg-muted)]">
           {archivedView ? "no archived sessions." : "no sessions yet — tap new session below."}
         </p>
       </section>
@@ -152,10 +152,10 @@
     <button type="button" class="min-w-0 flex-1 text-left" onclick={() => onOpenSession(session)}>
       <div class="mb-1 flex items-center gap-2">
         <StatusDot status={session.status} />
-        <span class="min-w-0 flex-1 truncate text-[13px] leading-tight">{session.title}</span>
-        <span class="text-[10px] tabular-nums text-[color:var(--color-fg-faint)]">{relativeTime(session.updatedAt)}</span>
+        <span class="text-title min-w-0 flex-1 truncate">{session.title}</span>
+        <span class="text-label uppercase tracking-[0.08em] tabular-nums text-[color:var(--color-fg-faint)]">{relativeTime(session.updatedAt)}</span>
       </div>
-      <div class="flex items-center gap-3 text-[11px] text-[color:var(--color-fg-muted)]">
+      <div class="text-meta flex items-center gap-3 text-[color:var(--color-fg-muted)]">
         <span class="truncate">{cwdDisplayName(session.cwd)}</span>
         <span class="ml-auto shrink-0 tabular-nums">{formatCost(session.costUsd)}</span>
       </div>

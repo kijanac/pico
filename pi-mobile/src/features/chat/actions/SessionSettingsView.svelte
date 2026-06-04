@@ -75,7 +75,7 @@
 </script>
 
 <div class="flex-1 overflow-y-auto px-3 py-3">
-  {#if loading}<div class="text-[12px] text-[color:var(--color-fg-faint)]">loading settings…</div>{/if}
+  {#if loading}<div class="text-copy text-[color:var(--color-fg-muted)]">loading settings…</div>{/if}
   {#if settings}
     <div class="space-y-4">
       {#each visibleControls as control (control.key)}
@@ -99,8 +99,8 @@
 
 {#snippet ToggleRow(label: string, checked: boolean, disabled: boolean, onChange: (checked: boolean) => void)}
   <button type="button" disabled={disabled} onclick={() => onChange(!checked)} class="flex w-full items-center justify-between rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 text-left active:bg-[color:var(--color-surface-2)] disabled:opacity-70">
-    <span class="text-[12.5px] font-medium">{label}</span>
-    <span class={checked ? "text-[12px] text-[color:var(--color-accent)]" : "text-[12px] text-[color:var(--color-fg-faint)]"}>{checked ? "on" : "off"}</span>
+    <span class="text-copy font-medium">{label}</span>
+    <span class={checked ? "text-meta text-[color:var(--color-accent)]" : "text-meta text-[color:var(--color-fg-muted)]"}>{checked ? "on" : "off"}</span>
   </button>
 {/snippet}
 
@@ -109,7 +109,7 @@
     <div class="label mb-1.5">{label}</div>
     <div class="grid grid-cols-2 gap-1 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-1">
       {#each options as option (option.value)}
-        <button type="button" disabled={disabled || option.disabled || option.value === value} onclick={() => onChange(option.value)} class={option.value === value ? "rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] px-2 py-2 text-[11px] font-medium text-[color:var(--color-bg)]" : "rounded-[var(--radius-sm)] px-2 py-2 text-[11px] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)] disabled:opacity-70"}>
+        <button type="button" disabled={disabled || option.disabled || option.value === value} onclick={() => onChange(option.value)} class={option.value === value ? "text-meta rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] px-2 py-2 font-medium text-[color:var(--color-bg)]" : "text-meta rounded-[var(--radius-sm)] px-2 py-2 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)] disabled:opacity-70"}>
           {option.label}
         </button>
       {/each}
@@ -124,10 +124,10 @@
       {#each options as option (option.value)}
         <button type="button" disabled={disabled || option.disabled || option.value === value} onclick={() => onChange(option.value)} class="hairline-b flex w-full items-center gap-3 px-3 py-2.5 text-left active:bg-[color:var(--color-surface-2)] disabled:opacity-70">
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-[12.5px] text-[color:var(--color-fg)]">{option.label}</span>
-            {#if option.description}<span class="mt-0.5 block truncate text-[10.5px] text-[color:var(--color-fg-faint)]">{option.description}</span>{/if}
+            <span class="text-copy block truncate text-[color:var(--color-fg)]">{option.label}</span>
+            {#if option.description}<span class="text-meta mt-0.5 block truncate text-[color:var(--color-fg-muted)]">{option.description}</span>{/if}
           </span>
-          {#if option.value === value}<span class="text-[12px] text-[color:var(--color-accent)]">selected</span>{/if}
+          {#if option.value === value}<span class="text-meta text-[color:var(--color-accent)]">selected</span>{/if}
         </button>
       {/each}
     </div>

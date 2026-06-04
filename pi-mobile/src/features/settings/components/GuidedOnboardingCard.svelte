@@ -5,8 +5,8 @@
 
 <section class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
   <div class="mb-3">
-    <h2 class="text-[13px] font-medium text-[color:var(--color-fg)]">fresh box setup</h2>
-    <p class="mt-1 text-[11px] leading-relaxed text-[color:var(--color-fg-faint)]">
+    <h2 class="text-title font-medium text-[color:var(--color-fg)]">fresh box setup</h2>
+    <p class="text-copy mt-1 text-[color:var(--color-fg-muted)]">
       set up a new bridge host, then let pi-mobile wait for and claim it.
     </p>
   </div>

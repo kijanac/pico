@@ -1,15 +1,32 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn-svelte/tailwind.css";
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme {
   --font-mono:
-    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-sans:
-    'Inter Variable', sans-serif;
+    "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --font-weight-readable: 450;
+
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1.35;
+  --text-meta: 0.75rem;
+  --text-meta--line-height: 1.45;
+  --text-copy: 0.8125rem;
+  --text-copy--line-height: 1.55;
+  --text-title: 0.875rem;
+  --text-title--line-height: 1.2;
+  --text-message: 0.9375rem;
+  --text-message--line-height: 1.65;
+  --text-input: 0.9375rem;
+  --text-input--line-height: 1.5;
+  --text-code: 0.75rem;
+  --text-code--line-height: 1.5;
 
   --color-bg: #0a0a0a;
   --color-surface: #131313;
@@ -107,6 +124,7 @@
     font-family: var(--font-mono);
     font-feature-settings: "calt", "liga", "ss01";
     font-variant-ligatures: contextual;
+    font-optical-sizing: auto;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     overscroll-behavior-y: none;
@@ -248,7 +266,8 @@
   }
 
   .label {
-    font-size: 10px;
+    font-size: var(--text-label);
+    line-height: var(--text-label--line-height);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--color-fg-muted);
@@ -257,7 +276,19 @@
 
 @layer components {
   .streaming-md {
+    max-width: 70ch;
     word-break: break-word;
+  }
+
+  .streaming-md p,
+  .streaming-md li {
+    text-wrap: pretty;
+  }
+
+  .streaming-md h1,
+  .streaming-md h2,
+  .streaming-md h3 {
+    text-wrap: balance;
   }
 
   .streaming-md > * + * {
@@ -381,31 +412,9 @@
   }
   .streaming-md pre.shiki code {
     background: transparent;
-    padding: 0;
     border: 0;
-    font-size: 1em;
+    padding: 0;
     font-family: inherit;
-  }
-}
-
-@layer components {
-  .streaming-md pre.shiki {
-
-    background: var(--color-surface) !important;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.7em 0.8em;
-    overflow-x: hidden;
-    font-size: 0.9em;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-  .streaming-md pre.shiki code {
-    background: transparent;
-    border: 0;
-    padding: 0;
     font-size: 1em;
   }
 

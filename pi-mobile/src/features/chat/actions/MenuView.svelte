@@ -36,6 +36,6 @@
     <span class="text-[color:var(--color-fg-muted)]">
       {#if icon === "model"}<SlidersHorizontal class="size-3.5" />{:else if icon === "auth"}<KeyRound class="size-3.5" />{:else if icon === "tree"}<ListTree class="size-3.5" />{:else if icon === "settings"}<Settings class="size-3.5" />{:else if icon === "export"}<Download class="size-3.5" />{:else}<Info class="size-3.5" />{/if}
     </span>
-    <span class="min-w-0 flex-1 truncate text-[12.5px] font-medium">{title}</span>
+    <span class="text-copy min-w-0 flex-1 truncate font-medium">{title}</span>
   </button>
 {/snippet}

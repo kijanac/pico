@@ -13,6 +13,6 @@
   {#each segments as segment}
     <DiffSegment oldText={segment.oldText} newText={segment.newText} path={args.path} />
   {:else}
-    <div class="text-[11px] italic text-[color:var(--color-fg-faint)]">waiting for edit args…</div>
+    <div class="text-meta italic text-[color:var(--color-fg-muted)]">waiting for edit args…</div>
   {/each}
 </div>

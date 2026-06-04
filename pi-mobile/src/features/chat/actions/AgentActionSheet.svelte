@@ -39,11 +39,11 @@
       {:else}
         <div class="h-9 w-9" aria-hidden="true"></div>
       {/if}
-      <Sheet.Title class="min-w-0 flex-1 px-1 text-[13px] font-medium">{titles[view]}</Sheet.Title>
+      <Sheet.Title class="text-title min-w-0 flex-1 px-1 font-medium">{titles[view]}</Sheet.Title>
     </Sheet.Header>
 
     {#if error}
-      <div class="mx-3 mt-3 rounded-[var(--radius-sm)] border border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/8 px-3 py-2 text-[11px] text-[color:var(--color-danger)]">
+      <div class="text-meta mx-3 mt-3 rounded-[var(--radius-sm)] border border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/8 px-3 py-2 text-[color:var(--color-danger)]">
         {error}
       </div>
     {/if}

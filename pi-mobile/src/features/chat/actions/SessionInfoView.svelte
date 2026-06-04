@@ -32,10 +32,10 @@
 </script>
 
 <div class="flex-1 overflow-y-auto px-3 py-3">
-  {#if loading}<div class="text-[12px] text-[color:var(--color-fg-faint)]">loading session info…</div>{/if}
-  {#if error}<div class="text-[12px] text-[color:var(--color-danger)]">{error}</div>{/if}
+  {#if loading}<div class="text-copy text-[color:var(--color-fg-muted)]">loading session info…</div>{/if}
+  {#if error}<div class="text-copy text-[color:var(--color-danger)]">{error}</div>{/if}
   {#if stats}
-    <div class="space-y-2 text-[12px]">
+    <div class="text-copy space-y-2">
       {@render InfoRow("session id", stats.sessionId)}
       {@render InfoRow("file", stats.sessionFile ?? "ephemeral")}
       {@render InfoRow("cwd", stats.cwd)}
@@ -55,6 +55,6 @@
 {#snippet InfoRow(label: string, value: string)}
   <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2">
     <div class="label">{label}</div>
-    <div class="mt-1 break-words text-[12px] text-[color:var(--color-fg)]">{value}</div>
+    <div class="mt-1 break-words text-[color:var(--color-fg)]">{value}</div>
   </div>
 {/snippet}
