@@ -30,7 +30,7 @@
   <div class="mx-3 my-2 overflow-hidden rounded-[var(--radius-md)] border border-[color:var(--color-accent)]/40">
     <div class="flex items-center gap-2 border-b border-[color:var(--color-border)] bg-[color:var(--color-accent-dim)] px-3 py-2">
       <Shield class="size-3 text-[color:var(--color-accent)]" />
-      <span class="text-label uppercase tracking-[0.08em] text-[color:var(--color-accent)]">permission required</span>
+      <span class="type-label uppercase tracking-[0.08em] text-[color:var(--color-accent)]">permission required</span>
     </div>
 
     <div class="bg-[color:var(--color-surface)] p-3">
@@ -38,15 +38,15 @@
         <Terminal class="size-3" />
         <span class="label">{req.tool}</span>
       </div>
-      <pre class="text-code mb-3 overflow-x-auto rounded-[var(--radius-sm)] bg-[color:var(--color-bg)] p-2">{formatArgs()}</pre>
+      <pre class="type-code mb-3 overflow-x-auto rounded-[var(--radius-sm)] bg-[color:var(--color-bg)] p-2">{formatArgs()}</pre>
       {#if req.rationale}
-        <p class="text-copy mb-3 text-[color:var(--color-fg-muted)]">{req.rationale}</p>
+        <p class="type-copy mb-3 text-[color:var(--color-fg-muted)]">{req.rationale}</p>
       {/if}
 
       <div class="grid grid-cols-3 gap-1.5">
-        <Button type="button" variant="outline" size="sm" onclick={() => choose("deny")} class="text-meta rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]">deny</Button>
-        <Button type="button" variant="outline" size="sm" onclick={() => choose("allow")} class="text-meta rounded-[var(--radius-sm)] border-[color:var(--color-border-strong)] text-[color:var(--color-fg)] active:bg-[color:var(--color-surface-2)]">allow once</Button>
-        <Button type="button" size="sm" onclick={() => choose("allow_session")} class="text-meta rounded-[var(--radius-sm)] active:opacity-80">session</Button>
+        <Button type="button" variant="outline" size="sm" onclick={() => choose("deny")} class="type-meta rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]">deny</Button>
+        <Button type="button" variant="outline" size="sm" onclick={() => choose("allow")} class="type-meta rounded-[var(--radius-sm)] border-[color:var(--color-border-strong)] text-[color:var(--color-fg)] active:bg-[color:var(--color-surface-2)]">allow once</Button>
+        <Button type="button" size="sm" onclick={() => choose("allow_session")} class="type-meta rounded-[var(--radius-sm)] active:opacity-80">session</Button>
       </div>
     </div>
   </div>

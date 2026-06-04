@@ -85,7 +85,7 @@
             variant="ghost"
             size="xs"
             onclick={() => (path = segment.path)}
-            class="h-auto rounded-[var(--radius-sm)] px-1.5 py-0.5 text-meta text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
+            class="h-auto rounded-[var(--radius-sm)] px-1.5 py-0.5 type-meta text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
           >
             {segment.name}
           </Button>
@@ -107,26 +107,26 @@
 
   <div class="flex-1 overflow-y-auto">
     {#if loading}
-      <div class="text-copy px-3 py-3 text-[color:var(--color-fg-muted)]">loading…</div>
+      <div class="type-copy px-3 py-3 text-[color:var(--color-fg-muted)]">loading…</div>
     {/if}
     {#if error}
-      <div class="text-copy px-3 py-3 text-[color:var(--color-danger)]">{error}</div>
+      <div class="type-copy px-3 py-3 text-[color:var(--color-danger)]">{error}</div>
     {/if}
     {#if listing}
       {#if listing.parent !== null}
         <ActionRow onclick={goUp}>
           <ChevronLeft class="size-3.5 text-[color:var(--color-fg-muted)]" />
-          <span class="text-copy text-[color:var(--color-fg-muted)]">..</span>
+          <span class="type-copy text-[color:var(--color-fg-muted)]">..</span>
         </ActionRow>
       {/if}
       {#each listing.entries as entry (entry.name)}
         <ActionRow onclick={() => drill(entry.name)}>
           <Folder class="size-3.5 shrink-0 text-[color:var(--color-fg-muted)]" />
-          <span class="text-copy min-w-0 flex-1 truncate">{entry.name}</span>
+          <span class="type-copy min-w-0 flex-1 truncate">{entry.name}</span>
           <ChevronRight class="size-3 shrink-0 text-[color:var(--color-fg-faint)]" />
         </ActionRow>
       {:else}
-        <div class="text-copy px-3 py-3 text-[color:var(--color-fg-muted)]">(no subdirectories)</div>
+        <div class="type-copy px-3 py-3 text-[color:var(--color-fg-muted)]">(no subdirectories)</div>
       {/each}
     {/if}
   </div>

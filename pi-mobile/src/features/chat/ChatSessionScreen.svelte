@@ -78,15 +78,15 @@
         <div class="flex min-w-0 items-center gap-2">
           <StatusDot status={activeSessionState.status} />
           <div class="min-w-0 flex-1">
-            <div class="text-title truncate font-medium">{session.title}</div>
-            <div class="text-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">
+            <div class="type-title truncate font-medium">{session.title}</div>
+            <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">
               {cwdDisplayName(session.cwd)}
             </div>
           </div>
         </div>
       {:else}
-        <div class="text-title truncate font-medium">session</div>
-        <div class="text-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">{activeSessionState.connectionStatus}</div>
+        <div class="type-title truncate font-medium">session</div>
+        <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">{activeSessionState.connectionStatus}</div>
       {/if}
     </div>
     <div class="flex w-12 justify-end">
@@ -95,7 +95,7 @@
   </header>
 
   {#if contextStats}
-    <div class="text-label uppercase tracking-[0.08em] hairline-b flex items-center gap-2 px-3 py-1.5 text-[color:var(--color-fg-faint)]">
+    <div class="type-label uppercase tracking-[0.08em] hairline-b flex items-center gap-2 px-3 py-1.5 text-[color:var(--color-fg-faint)]">
       <span class="truncate">{formatContextUsage(contextStats.usage)}</span>
       <span class="ml-auto shrink-0 tabular-nums text-[color:var(--color-fg-muted)]">{formatCost(contextStats.cost)}</span>
     </div>
@@ -104,8 +104,8 @@
   <RetryBanner />
   {#if activeSessionState.connectionStatus === "gone"}
     <div class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-      <div class="text-title font-medium">session no longer available</div>
-      <div class="text-copy max-w-[28ch] text-[color:var(--color-fg-muted)]">
+      <div class="type-title font-medium">session no longer available</div>
+      <div class="type-copy max-w-[28ch] text-[color:var(--color-fg-muted)]">
         the bridge can't find this session — its on-disk file may have been removed, or the session was started in ephemeral mode.
       </div>
       <Button type="button" variant="outline" size="sm" class="mt-2" onclick={() => navigateTo(routePaths.sessions)}>back to sessions</Button>

@@ -23,13 +23,13 @@
     <Button type="button" variant="ghost" size="sm" onclick={() => navigateTo(routePaths.sessions)}>
       back
     </Button>
-    <h1 class="text-title font-medium">settings</h1>
+    <h1 class="type-title font-medium">settings</h1>
     <div class="w-12" aria-hidden="true"></div>
   </header>
 
   <div class="min-h-0 flex-1 space-y-7 overflow-y-auto px-3 pt-4" style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem)">
     {#if settingsState.error}
-      <div class="text-meta rounded-[var(--radius-md)] border border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/8 px-3 py-2 text-[color:var(--color-danger)]">
+      <div class="type-meta rounded-[var(--radius-md)] border border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/8 px-3 py-2 text-[color:var(--color-danger)]">
         {settingsState.error}
       </div>
     {/if}
@@ -43,7 +43,7 @@
         <BridgeStatusCard />
       {/if}
     {:else}
-      <div class="text-copy py-8 text-center text-[color:var(--color-fg-muted)]">loading settings…</div>
+      <div class="type-copy py-8 text-center text-[color:var(--color-fg-muted)]">loading settings…</div>
     {/if}
   </div>
 </main>

@@ -13,20 +13,20 @@
 
   --font-weight-readable: 450;
 
-  --text-label: 0.6875rem;
-  --text-label--line-height: 1.35;
-  --text-meta: 0.75rem;
-  --text-meta--line-height: 1.45;
-  --text-copy: 0.8125rem;
-  --text-copy--line-height: 1.55;
-  --text-title: 0.875rem;
-  --text-title--line-height: 1.2;
-  --text-message: 0.9375rem;
-  --text-message--line-height: 1.65;
-  --text-input: 0.9375rem;
-  --text-input--line-height: 1.5;
-  --text-code: 0.75rem;
-  --text-code--line-height: 1.5;
+  --type-label: 0.6875rem;
+  --type-label--line-height: 1.35;
+  --type-meta: 0.75rem;
+  --type-meta--line-height: 1.45;
+  --type-copy: 0.8125rem;
+  --type-copy--line-height: 1.55;
+  --type-title: 0.875rem;
+  --type-title--line-height: 1.2;
+  --type-message: 0.9375rem;
+  --type-message--line-height: 1.65;
+  --type-input: 0.9375rem;
+  --type-input--line-height: 1.5;
+  --type-code: 0.75rem;
+  --type-code--line-height: 1.5;
 
   --color-bg: #0a0a0a;
   --color-surface: #131313;
@@ -105,6 +105,41 @@
     calc(var(--radius) * 2.2);
   --radius-4xl:
     calc(var(--radius) * 2.6);
+}
+
+@utility type-label {
+  font-size: var(--type-label);
+  line-height: var(--type-label--line-height);
+}
+
+@utility type-meta {
+  font-size: var(--type-meta);
+  line-height: var(--type-meta--line-height);
+}
+
+@utility type-copy {
+  font-size: var(--type-copy);
+  line-height: var(--type-copy--line-height);
+}
+
+@utility type-title {
+  font-size: var(--type-title);
+  line-height: var(--type-title--line-height);
+}
+
+@utility type-message {
+  font-size: var(--type-message);
+  line-height: var(--type-message--line-height);
+}
+
+@utility type-input {
+  font-size: var(--type-input);
+  line-height: var(--type-input--line-height);
+}
+
+@utility type-code {
+  font-size: var(--type-code);
+  line-height: var(--type-code--line-height);
 }
 
 @layer base {
@@ -266,8 +301,8 @@
   }
 
   .label {
-    font-size: var(--text-label);
-    line-height: var(--text-label--line-height);
+    font-size: var(--type-label);
+    line-height: var(--type-label--line-height);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--color-fg-muted);

@@ -33,7 +33,7 @@
 <Sheet.Root bind:open>
   <Sheet.BottomContent>
     <Sheet.Header class="hairline-b space-y-0 px-3 py-3 pr-12 text-left">
-      <Sheet.Title class="text-title min-w-0 flex-1 px-1 font-medium">Rename session</Sheet.Title>
+      <Sheet.Title class="type-title min-w-0 flex-1 px-1 font-medium">Rename session</Sheet.Title>
     </Sheet.Header>
 
     <div class="px-3 pt-3 pb-2">
@@ -48,7 +48,7 @@
           }
         }}
         placeholder="session title"
-        class="text-input h-10"
+        class="type-input h-10"
       />
     </div>
 

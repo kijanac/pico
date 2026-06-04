@@ -26,7 +26,7 @@
   );
 </script>
 
-<div class={`text-meta mt-1.5 flex items-start gap-1.5 ${toneClass}`}>
+<div class={`type-meta mt-1.5 flex items-start gap-1.5 ${toneClass}`}>
   <span class="mt-[2px] shrink-0">
     {#if stopReason === "error"}
       <XCircle class="size-3" />

@@ -41,15 +41,15 @@
       {/if}
     </span>
 
-    <span class="text-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">{label}</span>
-    <span class="text-meta min-w-0 flex-1 truncate text-[color:var(--color-fg)]">{summary}</span>
+    <span class="type-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">{label}</span>
+    <span class="type-meta min-w-0 flex-1 truncate text-[color:var(--color-fg)]">{summary}</span>
 
     {#if msg.status === "running"}
       <Loader2 class="size-3 animate-spin text-[color:var(--color-accent)]" />
     {:else if msg.status === "ok"}
       <Check class="size-3 text-[color:var(--color-fg-faint)]" />
       {#if msg.durationMs !== undefined}
-        <span class="text-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)] tabular-nums">{msg.durationMs}ms</span>
+        <span class="type-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)] tabular-nums">{msg.durationMs}ms</span>
       {/if}
     {:else if msg.status === "error"}
       <X class="size-3 text-[color:var(--color-danger)]" />

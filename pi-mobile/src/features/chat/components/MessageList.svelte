@@ -75,7 +75,7 @@
       size="sm"
       onpointerdown={(event) => event.preventDefault()}
       onclick={() => scrollToLatest()}
-      class={`text-meta absolute right-3 z-30 h-auto rounded-full px-3 py-1.5 shadow-lg backdrop-blur-md ${hasNewActivity ? "active:opacity-85" : "border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)]/95 text-[color:var(--color-fg)] active:bg-[color:var(--color-surface-2)]"}`}
+      class={`type-meta absolute right-3 z-30 h-auto rounded-full px-3 py-1.5 shadow-lg backdrop-blur-md ${hasNewActivity ? "active:opacity-85" : "border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)]/95 text-[color:var(--color-fg)] active:bg-[color:var(--color-surface-2)]"}`}
       style="bottom: 0.75rem"
       aria-label={hasNewActivity ? "Scroll to new messages" : "Scroll to latest message"}
     >

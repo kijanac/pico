@@ -33,6 +33,6 @@
     bind:value
     oninput={handleInput}
     {placeholder}
-    class="text-copy bg-[color:var(--color-bg)]"
+    class="type-copy bg-[color:var(--color-bg)]"
   />
 </div>

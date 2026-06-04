@@ -5,7 +5,7 @@
 
 {#if retryState.active}
   <div
-    class="text-meta hairline-b flex items-center gap-2 px-3 py-1.5 text-[color:var(--color-warning,#d97706)]"
+    class="type-meta hairline-b flex items-center gap-2 px-3 py-1.5 text-[color:var(--color-warning,#d97706)]"
     role="status"
     aria-live="polite"
   >

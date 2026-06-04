@@ -24,20 +24,20 @@
 <section class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
   <div class="mb-3 flex items-start justify-between gap-3">
     <div>
-      <h2 class="text-title font-medium text-[color:var(--color-fg)]">bridge</h2>
+      <h2 class="type-title font-medium text-[color:var(--color-fg)]">bridge</h2>
       {#if settingsState.bridgeUrlConfigured}
-        <p class="text-copy mt-1 break-all text-[color:var(--color-fg-muted)]">
+        <p class="type-copy mt-1 break-all text-[color:var(--color-fg-muted)]">
           {settingsState.bridgeUrl}
         </p>
       {:else}
-        <p class="text-copy mt-1 text-[color:var(--color-fg-muted)]">
+        <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">
           no bridge is connected yet.
         </p>
       {/if}
     </div>
 
     {#if settingsState.bridgeUrlConfigured}
-      <div class="text-label uppercase tracking-[0.08em] flex shrink-0 items-center gap-1.5 rounded-full border border-[color:var(--color-border)] px-2 py-1 text-[color:var(--color-fg-muted)]">
+      <div class="type-label uppercase tracking-[0.08em] flex shrink-0 items-center gap-1.5 rounded-full border border-[color:var(--color-border)] px-2 py-1 text-[color:var(--color-fg-muted)]">
         {#if status === "checking"}
           <Loader2 class="size-3 animate-spin" /> checking
         {:else if status === "online"}

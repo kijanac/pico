@@ -25,11 +25,11 @@
 
 <div class="hairline-b max-h-56 overflow-y-auto px-2 py-2">
   {#if loading}
-    <div class="text-copy px-2 py-2 text-[color:var(--color-fg-muted)]">loading commands…</div>
+    <div class="type-copy px-2 py-2 text-[color:var(--color-fg-muted)]">loading commands…</div>
   {:else if error}
-    <div class="text-copy px-2 py-2 text-[color:var(--color-danger)]">{error}</div>
+    <div class="type-copy px-2 py-2 text-[color:var(--color-danger)]">{error}</div>
   {:else if entries.length === 0}
-    <div class="text-copy px-2 py-2 text-[color:var(--color-fg-muted)]">no matches</div>
+    <div class="type-copy px-2 py-2 text-[color:var(--color-fg-muted)]">no matches</div>
   {:else}
     <div class="space-y-1">
       {#each entries as entry, index (entry.kind + entry.name)}
@@ -44,8 +44,8 @@
             {#if entry.kind === "prompt"}<FileText class="size-3" />{:else if entry.kind === "skill"}<Sparkles class="size-3" />{:else}<Hash class="size-3" />{/if}
           </span>
           <span class="min-w-0 flex-1">
-            <span class="text-meta block truncate text-[color:var(--color-fg)]">{label(entry)}</span>
-            <span class="text-meta block truncate text-[color:var(--color-fg-muted)]">{entry.description}</span>
+            <span class="type-meta block truncate text-[color:var(--color-fg)]">{label(entry)}</span>
+            <span class="type-meta block truncate text-[color:var(--color-fg-muted)]">{entry.description}</span>
           </span>
         </button>
       {/each}

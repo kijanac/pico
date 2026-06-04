@@ -30,7 +30,7 @@
       if (hasSummary) open = !open;
     }}
     aria-expanded={hasSummary ? open : undefined}
-    class={`text-meta group flex w-full items-center gap-2 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2.5 py-1.5 text-left ${hasSummary ? "active:bg-[color:var(--color-surface-2)]" : "cursor-default"}`}
+    class={`type-meta group flex w-full items-center gap-2 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2.5 py-1.5 text-left ${hasSummary ? "active:bg-[color:var(--color-surface-2)]" : "cursor-default"}`}
   >
     <span class="flex h-4 w-4 items-center justify-center">
       {#if msg.status === "running"}
@@ -41,10 +41,10 @@
         <X class="size-3 text-[color:var(--color-danger)]" />
       {/if}
     </span>
-    <span class="text-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">context</span>
+    <span class="type-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">context</span>
     <span class="min-w-0 flex-1 truncate text-[color:var(--color-fg)]">{title}</span>
     {#if detail}
-      <span class="text-label uppercase tracking-[0.08em] hidden max-w-[42%] truncate text-[color:var(--color-fg-faint)] tabular-nums min-[380px]:block">{detail}</span>
+      <span class="type-label uppercase tracking-[0.08em] hidden max-w-[42%] truncate text-[color:var(--color-fg-faint)] tabular-nums min-[380px]:block">{detail}</span>
     {/if}
     {#if hasSummary}
       <ChevronDown class={`size-3 text-[color:var(--color-fg-faint)] transition-transform ${open ? "rotate-180" : ""}`} />
@@ -52,14 +52,14 @@
   </button>
 
   {#if open && msg.summary}
-    <div class="text-copy mt-1 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[color:var(--color-fg)]">
-      <div class="text-label uppercase tracking-[0.08em] mb-1 flex items-center justify-between gap-2 text-[color:var(--color-fg-faint)]">
+    <div class="type-copy mt-1 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[color:var(--color-fg)]">
+      <div class="type-label uppercase tracking-[0.08em] mb-1 flex items-center justify-between gap-2 text-[color:var(--color-fg-faint)]">
         <span>compaction summary</span>
         {#if msg.reason}
           <span>{msg.reason}</span>
         {/if}
       </div>
-      <StreamingMarkdown text={msg.summary} done={true} class="text-copy" />
+      <StreamingMarkdown text={msg.summary} done={true} class="type-copy" />
     </div>
   {/if}
 </div>

@@ -4,11 +4,11 @@
   import { highlightToHtml, inferLangFromPath } from "@/shared/lib/highlighter";
 
   const BASH_CLASS =
-    "text-code mt-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[#0d1117] p-2 font-mono text-[#e6edf3] whitespace-pre-wrap break-words";
+    "type-code mt-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[#0d1117] p-2 font-mono text-[#e6edf3] whitespace-pre-wrap break-words";
   const CODE_BLOCK_CLASS =
-    "text-code code-wrap mt-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[color:var(--color-border)] p-2";
+    "type-code code-wrap mt-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[color:var(--color-border)] p-2";
   const RAW_CLASS =
-    "text-code mt-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-2 text-[color:var(--color-fg-muted)] whitespace-pre-wrap break-words";
+    "type-code mt-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-2 text-[color:var(--color-fg-muted)] whitespace-pre-wrap break-words";
 
   let { msg }: { msg: ToolCallMessage } = $props();
 

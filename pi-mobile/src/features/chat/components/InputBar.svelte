@@ -322,7 +322,7 @@
           }
         }}
         rows="1"
-        class="text-input w-full resize-none bg-transparent px-3 py-[7px] text-[color:var(--color-fg)] focus:outline-none"
+        class="type-input w-full resize-none bg-transparent px-3 py-[7px] text-[color:var(--color-fg)] focus:outline-none"
       ></textarea>
     </div>
 

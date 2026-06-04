@@ -14,7 +14,7 @@
 <Sheet.Root bind:open>
   <Sheet.BottomContent>
     <Sheet.Header class="hairline-b space-y-0 px-3 py-3 pr-12 text-left">
-      <Sheet.Title class="text-title min-w-0 flex-1 px-1 font-medium">compact context</Sheet.Title>
+      <Sheet.Title class="type-title min-w-0 flex-1 px-1 font-medium">compact context</Sheet.Title>
     </Sheet.Header>
     <CompactContextForm {sessionId} onStart={startCompaction} />
   </Sheet.BottomContent>

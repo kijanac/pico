@@ -32,10 +32,10 @@
 </script>
 
 <div class="flex-1 overflow-y-auto px-3 py-3">
-  {#if loading}<div class="text-copy text-[color:var(--color-fg-muted)]">loading session info…</div>{/if}
-  {#if error}<div class="text-copy text-[color:var(--color-danger)]">{error}</div>{/if}
+  {#if loading}<div class="type-copy text-[color:var(--color-fg-muted)]">loading session info…</div>{/if}
+  {#if error}<div class="type-copy text-[color:var(--color-danger)]">{error}</div>{/if}
   {#if stats}
-    <div class="text-copy space-y-2">
+    <div class="type-copy space-y-2">
       {@render InfoRow("session id", stats.sessionId)}
       {@render InfoRow("file", stats.sessionFile ?? "ephemeral")}
       {@render InfoRow("cwd", stats.cwd)}
