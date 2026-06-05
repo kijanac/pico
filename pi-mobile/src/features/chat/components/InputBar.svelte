@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from "svelte";
   import { Archive, ArrowUp, ImagePlus, ListTodo, Mic, MicOff, Plus, Square } from "@lucide/svelte";
-  import type { ImageAttachment } from "@pi-mobile/protocol";
+  import type { ImageAttachment } from "@pico/protocol";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { chatQueueState } from "@/features/chat/model/chat-queue.state.svelte";
   import { createSpeechRecognitionState } from "@/shared/mobile/speech.svelte";

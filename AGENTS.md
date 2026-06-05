@@ -5,8 +5,8 @@
 This is a pnpm monorepo with two workspace packages:
 
 - `bridge/` (`pi-bridge`): Node 26.1+ TypeScript bridge. Main checks: `pnpm --filter pi-bridge typecheck`.
-- `pi-mobile/` (`pi-mobile`): Solid + Capacitor client. Main check: `pnpm --filter pi-mobile build`.
-- `packages/protocol/` (`@pi-mobile/protocol`): Shared REST/WS Valibot schemas and derived TypeScript types.
+- `pi-mobile/` (`pico`): Svelte + Capacitor client. Main check: `pnpm --filter pico build`.
+- `packages/protocol/` (`@pico/protocol`): Shared REST/WS Valibot schemas and derived TypeScript types.
 
 Run commands from the repository root.
 
@@ -23,5 +23,5 @@ pnpm check
 
 - Do not commit tarballs; they are import artifacts and ignored by `.gitignore`.
 - Do not commit bridge runtime databases or local `.env*` files.
-- Keep protocol changes in `packages/protocol/src/index.ts`; bridge and mobile both import `@pi-mobile/protocol`.
+- Keep protocol changes in `packages/protocol/src/index.ts`; bridge and mobile both import `@pico/protocol`.
 - Deployment scripts live in `bridge/deploy/` but deploy from the workspace root because the bridge depends on `packages/protocol`.

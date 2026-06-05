@@ -45,7 +45,7 @@ import {
   type SessionTree,
   type ToolCallMessage,
   type TreeEntry,
-} from "@pi-mobile/protocol";
+} from "@pico/protocol";
 import { SessionNotFound } from "./errors.ts";
 import { BRIDGE_DATA_DIR } from "./config.ts";
 

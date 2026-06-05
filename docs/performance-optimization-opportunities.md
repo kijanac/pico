@@ -1,6 +1,6 @@
 # Performance optimization opportunities
 
-This note captures the biggest principled performance opportunities observed in the pi-mobile workspace, with emphasis on scenarios where each optimization is likely to matter most.
+This note captures the biggest principled performance opportunities observed in the Pico workspace, with emphasis on scenarios where each optimization is likely to matter most.
 
 ## 1. ✅ Make the bridge session log/reconnect path incremental
 

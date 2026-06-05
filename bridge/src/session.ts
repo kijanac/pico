@@ -13,7 +13,7 @@ import {
   pipe,
 } from "effect";
 import { PiClient, type PiSession, type PiEmission, type ExportedHtml, PiError, type SendImage } from "./pi.ts";
-import { parseWireEvent } from "@pi-mobile/protocol";
+import { parseWireEvent } from "@pico/protocol";
 import type {
   Commands,
   LogEntry,
@@ -25,7 +25,7 @@ import type {
   SessionStats,
   SessionTree,
   WireEvent,
-} from "@pi-mobile/protocol";
+} from "@pico/protocol";
 import { Store } from "./store.ts";
 import { toSessionMeta } from "./session-record.ts";
 import { SessionNotFound } from "./errors.ts";

@@ -6,7 +6,7 @@ import {
   PROTOCOL_VERSION,
   RECOMMENDED_MOBILE_VERSION,
   type BridgeUpdateStatus,
-} from "@pi-mobile/protocol";
+} from "@pico/protocol";
 
 const UPDATE_CHANNEL = "stable";
 const AUTO_UPDATE = process.env.PI_BRIDGE_AUTO_UPDATE === "1";

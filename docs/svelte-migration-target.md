@@ -1,10 +1,10 @@
-# pi-mobile Svelte 5 Target Architecture
+# Pico Svelte 5 Target Architecture
 
-This document describes the ideal target architecture for migrating `pi-mobile` from Solid UI to a modern Svelte 5 + shadcn-svelte application, ignoring churn and optimizing purely for a clean May 2026 architecture.
+This document describes the ideal target architecture for migrating `pico` from Solid UI to a modern Svelte 5 + shadcn-svelte application, ignoring churn and optimizing purely for a clean May 2026 architecture.
 
 ## Target summary
 
-Rewrite `pi-mobile` as a modern Svelte 5 + TypeScript + Capacitor SPA using:
+Rewrite Pico as a modern Svelte 5 + TypeScript + Capacitor SPA using:
 
 - Svelte 5 runes
 - Vite
@@ -676,8 +676,8 @@ Suggested `package.json` scripts:
 Recommended checks:
 
 ```bash
-pnpm --filter pi-mobile check
-pnpm --filter pi-mobile build
+pnpm --filter pico check
+pnpm --filter pico build
 ```
 
 ## Ideal dependency shape
@@ -693,7 +693,7 @@ pnpm --filter pi-mobile build
     "@capacitor/camera": "...",
     "@capacitor-community/speech-recognition": "...",
 
-    "@pi-mobile/protocol": "workspace:*",
+    "@pico/protocol": "workspace:*",
 
     "svelte": "^5.x",
     "bits-ui": "^2.x",
@@ -738,7 +738,7 @@ feature-owned state/controllers
   ↓
 shared API client
   ↓
-@pi-mobile/protocol schemas/types
+@pico/protocol schemas/types
   ↓
 bridge
 ```
@@ -748,7 +748,7 @@ Visually:
 ```txt
 shadcn-svelte primitives
   ↓
-pi-mobile design tokens
+Pico design tokens
   ↓
 feature-specific compositions
   ↓

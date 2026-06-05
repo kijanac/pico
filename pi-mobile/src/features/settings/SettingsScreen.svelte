@@ -42,6 +42,16 @@
         <GuidedOnboardingCard />
         <BridgeStatusCard />
       {/if}
+
+      <section class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
+        <div class="mb-2">
+          <h2 class="type-title font-medium text-[color:var(--color-fg)]">Pico</h2>
+          <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">Pi, from your pocket.</p>
+        </div>
+        <p class="type-meta text-[color:var(--color-fg-muted)]">
+          Pico is an independent, unofficial mobile client built on the Pi coding agent. It is not affiliated with or endorsed by Earendil Inc. or the Pi project.
+        </p>
+      </section>
     {:else}
       <div class="type-copy py-8 text-center text-[color:var(--color-fg-muted)]">loading settings…</div>
     {/if}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SessionMeta } from "@pi-mobile/protocol";
+  import type { SessionMeta } from "@pico/protocol";
 
   let { status, size = 6, class: className = "" }: { status: SessionMeta["status"]; size?: number; class?: string } = $props();
 

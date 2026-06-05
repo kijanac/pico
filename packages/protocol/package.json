@@ -1,5 +1,5 @@
 {
-  "name": "@pi-mobile/protocol",
+  "name": "@pico/protocol",
   "private": true,
   "version": "0.9.5",
   "type": "module",

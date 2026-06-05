@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Trash2 } from "@lucide/svelte";
-  import type { QueuedMessage, QueueState } from "@pi-mobile/protocol";
+  import type { QueuedMessage, QueueState } from "@pico/protocol";
   import { Button } from "@/shared/ui/button";
   import * as Sheet from "@/shared/ui/sheet";
 

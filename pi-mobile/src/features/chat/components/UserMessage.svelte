@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { UserMessage } from "@pi-mobile/protocol";
+  import type { UserMessage } from "@pico/protocol";
 
   let { msg }: { msg: UserMessage } = $props();
 </script>

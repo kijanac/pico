@@ -25,9 +25,9 @@ export function renderBridgeCloudInit(options: BridgeCloudInitOptions): string {
     "    export TAILSCALE_SERVE=1",
     "    export PI_BRIDGE_AUTO_DEPLOY=1",
     "    export PI_BRIDGE_AUTO_UPDATE=1",
-    "    rm -rf /tmp/pi-mobile",
-    `    git clone --depth=1 ${shellQuote(BRIDGE_REPO_URL)} /tmp/pi-mobile`,
-    "    /tmp/pi-mobile/bridge/deploy/install.sh",
+    "    rm -rf /tmp/pico",
+    `    git clone --depth=1 ${shellQuote(BRIDGE_REPO_URL)} /tmp/pico`,
+    "    /tmp/pico/bridge/deploy/install.sh",
   ];
 
   return `${lines.join("\n")}\n`;

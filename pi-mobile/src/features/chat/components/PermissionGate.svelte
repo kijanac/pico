@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Shield, Terminal } from "@lucide/svelte";
-  import type { PermissionRequest } from "@pi-mobile/protocol";
+  import type { PermissionRequest } from "@pico/protocol";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
   import { Button } from "@/shared/ui/button";

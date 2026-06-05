@@ -1,4 +1,4 @@
-import type { QueuedMessage, QueueState, WireEvent } from "@pi-mobile/protocol";
+import type { QueuedMessage, QueueState, WireEvent } from "@pico/protocol";
 
 type QueueBySession = Record<string, QueueState | undefined>;
 

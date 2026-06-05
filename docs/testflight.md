@@ -10,7 +10,7 @@ Use your personal Apple Developer account.
 1. In Apple Developer, create an explicit App ID / bundle ID, for example:
 
    ```text
-   dev.pi.mobile
+   dev.pico.mobile
    ```
 
    If that ID is unavailable, choose your own reverse-DNS ID and use that same
@@ -66,7 +66,7 @@ runs use `0.1.0`. The TestFlight build number is the GitHub Actions run number.
 
 ## Phone-only loop
 
-1. Open pi-mobile on your phone.
+1. Open Pico on your phone.
 2. Ask remote pi to edit this repo, run checks, commit, and push.
 3. Trigger the workflow from GitHub mobile/web or by asking pi to push a tag.
 4. Install the new build from TestFlight after processing completes.

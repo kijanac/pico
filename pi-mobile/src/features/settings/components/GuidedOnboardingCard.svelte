@@ -7,7 +7,7 @@
   <div class="mb-3">
     <h2 class="type-title font-medium text-[color:var(--color-fg)]">fresh box setup</h2>
     <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">
-      set up a new bridge host, then let pi-mobile wait for and claim it.
+      set up a new bridge host, then let Pico wait for and claim it.
     </p>
   </div>
   <Button type="button" class="h-10 w-full" onclick={() => navigateTo(routePaths.onboarding)}>

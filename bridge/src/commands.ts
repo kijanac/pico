@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { sep as PATH_SEP } from "node:path";
 import { homedir } from "node:os";
-import type { BuiltinCommandEntry, Commands, PromptCommandEntry, SkillCommandEntry } from "@pi-mobile/protocol";
+import type { BuiltinCommandEntry, Commands, PromptCommandEntry, SkillCommandEntry } from "@pico/protocol";
 
 const BUILTIN_COMMANDS: Array<{
   name: string;

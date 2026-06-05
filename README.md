@@ -1,13 +1,13 @@
-# pi mobile workspace
+# Pico workspace
 
-This repository contains the mobile client and local bridge for using the pi coding agent from a phone.
+Pico is an independent, unofficial mobile companion for the Pi coding agent.
 
 ## Projects
 
 | Path | Purpose |
 | --- | --- |
-| [`bridge/`](./bridge) | Node/TypeScript REST + WebSocket bridge between pi-mobile and the pi coding agent. |
-| [`pi-mobile/`](./pi-mobile) | Solid + Capacitor mobile client. |
+| [`bridge/`](./bridge) | Node/TypeScript REST + WebSocket bridge between Pico and the Pi coding agent. |
+| [`pi-mobile/`](./pi-mobile) | Pico Svelte + Capacitor mobile client. |
 | [`packages/protocol/`](./packages/protocol) | Shared Valibot schemas and TypeScript types for the REST/WS protocol. |
 
 ## Requirements
@@ -34,7 +34,7 @@ pnpm dev:bridge:mock
 pnpm dev:mobile
 ```
 
-Then open the Vite URL printed by `pi-mobile`.
+Then open the Vite URL printed by `pico`.
 
 For live pi instead of mock mode:
 
@@ -56,7 +56,7 @@ This typechecks the bridge and builds the mobile app.
 .
 ├── bridge/              # pi bridge service
 ├── packages/protocol/   # shared protocol schemas/types
-├── pi-mobile/           # Solid + Capacitor client
+├── pi-mobile/           # Pico Svelte + Capacitor client
 ├── package.json         # root workspace scripts
 ├── pnpm-workspace.yaml  # workspace package list
 └── README.md            # this file
@@ -66,7 +66,8 @@ This typechecks the bridge and builds the mobile app.
 
 - The original tarballs are import artifacts and are ignored by git.
 - Runtime bridge data (`bridge/data/`, SQLite files) is ignored by git.
-- The bridge and mobile app both import protocol types from `@pi-mobile/protocol`.
+- Pico is not affiliated with or endorsed by Earendil Inc. or the Pi project.
+- The bridge and mobile app both import protocol types from `@pico/protocol`.
 
 ## iPhone native shell
 
@@ -79,10 +80,10 @@ pnpm install
 Then create/open the iOS project:
 
 ```bash
-pnpm --filter pi-mobile build
-pnpm --filter pi-mobile exec cap add ios   # first time only
-pnpm --filter pi-mobile exec cap sync ios
-pnpm --filter pi-mobile exec cap open ios
+pnpm --filter pico build
+pnpm --filter pico exec cap add ios   # first time only
+pnpm --filter pico exec cap sync ios
+pnpm --filter pico exec cap open ios
 ```
 
 ## Remote bridge + iPhone

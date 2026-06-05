@@ -1,6 +1,6 @@
 <script lang="ts">
   import { X } from "@lucide/svelte";
-  import type { ImageAttachment } from "@pi-mobile/protocol";
+  import type { ImageAttachment } from "@pico/protocol";
 
   let { images, onRemove }: { images: ImageAttachment[]; onRemove: (index: number) => void } = $props();
 </script>

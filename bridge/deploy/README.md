@@ -251,7 +251,7 @@ goes into.
 
 1. Install the Tailscale app on the phone, sign in to the same tailnet
    as the VPS.
-2. Open pi-mobile → Settings → set "Bridge URL" to the tailnet HTTPS
+2. Open Pico → Settings → set "Bridge URL" to the tailnet HTTPS
    URL from the previous step.
 3. Pull-to-refresh on the session list to confirm the connection.
 

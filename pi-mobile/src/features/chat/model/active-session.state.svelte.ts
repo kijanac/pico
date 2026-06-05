@@ -1,4 +1,4 @@
-import type { ClientEvent, SessionMeta, WireEvent } from "@pi-mobile/protocol";
+import type { ClientEvent, SessionMeta, WireEvent } from "@pico/protocol";
 import { retryState } from "@/features/chat/model/retry-state.svelte";
 
 export type ConnectionStatus = "offline" | "connecting" | "connected" | "reconnecting" | "error" | "gone";

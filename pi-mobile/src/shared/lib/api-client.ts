@@ -1,6 +1,6 @@
 import { WebSocket as ReconnectingWS } from "partysocket";
-import { decodeWireEvent } from "@pi-mobile/protocol";
-import type { ClientEvent, WireEvent } from "@pi-mobile/protocol";
+import { decodeWireEvent } from "@pico/protocol";
+import type { ClientEvent, WireEvent } from "@pico/protocol";
 
 export interface StreamHandlers {
   onOpen?: () => void;

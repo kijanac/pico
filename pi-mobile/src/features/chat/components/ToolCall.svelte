@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Check, FileText, Loader2, Pencil, PlusSquare, Terminal, X } from "@lucide/svelte";
-  import type { ToolCallMessage } from "@pi-mobile/protocol";
+  import type { ToolCallMessage } from "@pico/protocol";
   import { shortPath } from "@/shared/lib/format";
   import EditDiff from "@/features/chat/components/EditDiff.svelte";
   import ToolResult from "@/features/chat/components/ToolResult.svelte";

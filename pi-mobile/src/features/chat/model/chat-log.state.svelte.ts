@@ -1,4 +1,4 @@
-import type { AssistantMessage, CompactionEntry, LogEntry, WireEvent } from "@pi-mobile/protocol";
+import type { AssistantMessage, CompactionEntry, LogEntry, WireEvent } from "@pico/protocol";
 
 interface SessionLog {
   entries: LogEntry[];

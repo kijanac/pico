@@ -1,5 +1,5 @@
 {
-  "name": "pi-mobile",
+  "name": "pico",
   "private": true,
   "version": "0.9.5",
   "type": "module",
@@ -26,7 +26,7 @@
     "@capacitor/share": "^8.0.0",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@lucide/svelte": "^1.17.0",
-    "@pi-mobile/protocol": "workspace:*",
+    "@pico/protocol": "workspace:*",
     "@shikijs/langs": "^4.1.0",
     "@shikijs/themes": "^4.1.0",
     "@trpc/client": "^11.17.0",

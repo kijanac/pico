@@ -1,6 +1,6 @@
 import { randomUUIDv7 } from "node:crypto";
 import { Context, Effect, Layer } from "effect";
-import type { AuthLoginJob, AuthProvider, AuthProviders } from "@pi-mobile/protocol";
+import type { AuthLoginJob, AuthProvider, AuthProviders } from "@pico/protocol";
 import { getAgentServices, PiError, reloadAgentAuth } from "./pi.ts";
 
 interface AuthJobState {

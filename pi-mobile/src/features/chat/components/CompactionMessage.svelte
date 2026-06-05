@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Check, ChevronDown, Loader2, X } from "@lucide/svelte";
-  import type { CompactionEntry } from "@pi-mobile/protocol";
+  import type { CompactionEntry } from "@pico/protocol";
   import { formatTokens } from "@/shared/lib/format";
   import StreamingMarkdown from "@/features/chat/components/StreamingMarkdown.svelte";
 

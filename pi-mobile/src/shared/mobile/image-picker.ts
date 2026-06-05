@@ -1,5 +1,5 @@
 import { Camera, MediaTypeSelection, type MediaResult } from "@capacitor/camera";
-import type { ImageAttachment } from "@pi-mobile/protocol";
+import type { ImageAttachment } from "@pico/protocol";
 
 export interface PickImagesOptions {
   limit?: number;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import Anser from "anser";
-  import type { ToolCallMessage } from "@pi-mobile/protocol";
+  import type { ToolCallMessage } from "@pico/protocol";
   import { highlightToHtml, inferLangFromPath } from "@/shared/lib/highlighter";
 
   const BASH_CLASS =

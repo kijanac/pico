@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { EditToolArgs } from "@pi-mobile/protocol";
+  import type { EditToolArgs } from "@pico/protocol";
   import DiffSegment from "@/features/chat/components/DiffSegment.svelte";
 
   let { args }: { args: EditToolArgs } = $props();

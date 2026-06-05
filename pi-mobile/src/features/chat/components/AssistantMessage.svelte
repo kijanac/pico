@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Check, Copy, GitBranch, Info, Loader2 } from "@lucide/svelte";
-  import type { AssistantMessage } from "@pi-mobile/protocol";
+  import type { AssistantMessage } from "@pico/protocol";
   import { Button } from "@/shared/ui/button";
   import * as Sheet from "@/shared/ui/sheet";
   import { formatCost, formatTokens } from "@/shared/lib/format";

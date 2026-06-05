@@ -1,4 +1,4 @@
-import type { SessionMeta } from "@pi-mobile/protocol";
+import type { SessionMeta } from "@pico/protocol";
 import {
   createSession as createSessionRequest,
   deleteSession as deleteSessionRequest,

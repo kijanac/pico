@@ -66,7 +66,7 @@
           <CarouselItem class="min-h-0 overflow-y-auto pl-3">
             <OnboardingPanel eyebrow="step 1" title="before you start">
               <p class="type-copy text-[color:var(--color-fg-muted)]">
-                pi-mobile will generate cloud-init for a fresh Linux box. The box will install pi-bridge, join your Tailscale tailnet, and expose HTTPS through Tailscale Serve.
+                Pico will generate cloud-init for a fresh Linux box. The box will install pi-bridge, join your Tailscale tailnet, and expose HTTPS through Tailscale Serve.
               </p>
               <Checklist items={["Tailscale is installed and signed in on this phone", "You can create a VPS with cloud-init/user-data", "You can access Tailscale admin in a browser"]} />
               <ExternalLinkButton href="https://login.tailscale.com/admin/settings/keys">open Tailscale admin</ExternalLinkButton>
@@ -116,7 +116,7 @@
           <CarouselItem class="min-h-0 overflow-y-auto pl-3">
             <OnboardingPanel eyebrow="step 4" title="wait for bridge">
               <p class="type-copy text-[color:var(--color-fg-muted)]">
-                After the VPS starts, pi-mobile will poll the Tailscale HTTPS URL. Keep the Tailscale app connected on this phone.
+                After the VPS starts, Pico will poll the Tailscale HTTPS URL. Keep the Tailscale app connected on this phone.
               </p>
               <InfoRow label="bridge url" value={onboarding.bridgeUrl} />
               <div class="type-copy rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-[color:var(--color-fg-muted)]">
@@ -149,7 +149,7 @@
             <OnboardingPanel eyebrow="done" title="bridge ready">
               <div class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4 text-center">
                 <Check class="mx-auto mb-2 size-6 text-[color:var(--color-accent)]" />
-                <p class="type-title font-medium">pi-mobile is connected to your bridge.</p>
+                <p class="type-title font-medium">Pico is connected to your bridge.</p>
                 <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">Provider sign-in is available from a session’s action menu when you’re ready.</p>
               </div>
               <Button type="button" class="w-full" onclick={() => navigateTo(routePaths.sessions)}>go to sessions</Button>

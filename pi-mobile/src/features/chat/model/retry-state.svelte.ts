@@ -1,4 +1,4 @@
-import type { WireEvent } from "@pi-mobile/protocol";
+import type { WireEvent } from "@pico/protocol";
 
 export interface RetryState {
   attempt: number;

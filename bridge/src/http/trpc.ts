@@ -2,7 +2,7 @@ import { Cause, Effect, Option } from "effect";
 import type { Hono } from "hono";
 import { TRPCError } from "@trpc/server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
-import { appRouter, type BridgeTrpcServices } from "@pi-mobile/protocol/trpc";
+import { appRouter, type BridgeTrpcServices } from "@pico/protocol/trpc";
 import { authorizeHeaders, claimBridgeOwner } from "../auth.ts";
 import { loadCommands } from "../commands.ts";
 import { SessionNotFound } from "../errors.ts";

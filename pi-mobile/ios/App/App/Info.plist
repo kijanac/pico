@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>pi</string>
+        <string>Pico</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -50,14 +50,14 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
-	<string>pi can attach photos to messages when you choose to take a picture.</string>
+	<string>Pico can attach photos to messages when you choose to take a picture.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>pi can attach images from your photo library when you choose one.</string>
+	<string>Pico can attach images from your photo library when you choose one.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>pi can save generated or shared images to your photo library when you ask it to.</string>
+	<string>Pico can save generated or shared images to your photo library when you ask it to.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>pi uses the microphone to dictate messages when you tap voice input.</string>
+	<string>Pico uses the microphone to dictate messages when you tap voice input.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>pi uses speech recognition to turn dictated audio into message text.</string>
+	<string>Pico uses speech recognition to turn dictated audio into message text.</string>
 </dict>
 </plist>

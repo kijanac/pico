@@ -24,7 +24,7 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.14(hono@4.12.23)
-      '@pi-mobile/protocol':
+      '@pico/protocol':
         specifier: workspace:*
         version: link:../packages/protocol
       '@trpc/server':
@@ -110,7 +110,7 @@ importers:
       '@lucide/svelte':
         specifier: ^1.17.0
         version: 1.17.0(svelte@5.56.0)
-      '@pi-mobile/protocol':
+      '@pico/protocol':
         specifier: workspace:*
         version: link:../packages/protocol
       '@shikijs/langs':

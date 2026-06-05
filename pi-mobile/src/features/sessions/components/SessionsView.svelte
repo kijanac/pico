@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Archive, ArchiveRestore, Pencil, Plus, Settings as SettingsIcon, Trash2 } from "@lucide/svelte";
-  import type { SessionMeta } from "@pi-mobile/protocol";
+  import type { SessionMeta } from "@pico/protocol";
   import StatusDot from "@/shared/components/StatusDot.svelte";
   import PullToRefresh from "@/shared/components/PullToRefresh.svelte";
   import SwipeActionRow from "@/shared/components/SwipeActionRow.svelte";

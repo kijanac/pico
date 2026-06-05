@@ -1,4 +1,4 @@
-import { renderBridgeCloudInit } from "@pi-mobile/protocol";
+import { renderBridgeCloudInit } from "@pico/protocol";
 import type { CarouselAPI } from "@/shared/ui/carousel/context";
 import { settingsState } from "@/features/settings/settings.state.svelte";
 import { claimReachableBridge, healthcheckBridgeUrl } from "@/features/onboarding/api";

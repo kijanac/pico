@@ -193,7 +193,7 @@ if [[ "$PI_BRIDGE_AUTO_DEPLOY" == "1" ]]; then
 
 Bridge install complete.
   - Check logs with: journalctl -u pi-bridge -f
-  - In pi-mobile Settings, use the Tailscale HTTPS URL for this hostname.
+  - In Pico Settings, use the Tailscale HTTPS URL for this hostname.
 EOF
 else
   cat <<'EOF'

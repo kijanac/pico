@@ -1,5 +1,5 @@
 import { createTRPCClient, httpLink } from "@trpc/client";
-import type { AppRouter } from "@pi-mobile/protocol/trpc";
+import type { AppRouter } from "@pico/protocol/trpc";
 
 type BridgeTrpcClient = ReturnType<typeof createTRPCClient<AppRouter>>;
 

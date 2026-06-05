@@ -1,6 +1,6 @@
 import { randomUUIDv7 } from "node:crypto";
 import { Effect, Fiber, Layer, Queue, Random, Ref, Stream } from "effect";
-import type { SessionControls, SessionMeta } from "@pi-mobile/protocol";
+import type { SessionControls, SessionMeta } from "@pico/protocol";
 import { SessionNotFound } from "./errors.ts";
 import {
   PiClient,

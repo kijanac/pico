@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { SessionStatus, type SessionMeta } from "@pi-mobile/protocol";
+import { SessionStatus, type SessionMeta } from "@pico/protocol";
 
 export interface SessionRecord {
   id: string;

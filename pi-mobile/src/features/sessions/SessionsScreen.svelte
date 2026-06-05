@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { SessionMeta } from "@pi-mobile/protocol";
+  import type { SessionMeta } from "@pico/protocol";
   import { navigateTo, routePaths } from "@/app/routes";
   import { settingsState } from "@/features/settings/settings.state.svelte";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";

@@ -5,7 +5,7 @@ import {
   parseWireEvent,
   SessionStatus,
   type WireEvent,
-} from "@pi-mobile/protocol";
+} from "@pico/protocol";
 import type { SessionRecord } from "./session-record.ts";
 
 

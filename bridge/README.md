@@ -1,7 +1,7 @@
 # pi-bridge
 
-A Node + Effect WebSocket bridge between the [pi-mobile](../pi-mobile/) client
-and the [pi.dev](https://pi.dev) coding agent.
+A Node + Effect WebSocket bridge between the [Pico](../pi-mobile/) client
+and the [Pi](https://pi.dev) coding agent.
 
 ## Stack
 
