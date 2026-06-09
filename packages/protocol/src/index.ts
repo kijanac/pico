@@ -21,11 +21,8 @@ export const SessionStatus = v.picklist([
 ]);
 export type SessionStatus = v.InferOutput<typeof SessionStatus>;
 
-export const BuiltinToolName = v.picklist(["read", "write", "edit", "bash"]);
-export type BuiltinToolName = v.InferOutput<typeof BuiltinToolName>;
-
-export const ToolName = v.string();
-export type ToolName = v.InferOutput<typeof ToolName>;
+export const SendMode = v.picklist(["steer", "follow_up"]);
+export type SendMode = v.InferOutput<typeof SendMode>;
 
 export const PermissionChoice = v.picklist([
   "allow",
@@ -45,7 +42,7 @@ export const UserMessage = v.object({
   ...Base,
   text: v.string(),
   queued: v.optional(v.boolean()),
-  queueKind: v.optional(v.picklist(["steer", "follow_up"])),
+  queueKind: v.optional(SendMode),
 });
 export type UserMessage = v.InferOutput<typeof UserMessage>;
 
@@ -148,33 +145,29 @@ const BuiltinToolCallBase = {
   durationMs: v.optional(v.number()),
 } as const;
 
-export const ReadToolCallMessage = v.object({
+const ReadToolCallMessage = v.object({
   ...BuiltinToolCallBase,
   tool: v.literal("read"),
   args: ReadToolArgs,
 });
-export type ReadToolCallMessage = v.InferOutput<typeof ReadToolCallMessage>;
 
-export const WriteToolCallMessage = v.object({
+const WriteToolCallMessage = v.object({
   ...BuiltinToolCallBase,
   tool: v.literal("write"),
   args: WriteToolArgs,
 });
-export type WriteToolCallMessage = v.InferOutput<typeof WriteToolCallMessage>;
 
-export const EditToolCallMessage = v.object({
+const EditToolCallMessage = v.object({
   ...BuiltinToolCallBase,
   tool: v.literal("edit"),
   args: EditToolArgs,
 });
-export type EditToolCallMessage = v.InferOutput<typeof EditToolCallMessage>;
 
-export const BashToolCallMessage = v.object({
+const BashToolCallMessage = v.object({
   ...BuiltinToolCallBase,
   tool: v.literal("bash"),
   args: BashToolArgs,
 });
-export type BashToolCallMessage = v.InferOutput<typeof BashToolCallMessage>;
 
 export const BuiltinToolCallMessage = v.variant("tool", [
   ReadToolCallMessage,
@@ -212,22 +205,22 @@ const BuiltinPermissionBase = {
   resolved: v.optional(PermissionChoice),
 } as const;
 
-export const ReadPermissionRequest = v.object({
+const ReadPermissionRequest = v.object({
   ...BuiltinPermissionBase,
   tool: v.literal("read"),
   args: ReadToolArgs,
 });
-export const WritePermissionRequest = v.object({
+const WritePermissionRequest = v.object({
   ...BuiltinPermissionBase,
   tool: v.literal("write"),
   args: WriteToolArgs,
 });
-export const EditPermissionRequest = v.object({
+const EditPermissionRequest = v.object({
   ...BuiltinPermissionBase,
   tool: v.literal("edit"),
   args: EditToolArgs,
 });
-export const BashPermissionRequest = v.object({
+const BashPermissionRequest = v.object({
   ...BuiltinPermissionBase,
   tool: v.literal("bash"),
   args: BashToolArgs,
@@ -436,7 +429,7 @@ export type Commands = v.InferOutput<typeof Commands>;
 export const QueuedMessage = v.object({
   id: v.string(),
   text: v.string(),
-  queueKind: v.picklist(["steer", "follow_up"]),
+  queueKind: SendMode,
 });
 export type QueuedMessage = v.InferOutput<typeof QueuedMessage>;
 
@@ -632,7 +625,7 @@ export const ClientEvent = v.variant("t", [
   v.object({
     t: v.literal("send"),
     text: v.string(),
-    mode: v.optional(v.picklist(["steer", "follow_up"])),
+    mode: v.optional(SendMode),
     images: v.optional(v.array(ImageAttachment)),
   }),
   v.object({

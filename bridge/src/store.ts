@@ -122,12 +122,6 @@ const make = (dbPath: string) =>
       d.exec("PRAGMA synchronous = NORMAL");
       d.exec("PRAGMA foreign_keys = ON");
 
-      const sessionColumns = d.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>;
-      if (sessionColumns.some((column) => column.name === "execution_cwd" || column.name === "workspace_json")) {
-        d.exec("DROP TABLE IF EXISTS events");
-        d.exec("DROP TABLE IF EXISTS sessions");
-      }
-
       d.exec(SCHEMA);
       for (const sql of MIGRATIONS) {
         try {

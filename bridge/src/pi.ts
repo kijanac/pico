@@ -40,6 +40,7 @@ import {
   type ExtensionUiResponseValue,
   type PermissionChoice,
   type PermissionRequest,
+  type SendMode,
   type SessionControls,
   type ToolResultContent,
   type SessionMeta,
@@ -113,7 +114,7 @@ export class PiError extends Error {
   readonly _tag = "PiError";
 }
 
-export type SendMode = "steer" | "follow_up";
+export type { SendMode } from "@pico/protocol";
 
 export interface SendImage {
   data: string;
