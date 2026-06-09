@@ -2,6 +2,7 @@
   import { Check } from "@lucide/svelte";
   import { Button } from "@/shared/ui/button";
   import { Input } from "@/shared/ui/input";
+  import SheetHeader from "@/shared/components/SheetHeader.svelte";
   import * as Sheet from "@/shared/ui/sheet";
 
   let {
@@ -32,9 +33,7 @@
 
 <Sheet.Root bind:open>
   <Sheet.BottomContent>
-    <Sheet.Header class="hairline-b space-y-0 px-3 py-3 pr-12 text-left">
-      <Sheet.Title class="type-title min-w-0 flex-1 px-1 font-medium">Rename session</Sheet.Title>
-    </Sheet.Header>
+    <SheetHeader title="Rename session" />
 
     <div class="px-3 pt-3 pb-2">
       <Input

@@ -1,6 +1,9 @@
 <script lang="ts">
   import * as Sheet from "@/shared/ui/sheet";
+  import SheetHeader from "@/shared/components/SheetHeader.svelte";
   import { Button } from "@/shared/ui/button";
+  import { Input } from "@/shared/ui/input";
+  import { Textarea } from "@/shared/ui/textarea";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
 
   let textValue = $state("");
@@ -29,12 +32,7 @@
 <Sheet.Root bind:open={sheetOpen}>
   <Sheet.BottomContent class="max-h-[82dvh]">
     {#if request}
-      <Sheet.Header class="hairline-b space-y-1 px-3 py-3 pr-12 text-left">
-        <Sheet.Title class="type-title min-w-0 flex-1 px-1 font-medium">{request.title}</Sheet.Title>
-        <Sheet.Description class="type-copy px-1 text-[color:var(--color-fg-muted)]">
-          Pi extension request
-        </Sheet.Description>
-      </Sheet.Header>
+      <SheetHeader title={request.title} description="Pi extension request" />
 
       <div class="space-y-3 overflow-y-auto p-3">
         {#if request.kind === "confirm"}
@@ -52,17 +50,9 @@
           <Button type="button" variant="ghost" class="w-full" onclick={() => respond(null)}>cancel</Button>
         {:else if request.kind === "input"}
           {#if request.multiline}
-            <textarea
-              class="type-copy min-h-36 w-full rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 outline-none focus:border-[color:var(--color-accent)]"
-              placeholder={request.placeholder ?? ""}
-              bind:value={textValue}
-            ></textarea>
+            <Textarea class="type-copy min-h-36" placeholder={request.placeholder ?? ""} bind:value={textValue} />
           {:else}
-            <input
-              class="type-copy w-full rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-3 outline-none focus:border-[color:var(--color-accent)]"
-              placeholder={request.placeholder ?? ""}
-              bind:value={textValue}
-            />
+            <Input type="text" class="type-copy h-10" placeholder={request.placeholder ?? ""} bind:value={textValue} />
           {/if}
           <div class="grid grid-cols-2 gap-2 pt-1">
             <Button type="button" variant="outline" onclick={() => respond(null)}>cancel</Button>

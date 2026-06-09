@@ -2,6 +2,7 @@
   import { Check, Copy, GitBranch, Info, Loader2 } from "@lucide/svelte";
   import type { AssistantMessage } from "@pico/protocol";
   import { Button } from "@/shared/ui/button";
+  import SheetHeader from "@/shared/components/SheetHeader.svelte";
   import * as Sheet from "@/shared/ui/sheet";
   import { formatCost, formatTokens } from "@/shared/lib/format";
   import StreamingMarkdown from "@/features/chat/components/StreamingMarkdown.svelte";
@@ -74,9 +75,7 @@
 
 <Sheet.Root bind:open={detailsOpen}>
   <Sheet.BottomContent>
-    <Sheet.Header class="hairline-b space-y-0 px-3 py-3 pr-12 text-left">
-      <Sheet.Title class="type-title min-w-0 flex-1 px-1 font-medium">message details</Sheet.Title>
-    </Sheet.Header>
+    <SheetHeader title="message details" />
     <div class="px-3 pb-3">
       {#if msg.usage}
         <div class="type-meta rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">

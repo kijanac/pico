@@ -4,8 +4,12 @@
   import SessionsPage from "@/routes/sessions/SessionsPage.svelte";
   import SessionPage from "@/routes/session/SessionPage.svelte";
   import SettingsPage from "@/routes/settings/SettingsPage.svelte";
-  import OnboardingPage from "@/routes/onboarding/OnboardingPage.svelte";
   import { currentPath, matchRoute, type RouteMatch } from "@/app/routes";
+
+  // Onboarding is visited once per install; loading it lazily keeps its code
+  // (embla carousel, cloud-init template) out of the startup chunk.
+  let onboardingModule: Promise<typeof import("@/routes/onboarding/OnboardingPage.svelte")> | null = null;
+  const loadOnboarding = () => (onboardingModule ??= import("@/routes/onboarding/OnboardingPage.svelte"));
 
   let route = $state<RouteMatch>(matchRoute(currentPath()));
 
@@ -27,7 +31,9 @@
   {:else if route.id === "settings"}
     <SettingsPage />
   {:else if route.id === "onboarding"}
-    <OnboardingPage />
+    {#await loadOnboarding() then { default: OnboardingPage }}
+      <OnboardingPage />
+    {/await}
   {:else}
     <main class="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
       <p class="type-title font-medium">route not found</p>

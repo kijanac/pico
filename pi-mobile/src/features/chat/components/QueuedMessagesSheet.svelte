@@ -2,6 +2,7 @@
   import { Trash2 } from "@lucide/svelte";
   import type { QueuedMessage, QueueState } from "@pico/protocol";
   import { Button } from "@/shared/ui/button";
+  import SheetHeader from "@/shared/components/SheetHeader.svelte";
   import * as Sheet from "@/shared/ui/sheet";
 
   let {
@@ -33,7 +34,7 @@
 
 <Sheet.Root bind:open>
   <Sheet.BottomContent class="max-h-[75dvh]">
-    <Sheet.Header class="hairline-b space-y-0 px-3 py-3 pr-12 text-left"><Sheet.Title class="type-title min-w-0 flex-1 px-1 font-medium">queued messages</Sheet.Title></Sheet.Header>
+    <SheetHeader title="queued messages" />
     <div class="flex-1 overflow-y-auto px-3 py-3">
       {#if loading}<div class="type-copy text-[color:var(--color-fg-muted)]">loading queue…</div>{/if}
       {#if error}<div class="type-copy text-[color:var(--color-danger)]">{error}</div>{/if}
