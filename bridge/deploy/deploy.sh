@@ -31,6 +31,20 @@ ssh -o ConnectTimeout=5 "$HOST" "test -d $REMOTE && id pi-bridge >/dev/null 2>&1
   || { echo "  server isn't set up — run bridge/deploy/install.sh on it first" >&2; exit 1; }
 echo "  $HOST:$REMOTE ready"
 
+# Remember what `current` points at so a failed deploy can roll back.
+# Empty on first deploy; equal to $REMOTE_RELEASE when redeploying the
+# same version (in which case the old tree is gone and rollback is moot).
+PREVIOUS="$(ssh "$HOST" "readlink -f $REMOTE/current 2>/dev/null || true")"
+
+rollback() {
+  if [[ -n "$PREVIOUS" && "$PREVIOUS" != "$REMOTE_RELEASE" ]]; then
+    echo "  rolling back to $(basename "$PREVIOUS")" >&2
+    ssh "$HOST" "ln -sfn $PREVIOUS $REMOTE/current && systemctl restart pi-bridge" || true
+  else
+    echo "  no previous release to roll back to" >&2
+  fi
+}
+
 step "rsync source"
 # Push only what the bridge needs from the workspace into a versioned release.
 # The mobile app is built locally/on a Mac and is not needed on the server.
@@ -71,7 +85,8 @@ ssh "$HOST" "install -o root -g root -m 0644 $REMOTE/current/bridge/deploy/pi-br
   systemctl enable --now pi-bridge-update.path >/dev/null"
 
 step "restart"
-ssh "$HOST" "systemctl restart pi-bridge && systemctl is-active pi-bridge"
+ssh "$HOST" "systemctl restart pi-bridge && systemctl is-active pi-bridge" \
+  || { echo "  restart FAILED — check 'journalctl -u pi-bridge -n 30'" >&2; rollback; exit 1; }
 
 step "verify"
 # Health-check via tailscale (works whether or not `tailscale serve` is
@@ -81,6 +96,7 @@ if ssh "$HOST" "for i in {1..30}; do curl -fsS --max-time 3 http://127.0.0.1:777
   echo "  /healthz ok"
 else
   echo "  /healthz FAILED — check 'journalctl -u pi-bridge -n 30'" >&2
+  rollback
   exit 1
 fi
 
