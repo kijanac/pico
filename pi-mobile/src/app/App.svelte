@@ -6,12 +6,15 @@
   // Every route loads lazily so the startup chunk holds only the shell;
   // chunks come from local disk in Capacitor, so the first-visit cost is tiny.
   function lazy<T>(load: () => Promise<T>): () => Promise<T> {
-    let module: Promise<T> | null = null;
-    return () =>
-      (module ??= load().catch((error: unknown) => {
-        module = null; // don't cache a failed import; the next render retries
-        throw error;
-      }));
+    let cached: Promise<T> | null = null;
+    return () => {
+      if (!cached) {
+        cached = load();
+        // Don't cache a failed import; the next render retries it.
+        cached.catch(() => (cached = null));
+      }
+      return cached;
+    };
   }
 
   const loadSessions = lazy(() => import("@/routes/sessions/SessionsPage.svelte"));
