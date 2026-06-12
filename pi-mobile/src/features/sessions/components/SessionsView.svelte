@@ -100,7 +100,7 @@
         <div>
           <p class="type-title font-medium">no bridge connected</p>
           <p class="type-copy mt-2 max-w-[34ch] text-[color:var(--color-fg-muted)]">
-            pico drives a pi coding agent on your own server. connect a bridge to start your first session.
+            pico drives a pi coding agent on your server. connect a bridge to start your first session.
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" onclick={onSetupBridge}>set up bridge</Button>
@@ -110,7 +110,7 @@
         <p class="type-copy max-w-[34ch] text-[color:var(--color-fg-muted)]">
           {archivedView
             ? "no archived sessions."
-            : "no sessions yet. a session is one pi conversation in one working directory on your box — start your first below."}
+            : "no sessions yet. a session is one pi conversation in one working directory on your box."}
         </p>
       </section>
     {:else}

@@ -31,7 +31,7 @@
         </p>
       {:else}
         <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">
-          no bridge is connected yet.
+          no bridge connected yet.
         </p>
       {/if}
     </div>

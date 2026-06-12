@@ -194,8 +194,7 @@ const LIVE_BUFFER_CAPACITY = 4096;
 // Backstop against a runaway client queueing sends forever.
 const MAX_PENDING_SENDS = 200;
 
-// Send-dedupe window; retries only race acks over seconds, not hundreds of
-// messages, so a small recency window is plenty.
+// Retries only race acks over seconds, so a small dedupe window is plenty.
 const MAX_SEEN_CLIENT_IDS = 64;
 
 const make = Effect.gen(function* () {
@@ -544,11 +543,8 @@ const make = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       const ms = yield* lookupOrReattach(id);
-      if (clientId && (yield* Ref.get(ms.seenClientIds)).includes(clientId)) {
-        // Retry of a send that already landed; the original user_message
-        // event (with this clientId) is the client's ack.
-        return;
-      }
+      // Duplicate of a send that already landed; the original user_message is the ack.
+      if (clientId && (yield* Ref.get(ms.seenClientIds)).includes(clientId)) return;
       const currentMeta = yield* Ref.get(ms.meta);
       const compacting = (yield* Ref.get(ms.compacting)) || (yield* ms.pi.isCompacting());
       const queued = compacting || currentMeta.status === "thinking" || currentMeta.status === "tool";

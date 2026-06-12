@@ -18,8 +18,6 @@
 
   const onboarding = createOnboardingState();
 
-  // First-run arrivals come from the welcome screen; replacing an existing
-  // bridge comes from settings. Back should return to whichever it was.
   const backPath = $derived(settingsState.bridgeUrlConfigured ? routePaths.settings : routePaths.welcome);
 
   onMount(() => {
@@ -39,7 +37,7 @@
 
 {#if !onboarding.loaded}
   <main class="type-copy flex flex-1 items-center justify-center p-4 text-[color:var(--color-fg-muted)]">
-    loading onboarding…
+    loading…
   </main>
 {:else}
   <EdgeSwipeBack href={backPath}>
@@ -50,7 +48,7 @@
   <main class="flex min-h-0 flex-1 flex-col">
     <header class="flex items-center justify-between gap-3 border-b border-[color:var(--color-border)] px-3 py-[calc(env(safe-area-inset-top)+12px)] pb-3">
       <Button type="button" variant="ghost" size="sm" onclick={() => navigateTo(backPath, "pop")}>back</Button>
-      <h1 class="type-title font-medium">bridge onboarding</h1>
+      <h1 class="type-title font-medium">set up bridge</h1>
       <div class="w-12" aria-hidden="true"></div>
     </header>
 
@@ -71,9 +69,9 @@
           <CarouselItem class="min-h-0 overflow-y-auto pl-3">
             <OnboardingPanel eyebrow="step 1" title="before you start">
               <p class="type-copy text-[color:var(--color-fg-muted)]">
-                Pico will generate cloud-init for a fresh Linux box. The box will install pi-bridge, join your Tailscale tailnet, and expose HTTPS through Tailscale Serve.
+                pico generates cloud-init for a fresh linux box: it installs pi-bridge, joins your tailnet, and serves HTTPS through tailscale.
               </p>
-              <Checklist items={["Tailscale is installed and signed in on this phone", "You can create a VPS with cloud-init/user-data", "You can access Tailscale admin in a browser"]} />
+              <Checklist items={["tailscale is installed and signed in on this phone", "you can create a VPS with cloud-init / user-data", "you can open tailscale admin in a browser"]} />
               <ExternalLinkButton href="https://login.tailscale.com/admin/settings/keys">open Tailscale admin</ExternalLinkButton>
             </OnboardingPanel>
           </CarouselItem>
@@ -81,7 +79,7 @@
           <CarouselItem class="min-h-0 overflow-y-auto pl-3">
             <OnboardingPanel eyebrow="step 2" title="tailscale setup">
               <p class="type-copy text-[color:var(--color-fg-muted)]">
-                Create a single-use, preauthorized auth key, then copy your tailnet DNS name from the DNS page. The bridge hostname is generated for you.
+                create a single-use, preauthorized auth key, then copy your tailnet DNS name from the DNS page. the bridge hostname is generated for you.
               </p>
               <div class="grid grid-cols-2 gap-2">
                 <ExternalLinkButton href="https://login.tailscale.com/admin/settings/keys">keys</ExternalLinkButton>
@@ -106,7 +104,7 @@
           <CarouselItem class="min-h-0 overflow-y-auto pl-3">
             <OnboardingPanel eyebrow="step 3" title="copy cloud-init">
               <p class="type-copy text-[color:var(--color-fg-muted)]">
-                Paste this into your cloud provider’s user-data/cloud-init field when creating the VPS. Use a fresh box.
+                paste this into your cloud provider’s user-data / cloud-init field when creating the VPS — use a fresh box.
               </p>
               <div>
                 <label class="label mb-1.5 block" for="cloud_init">cloud-init</label>
@@ -121,7 +119,7 @@
           <CarouselItem class="min-h-0 overflow-y-auto pl-3">
             <OnboardingPanel eyebrow="step 4" title="wait for bridge">
               <p class="type-copy text-[color:var(--color-fg-muted)]">
-                After the VPS starts, Pico will poll the Tailscale HTTPS URL. Keep the Tailscale app connected on this phone.
+                after the VPS boots, pico polls the bridge url. keep the tailscale app connected on this phone.
               </p>
               <InfoRow label="bridge url" value={onboarding.bridgeUrl} />
               <div class="type-copy rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3 text-[color:var(--color-fg-muted)]">
@@ -141,7 +139,7 @@
           <CarouselItem class="min-h-0 overflow-y-auto pl-3">
             <OnboardingPanel eyebrow="step 5" title="provider sign-in">
               <p class="type-copy text-[color:var(--color-fg-muted)]">
-                Sign in to at least one provider so new sessions can use a model.
+                sign in to at least one provider so sessions can use a model.
               </p>
               {#if onboarding.authError}
                 <p class="type-meta rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-2 text-[color:var(--color-danger)]">{onboarding.authError}</p>
@@ -154,8 +152,8 @@
             <OnboardingPanel eyebrow="done" title="bridge ready">
               <div class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4 text-center">
                 <Check class="mx-auto mb-2 size-6 text-[color:var(--color-accent)]" />
-                <p class="type-title font-medium">Pico is connected to your bridge.</p>
-                <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">Provider sign-in is available from a session’s action menu when you’re ready.</p>
+                <p class="type-title font-medium">pico is connected to your bridge.</p>
+                <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">provider sign-in is also available from a session’s action menu.</p>
               </div>
               <Button type="button" class="w-full" onclick={() => navigateTo(routePaths.sessions, "replace")}>start your first session</Button>
             </OnboardingPanel>

@@ -31,7 +31,7 @@
     try {
       const reachable = await healthcheckBridgeUrl(candidate);
       if (!reachable) {
-        connectError = "bridge not reachable — check the url and make sure tailscale is connected on this phone.";
+        connectError = "bridge not reachable — check the url and that tailscale is connected on this phone.";
         return;
       }
       await claimReachableBridge(candidate);
@@ -58,7 +58,7 @@
         pico<span class="animate-pulse text-[color:var(--color-accent)]">▍</span>
       </h1>
       <p class="type-copy mt-3 max-w-[34ch] text-[color:var(--color-fg-muted)]">
-        a pi coding agent runs on your own server. pico puts its sessions in your pocket — streamed over your private tailnet, no one else's cloud in the path.
+        a pi coding agent runs on your server. pico streams its sessions to your phone over your tailnet — no cloud in between.
       </p>
     </div>
 
@@ -78,7 +78,7 @@
         set up a new bridge
         <ArrowRight class="size-3.5" />
       </Button>
-      <p class="type-meta mt-1.5 text-center text-[color:var(--color-fg-faint)]">needs a fresh linux vps + tailscale · about 10 minutes</p>
+      <p class="type-meta mt-1.5 text-center text-[color:var(--color-fg-faint)]">fresh linux vps + tailscale · ~10 min</p>
     </div>
 
     {#if showConnect}

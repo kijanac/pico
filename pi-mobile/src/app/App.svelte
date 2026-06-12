@@ -3,8 +3,7 @@
   import AppShell from "@/app/shell/AppShell.svelte";
   import { consumeNavKind, currentPath, matchRoute, type RouteMatch } from "@/app/routes";
 
-  // Every route loads lazily so the startup chunk holds only the shell;
-  // chunks come from local disk in Capacitor, so the first-visit cost is tiny.
+  // Chunks load from local disk in Capacitor, so lazy routes cost ~nothing on first visit.
   function lazy<T>(load: () => Promise<T>): () => Promise<T> {
     let cached: Promise<T> | null = null;
     return () => {
@@ -33,8 +32,6 @@
 
   let screenKey = 0;
   let current = $state<Screen>({ key: screenKey, path: currentPath(), route: matchRoute(currentPath()) });
-  // The outgoing screen stays mounted while it animates away; enterKind
-  // drives the incoming animation and clears when the transition settles.
   let leaving = $state<{ screen: Screen; kind: "push" | "pop" } | null>(null);
   let enterKind = $state<"push" | "pop" | null>(null);
   let settleTimer: ReturnType<typeof setTimeout> | null = null;

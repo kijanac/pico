@@ -20,8 +20,6 @@
     void (async () => {
       if (!settingsState.loaded) await settingsState.load();
       if (!settingsState.bridgeUrlConfigured) {
-        // First run: nothing to fetch yet. Route to the welcome flow unless
-        // the user already chose to look around without a bridge.
         if (!settingsState.welcomeSkipped) navigateTo(routePaths.welcome, "replace");
         return;
       }
@@ -105,7 +103,7 @@
     <Dialog.Header>
       <Dialog.Title>delete session?</Dialog.Title>
       <Dialog.Description>
-        This permanently deleted this session.
+        this permanently deletes the session.
       </Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer>
