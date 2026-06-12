@@ -5,7 +5,7 @@ import type { BridgeRuntime } from "../runtime.ts";
 import { mountSystemRoutes } from "./system.ts";
 import { mountSessionActionRoutes } from "./session-actions.ts";
 import { mountTrpcRoutes } from "./trpc.ts";
-import { allowedOrigins, requireTailscaleAuth } from "../auth.ts";
+import { allowedOrigins, BRIDGE_INSECURE_NO_AUTH, requireTailscaleAuth } from "../auth.ts";
 
 export function makeHttpApp(runtime: BridgeRuntime): Hono {
   const app = new Hono();
@@ -14,7 +14,7 @@ export function makeHttpApp(runtime: BridgeRuntime): Hono {
   app.use(
     "*",
     cors({
-      origin: process.env.NODE_ENV === "production" ? allowedOrigins() : "*",
+      origin: BRIDGE_INSECURE_NO_AUTH ? "*" : allowedOrigins(),
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
       allowHeaders: ["content-type"],
     }),

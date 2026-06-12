@@ -7,8 +7,8 @@
     "node": ">=26.1.0"
   },
   "scripts": {
-    "dev:bridge": "BRIDGE_DB=data/bridge.db PI_WORKSPACES_DIR=. pnpm --filter pi-bridge dev",
-    "dev:bridge:mock": "BRIDGE_DB=data/bridge.db PI_WORKSPACES_DIR=. PI_USE_MOCK=1 pnpm --filter pi-bridge dev",
+    "dev:bridge": "BRIDGE_DB=data/bridge.db PI_WORKSPACES_DIR=. PI_BRIDGE_INSECURE_NO_AUTH=1 pnpm --filter pi-bridge dev",
+    "dev:bridge:mock": "BRIDGE_DB=data/bridge.db PI_WORKSPACES_DIR=. PI_USE_MOCK=1 PI_BRIDGE_INSECURE_NO_AUTH=1 pnpm --filter pi-bridge dev",
     "dev:mobile": "pnpm --filter pico dev",
     "typecheck": "pnpm --filter @pico/protocol typecheck && pnpm --filter pi-bridge typecheck",
     "smoke:bridge": "pnpm --filter pi-bridge smoke",

@@ -74,7 +74,7 @@ export function createOnboardingState(): OnboardingState {
 
   async function load(): Promise<void> {
     await settingsState.load();
-    tsAuthKey = settingsState.onboardingDraft.tsAuthKey ?? "";
+    // tsAuthKey is intentionally not restored — it is never persisted.
     tailnet = settingsState.onboardingDraft.tailnet ?? "";
     bridgeHostname = settingsState.onboardingDraft.bridgeHostname ?? bridgeHostname;
     loaded = true;
@@ -82,7 +82,7 @@ export function createOnboardingState(): OnboardingState {
 
   function persistDraft(): Promise<void> {
     if (!loaded) return Promise.resolve();
-    return settingsState.setOnboardingDraft({ tsAuthKey, tailnet, bridgeHostname });
+    return settingsState.setOnboardingDraft({ tailnet, bridgeHostname });
   }
 
   function syncCarouselToIndex(): void {

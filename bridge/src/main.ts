@@ -7,10 +7,19 @@ import { bridgeRuntime as runtime } from "./runtime.ts";
 import { SessionManager } from "./session.ts";
 import { makeHttpApp } from "./http/app.ts";
 import { attachWebSocketUpgrade } from "./server.ts";
+import { BRIDGE_INSECURE_NO_AUTH } from "./auth.ts";
 
 const PORT = 7777;
 const HOST = "127.0.0.1";
 const USING_MOCK = process.env.PI_USE_MOCK === "1";
+
+if (BRIDGE_INSECURE_NO_AUTH) {
+  runtime.runFork(
+    Effect.logWarning(
+      "PI_BRIDGE_INSECURE_NO_AUTH=1 — Tailscale identity checks are DISABLED. Anyone who can reach this port has full access. Local dev only.",
+    ),
+  );
+}
 
 mkdirSync(dirname(DB_PATH), { recursive: true });
 

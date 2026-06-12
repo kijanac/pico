@@ -4,7 +4,10 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { Context, Next } from "hono";
 import { BRIDGE_DATA_DIR, DB_PATH } from "./config.ts";
 
-const REQUIRE_TAILSCALE_AUTH = process.env.NODE_ENV === "production";
+// Auth is ON by default and must be explicitly disabled — a missing or wrong
+// NODE_ENV can no longer silently open the bridge. Only local dev sets this.
+export const BRIDGE_INSECURE_NO_AUTH = process.env.PI_BRIDGE_INSECURE_NO_AUTH === "1";
+const REQUIRE_TAILSCALE_AUTH = !BRIDGE_INSECURE_NO_AUTH;
 
 const ALLOWED_ORIGINS = [
   "capacitor://localhost",
@@ -16,7 +19,7 @@ const ALLOWED_ORIGINS = [
 export const allowedOrigins = () => ALLOWED_ORIGINS;
 
 export function isAllowedBrowserOrigin(origin: string | undefined): boolean {
-  if (!origin || process.env.NODE_ENV !== "production") return true;
+  if (!origin || BRIDGE_INSECURE_NO_AUTH) return true;
   return allowedOrigins().includes(origin);
 }
 
@@ -81,6 +84,13 @@ export function claimBridgeOwner(login: string): { claimed: true; owner: string 
   throw new Error("bridge is already claimed");
 }
 
+// SECURITY INVARIANT: identity comes solely from the `tailscale-user-login`
+// header, which is trustworthy only because (1) the server binds loopback
+// (main.ts), so the sole ingress is Tailscale Serve, and (2) `tailscale serve`
+// strips client-supplied `Tailscale-*` headers and injects its own. Both must
+// hold — never bind this process to a non-loopback host, and never front it
+// with a proxy that forwards client `Tailscale-*` headers, or callers can
+// spoof any identity.
 export function authorizeHeaders(headers: IncomingHttpHeaders | Headers): AuthResult {
   if (!REQUIRE_TAILSCALE_AUTH) return { ok: true, claimed: true };
 
