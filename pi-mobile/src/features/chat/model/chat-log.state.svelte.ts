@@ -14,6 +14,16 @@ const emptyEntries: LogEntry[] = [];
 
 const activeLog = $derived(activeSessionId ? logs[activeSessionId] : undefined);
 
+// Optimistic local echo: sends append a placeholder user entry immediately so
+// the message appears on tap instead of after the server round trip. The
+// server's user_message ack replaces the placeholder (matched by text);
+// log_reset wipes placeholders along with everything else.
+let localEchoCounter = 0;
+
+export function isLocalEcho(id: string): boolean {
+  return id.startsWith("local-echo-");
+}
+
 export const chatLogState = {
   get activeSessionId() {
     return activeSessionId;
@@ -42,6 +52,17 @@ export const chatLogState = {
 
   applyWireEvent(sessionId: string, event: WireEvent): void {
     applyWireEventForSession(sessionId, event);
+  },
+
+  appendLocalEcho(sessionId: string, text: string): void {
+    const log = getLog(sessionId);
+    appendEntry(log, {
+      kind: "user",
+      id: `local-echo-${++localEchoCounter}`,
+      at: Date.now(),
+      text,
+    });
+    bumpActivity(log);
   },
 
   resolvePermission(sessionId: string, id: string, choice: "allow" | "deny" | "allow_session"): void {
@@ -172,10 +193,21 @@ function applyWireEventForSession(sessionId: string, event: WireEvent): void {
       applyCompaction(log, event.entry);
       return;
 
-    case "user_message":
-      appendEntry(log, event.entry);
+    case "user_message": {
+      const entry = event.entry;
+      const echoIndex = log.entries.findIndex(
+        (e) => e.kind === "user" && isLocalEcho(e.id) && e.text === entry.text,
+      );
+      if (echoIndex >= 0) {
+        log.indexById.delete(log.entries[echoIndex].id);
+        log.entries[echoIndex] = entry;
+        log.indexById.set(entry.id, echoIndex);
+      } else {
+        appendEntry(log, entry);
+      }
       bumpActivity(log);
       return;
+    }
 
     case "assistant_delta": {
       const existing = findEntry(log, event.id);

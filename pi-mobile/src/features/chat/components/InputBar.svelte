@@ -3,6 +3,7 @@
   import { Archive, ArrowUp, ImagePlus, ListTodo, Mic, MicOff, Plus, Square } from "@lucide/svelte";
   import type { ImageAttachment } from "@pico/protocol";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
+  import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
   import { chatQueueState } from "@/features/chat/model/chat-queue.state.svelte";
   import { createSpeechRecognitionState } from "@/shared/mobile/speech.svelte";
   import { pickImages } from "@/shared/mobile/image-picker";
@@ -145,6 +146,7 @@
       mode,
       ...(images.length > 0 ? { images } : {}),
     });
+    if (text) chatLogState.appendLocalEcho(sessionId, text);
     value = "";
     cursor = 0;
     images = [];
