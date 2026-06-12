@@ -40,6 +40,10 @@ jobs:
         working-directory: pi-mobile
         run: pnpm build
 
+      - name: Strip sourcemaps from app payload
+        working-directory: pi-mobile
+        run: find dist -name '*.map' -delete
+
       - name: Sync Capacitor iOS project
         working-directory: pi-mobile
         run: pnpm exec cap sync ios

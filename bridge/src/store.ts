@@ -121,6 +121,9 @@ const make = (dbPath: string) =>
       d.exec("PRAGMA journal_mode = WAL");
       d.exec("PRAGMA synchronous = NORMAL");
       d.exec("PRAGMA foreign_keys = ON");
+      // Checkpoint the WAL every ~2MB so the side file stays small and
+      // checkpoint stalls stay short.
+      d.exec("PRAGMA wal_autocheckpoint = 500");
 
       d.exec(SCHEMA);
       for (const sql of MIGRATIONS) {

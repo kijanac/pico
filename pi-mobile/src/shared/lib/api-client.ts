@@ -53,9 +53,11 @@ export class ApiClient {
 
     const ws = new ReconnectingWS(url, [], {
       minReconnectionDelay: 500,
-      maxReconnectionDelay: 10_000,
+      // Cap retries at 30s so a dead network doesn't wake the radio every
+      // 10s forever; app foreground forces an immediate reconnect anyway.
+      maxReconnectionDelay: 30_000,
       reconnectionDelayGrowFactor: 1.5,
-      connectionTimeout: 5_000,
+      connectionTimeout: 10_000,
       maxRetries: Infinity,
     });
 

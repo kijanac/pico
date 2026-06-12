@@ -15,7 +15,11 @@ export default defineConfig({
     port: 5173,
   },
   build: {
-    target: "es2022",
-    sourcemap: true,
+    // Capacitor means the only runtime is the device's WebKit, so target it
+    // directly instead of generic es2022.
+    target: "safari17",
+    // "hidden": emit .map files for local symbolication but don't reference
+    // them from the bundles; CI strips them from dist before cap sync.
+    sourcemap: "hidden",
   },
 });

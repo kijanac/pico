@@ -25,7 +25,9 @@ Environment=HOME=/var/lib/pi-bridge
 Environment=PI_WORKSPACES_DIR=/var/lib/pi-bridge/workspaces
 Environment=NODE_ENV=production
 
-ExecStart=/usr/bin/node --import tsx --no-warnings src/main.ts
+# Heap cap: GC pressure + a catchable OOM beat a silent kernel OOM-kill
+# (which hit this box at 1.5G on 2026-05-30).
+ExecStart=/usr/bin/node --max-old-space-size=512 --import tsx --no-warnings src/main.ts
 
 Restart=on-failure
 RestartSec=2s

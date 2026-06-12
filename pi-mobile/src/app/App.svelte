@@ -1,15 +1,19 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import AppShell from "@/app/shell/AppShell.svelte";
-  import SessionsPage from "@/routes/sessions/SessionsPage.svelte";
-  import SessionPage from "@/routes/session/SessionPage.svelte";
-  import SettingsPage from "@/routes/settings/SettingsPage.svelte";
   import { currentPath, matchRoute, type RouteMatch } from "@/app/routes";
 
-  // Onboarding is visited once per install; loading it lazily keeps its code
-  // (embla carousel, cloud-init template) out of the startup chunk.
-  let onboardingModule: Promise<typeof import("@/routes/onboarding/OnboardingPage.svelte")> | null = null;
-  const loadOnboarding = () => (onboardingModule ??= import("@/routes/onboarding/OnboardingPage.svelte"));
+  // Every route loads lazily so the startup chunk holds only the shell;
+  // chunks come from local disk in Capacitor, so the first-visit cost is tiny.
+  function lazy<T>(load: () => Promise<T>): () => Promise<T> {
+    let module: Promise<T> | null = null;
+    return () => (module ??= load());
+  }
+
+  const loadSessions = lazy(() => import("@/routes/sessions/SessionsPage.svelte"));
+  const loadSession = lazy(() => import("@/routes/session/SessionPage.svelte"));
+  const loadSettings = lazy(() => import("@/routes/settings/SettingsPage.svelte"));
+  const loadOnboarding = lazy(() => import("@/routes/onboarding/OnboardingPage.svelte"));
 
   let route = $state<RouteMatch>(matchRoute(currentPath()));
 
@@ -25,11 +29,17 @@
 
 <AppShell>
   {#if route.id === "sessions"}
-    <SessionsPage />
+    {#await loadSessions() then { default: SessionsPage }}
+      <SessionsPage />
+    {/await}
   {:else if route.id === "session"}
-    <SessionPage id={route.params.id} />
+    {#await loadSession() then { default: SessionPage }}
+      <SessionPage id={route.params.id} />
+    {/await}
   {:else if route.id === "settings"}
-    <SettingsPage />
+    {#await loadSettings() then { default: SettingsPage }}
+      <SettingsPage />
+    {/await}
   {:else if route.id === "onboarding"}
     {#await loadOnboarding() then { default: OnboardingPage }}
       <OnboardingPage />

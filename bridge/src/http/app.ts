@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import type { BridgeRuntime } from "../runtime.ts";
 import { mountSystemRoutes } from "./system.ts";
@@ -9,6 +10,7 @@ import { allowedOrigins, requireTailscaleAuth } from "../auth.ts";
 export function makeHttpApp(runtime: BridgeRuntime): Hono {
   const app = new Hono();
 
+  app.use("*", compress());
   app.use(
     "*",
     cors({

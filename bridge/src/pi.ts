@@ -505,14 +505,49 @@ const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
   return logEntries;
 };
 
+const DELTA_COALESCE_MS = 75;
+
 const wirePiSession = (
   piSession: AgentSession,
   meta: SessionMeta,
 ): Effect.Effect<PiSession> =>
   Effect.gen(function* () {
     const q = yield* Queue.unbounded<PiEmission>();
+
+    // Coalesce per-token assistant deltas into ~75ms chunks so each chunk is
+    // one persisted event and one WS frame instead of one per token. Every
+    // other emission flushes the buffer first to preserve log order.
+    let pendingDelta: { id: string; text: string } | null = null;
+    let deltaTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flushDelta = () => {
+      if (deltaTimer) {
+        clearTimeout(deltaTimer);
+        deltaTimer = null;
+      }
+      if (!pendingDelta) return;
+      const delta = pendingDelta;
+      pendingDelta = null;
+      Queue.unsafeOffer(q, { t: "assistant_delta", id: delta.id, text: delta.text });
+    };
+
+    const offer = (emission: PiEmission) => {
+      if (emission.t === "assistant_delta") {
+        if (pendingDelta?.id === emission.id) {
+          pendingDelta.text += emission.text;
+        } else {
+          flushDelta();
+          pendingDelta = { id: emission.id, text: emission.text };
+        }
+        deltaTimer ??= setTimeout(flushDelta, DELTA_COALESCE_MS).unref();
+        return;
+      }
+      flushDelta();
+      Queue.unsafeOffer(q, emission);
+    };
+
     const extensionUi = createMobileExtensionUiBridge((request) => {
-      Queue.unsafeOffer(q, { t: "extension_ui_request", request });
+      offer({ t: "extension_ui_request", request });
     });
 
     let assistantId: string | null = null;
@@ -526,7 +561,7 @@ const wirePiSession = (
           if (inner?.type !== "text_delta") return;
           const id = assistantId ?? randomUUIDv7();
           assistantId = id;
-          Queue.unsafeOffer(q, {
+          offer({
             t: "assistant_delta",
             id,
             text: inner.delta,
@@ -541,10 +576,10 @@ const wirePiSession = (
           const id = assistantId ?? randomUUIDv7();
           if (!assistantId) {
             const text = assistantText(message.content);
-            if (text.length > 0) Queue.unsafeOffer(q, { t: "assistant_delta", id, text });
+            if (text.length > 0) offer({ t: "assistant_delta", id, text });
           }
 
-          Queue.unsafeOffer(q, {
+          offer({
             t: "assistant_end",
             id,
             ...(message.stopReason ? { stopReason: message.stopReason } : {}),
@@ -554,7 +589,7 @@ const wirePiSession = (
           assistantId = null;
 
           const stats = piSession.getSessionStats();
-          Queue.unsafeOffer(q, {
+          offer({
             t: "cost",
             tokensIn: stats.tokens.input,
             tokensOut: stats.tokens.output,
@@ -567,7 +602,7 @@ const wirePiSession = (
           const id = event.toolCallId;
           toolStarts.set(id, { startedAt: Date.now() });
 
-          Queue.unsafeOffer(q, {
+          offer({
             t: "tool_call",
             entry: normalizeToolCall(id, event.toolName, event.args),
           });
@@ -577,7 +612,7 @@ const wirePiSession = (
         case "tool_execution_update": {
           const result = projectToolResult(event.partialResult);
 
-          Queue.unsafeOffer(q, {
+          offer({
             t: "tool_update",
             id: event.toolCallId,
             result: result.text,
@@ -593,7 +628,7 @@ const wirePiSession = (
 
           const result = projectToolResult(event.result);
 
-          Queue.unsafeOffer(q, {
+          offer({
             t: "tool_result",
             id: event.toolCallId,
             result: result.text,
@@ -606,7 +641,7 @@ const wirePiSession = (
         }
 
         case "queue_update":
-          Queue.unsafeOffer(q, {
+          offer({
             t: "queue",
             steering: [...event.steering],
             followUp: [...event.followUp],
@@ -616,7 +651,7 @@ const wirePiSession = (
         case "compaction_start": {
           const id = randomUUIDv7();
           compactionId = id;
-          Queue.unsafeOffer(q, {
+          offer({
             t: "compaction",
             entry: {
               kind: "compaction",
@@ -632,7 +667,7 @@ const wirePiSession = (
         case "compaction_end": {
           const id = compactionId ?? randomUUIDv7();
           compactionId = null;
-          Queue.unsafeOffer(q, {
+          offer({
             t: "compaction",
             entry: {
               kind: "compaction",
@@ -650,15 +685,15 @@ const wirePiSession = (
         }
 
         case "turn_start":
-          Queue.unsafeOffer(q, { t: "status", status: "thinking" });
+          offer({ t: "status", status: "thinking" });
           return;
 
         case "turn_end":
-          Queue.unsafeOffer(q, { t: "status", status: "idle" });
+          offer({ t: "status", status: "idle" });
           return;
 
         case "auto_retry_start":
-          Queue.unsafeOffer(q, {
+          offer({
             t: "auto_retry_start",
             attempt: event.attempt,
             maxAttempts: event.maxAttempts,
@@ -668,7 +703,7 @@ const wirePiSession = (
           return;
 
         case "auto_retry_end":
-          Queue.unsafeOffer(q, {
+          offer({
             t: "auto_retry_end",
             success: event.success,
             attempt: event.attempt,
@@ -687,7 +722,7 @@ const wirePiSession = (
       try: () => piSession.bindExtensions({
         uiContext: extensionUi.uiContext,
         onError: (error) => {
-          Queue.unsafeOffer(q, {
+          offer({
             t: "extension_ui_request",
             request: {
               kind: "notify",
@@ -778,7 +813,7 @@ const wirePiSession = (
             const firstImages = first.images && first.images.length > 0
               ? first.images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType }))
               : undefined;
-            Queue.unsafeOffer(q, { t: "status", status: "thinking" });
+            offer({ t: "status", status: "thinking" });
             const prompt = piSession.prompt(first.text, firstImages ? { images: firstImages } : undefined);
             for (const message of rest) await queueIntoTurn(message);
             void prompt.catch((error) => console.error("[pi] queued post-compaction prompt failed:", error));
@@ -877,12 +912,13 @@ const wirePiSession = (
         Effect.tryPromise({
           try: async () => {
             await piSession.navigateTree(entryId, { summarize });
-            Queue.unsafeOffer(q, { t: "log_reset", entries: logEntriesFromCurrentBranch(piSession) });
+            offer({ t: "log_reset", entries: logEntriesFromCurrentBranch(piSession) });
           },
           catch: (e) => new PiError(`navigateTree failed: ${String(e)}`, { cause: e }),
         }),
       close: () =>
         Effect.sync(() => {
+          flushDelta();
           extensionUi.close();
           unsub();
           piSession.dispose();
