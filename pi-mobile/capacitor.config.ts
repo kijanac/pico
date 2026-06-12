@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 import { KeyboardResize, KeyboardStyle } from "@capacitor/keyboard";
 
 const config: CapacitorConfig = {
-  appId: "dev.pico.mobile",
+  appId: "dev.picomobile.app",
   appName: "Pico",
   webDir: "dist",
   backgroundColor: "#0a0a0a",

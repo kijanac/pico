@@ -46,6 +46,10 @@ pi-mobile/ios/App/DerivedData/
 *.tar.xz
 *.txz
 
+# Logo exploration generated artifacts
+# Canonical source icon lives at pi-mobile/assets/app-icon.png.
+design/logo-exploration*/
+
 # Agent/local scratch
 .claude/
 .DS_Store
