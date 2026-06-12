@@ -20,6 +20,7 @@
   import { Button } from "@/shared/ui/button";
   import EdgeSwipeBack from "@/shared/components/EdgeSwipeBack.svelte";
   import HomePreview from "@/features/sessions/components/HomePreview.svelte";
+  import { warmHighlighter } from "@/shared/lib/highlighter";
 
   type SessionStats = Awaited<ReturnType<typeof getSessionStats>>;
   type ContextUsage = NonNullable<SessionStats["contextUsage"]>;
@@ -39,6 +40,7 @@
   onMount(() => {
     const session = createChatSessionState(sessionId);
     void session.start();
+    warmHighlighter();
     return () => session.stop();
   });
 

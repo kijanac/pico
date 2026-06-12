@@ -211,6 +211,13 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  /* Skip layout/paint for chat entries far offscreen; `auto` keeps the
+     last-rendered size as the placeholder so scroll positions stay stable. */
+  .msg-cv {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 64px;
+  }
+
   .edge-swipe-root {
     position: relative;
     isolation: isolate;

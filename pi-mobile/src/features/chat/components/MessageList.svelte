@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount } from "svelte";
   import { ArrowDown } from "@lucide/svelte";
   import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
   import UserMessageView from "@/features/chat/components/UserMessage.svelte";
@@ -36,35 +36,50 @@
     if (stuck) hasNewActivity = false;
   }
 
+  // Coalesce follow-scrolls into one rAF per frame: scrollTo forces layout,
+  // so doing it per activity bump during streaming costs a reflow per chunk.
+  let scrollRaf: number | null = null;
+
+  function scheduleScrollSync(): void {
+    if (scrollRaf !== null) return;
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = null;
+      if (stuckToBottom) scrollToLatest("auto");
+      else hasNewActivity = true;
+    });
+  }
+
   onMount(() => {
     scrollToLatest("auto");
+    return () => {
+      if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
+    };
   });
 
   $effect(() => {
     const version = chatLogState.activityVersion;
     if (version === lastActivityVersion) return;
     lastActivityVersion = version;
-    void tick().then(() => {
-      if (stuckToBottom) scrollToLatest("auto");
-      else hasNewActivity = true;
-    });
+    scheduleScrollSync();
   });
 </script>
 
 <div class="relative min-h-0 flex-1 overflow-hidden">
   <div bind:this={scroller} onscroll={onScroll} class="scroll-momentum h-full overflow-y-auto py-2" style="padding-bottom: 0.5rem">
     {#each chatLogState.entries as entry (entry.id)}
-      {#if entry.kind === "user"}
-        <UserMessageView msg={entry} />
-      {:else if entry.kind === "assistant"}
-        <AssistantMessageView msg={entry} {sessionId} />
-      {:else if entry.kind === "tool_call"}
-        <ToolCallView msg={entry} />
-      {:else if entry.kind === "permission"}
-        <PermissionGate req={entry} />
-      {:else if entry.kind === "compaction"}
-        <CompactionMessageView msg={entry} />
-      {/if}
+      <div class="msg-cv">
+        {#if entry.kind === "user"}
+          <UserMessageView msg={entry} />
+        {:else if entry.kind === "assistant"}
+          <AssistantMessageView msg={entry} {sessionId} />
+        {:else if entry.kind === "tool_call"}
+          <ToolCallView msg={entry} />
+        {:else if entry.kind === "permission"}
+          <PermissionGate req={entry} />
+        {:else if entry.kind === "compaction"}
+          <CompactionMessageView msg={entry} />
+        {/if}
+      </div>
     {/each}
   </div>
 

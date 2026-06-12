@@ -196,6 +196,20 @@ export async function highlightLines(
   }
 }
 
+// Engine + theme init costs hundreds of ms; pre-warming during idle keeps
+// the first code fence of a session from stalling on it.
+const WARM_LANGS = ["typescript", "bash"];
+
+export function warmHighlighter(): void {
+  const warm = () => {
+    void getHighlighter()
+      .then(() => Promise.all(WARM_LANGS.map((lang) => ensureLang(lang))))
+      .catch((e) => console.warn("[highlighter] warmup failed", e));
+  };
+  if (typeof requestIdleCallback === "function") requestIdleCallback(() => warm());
+  else setTimeout(warm, 250);
+}
+
 export function inferLangFromPath(path: string): string | null {
   const m = /\.([a-z0-9]+)$/i.exec(path);
   if (!m) return null;

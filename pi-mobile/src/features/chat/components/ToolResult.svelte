@@ -27,9 +27,21 @@
     return contentText;
   });
   const path = $derived.by(() => (msg.toolKind === "builtin" && (msg.tool === "read" || msg.tool === "write") ? msg.args.path : ""));
+  // ANSI parsing is synchronous and re-runs per streaming update, so cap it
+  // to the output tail; huge bash logs otherwise stall the main thread.
+  const MAX_ANSI_PARSE_CHARS = 32_768;
   const bashHtml = $derived.by(() => {
-    const escaped = Anser.escapeForHtml(displayText);
-    return Anser.ansiToHtml(escaped, { use_classes: false });
+    let text = displayText;
+    let truncated = false;
+    if (text.length > MAX_ANSI_PARSE_CHARS) {
+      text = text.slice(-MAX_ANSI_PARSE_CHARS);
+      const firstNewline = text.indexOf("\n");
+      if (firstNewline > 0) text = text.slice(firstNewline + 1);
+      truncated = true;
+    }
+    const escaped = Anser.escapeForHtml(text);
+    const html = Anser.ansiToHtml(escaped, { use_classes: false });
+    return truncated ? `<span style="opacity:.6">… earlier output omitted …</span>\n${html}` : html;
   });
 
   let highlightedHtml = $state<string | null>(null);
