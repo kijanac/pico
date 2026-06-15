@@ -99,14 +99,35 @@ export const WriteToolArgs = v.object({
 });
 export type WriteToolArgs = v.InferOutput<typeof WriteToolArgs>;
 
+const EditReplacements = v.array(
+  v.object({
+    oldText: v.string(),
+    newText: v.string(),
+  }),
+);
+
+// `edits` is normally an array, but some models (e.g. Opus 4.6, GLM-5.1) emit
+// it as a JSON-encoded string. Accept either and decode the string form, so
+// the parsed output is always the canonical array. The bridge sends that
+// canonical shape over the wire, so re-parsing on the client (or on store
+// replay) just matches the array branch — the transform is a no-op on
+// already-parsed args.
 export const EditToolArgs = v.object({
   path: v.string(),
-  edits: v.array(
-    v.object({
-      oldText: v.string(),
-      newText: v.string(),
-    }),
-  ),
+  edits: v.union([
+    EditReplacements,
+    v.pipe(
+      v.string(),
+      v.transform((value) => {
+        try {
+          return JSON.parse(value);
+        } catch {
+          return null;
+        }
+      }),
+      EditReplacements,
+    ),
+  ]),
 });
 export type EditToolArgs = v.InferOutput<typeof EditToolArgs>;
 

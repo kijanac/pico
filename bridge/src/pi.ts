@@ -13,12 +13,8 @@ import {
   type AgentSession,
   type AgentSessionServices,
   type AgentSessionEvent,
-  type BashToolInput,
-  type EditToolInput,
-  type ReadToolInput,
   type SessionEntry,
   type SessionStats as PiSdkSessionStats,
-  type WriteToolInput,
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage as PiAssistantMessage, Model } from "@earendil-works/pi-ai";
 import * as v from "valibot";
@@ -383,6 +379,12 @@ const toolCallBase = (id: string) => ({
   status: "running" as const,
 });
 
+// Tool args are model-generated JSON — the SDK types them `any`, so this is
+// the one boundary that turns them into a typed value. safeParse against the
+// builtin schema; if the model emitted a shape we don't model, degrade to a
+// custom tool-call rather than throwing. (The bridge only forwards these for
+// rendering — it never executes them — so a generic render is a fine fallback,
+// and a throw here would fail the live turn and make the session unreplayable.)
 const normalizeToolCall = (
   id: string,
   toolName: string,
@@ -392,29 +394,29 @@ const normalizeToolCall = (
 
   switch (toolName) {
     case "read": {
-      const args: ReadToolInput = v.parse(ReadToolArgs, rawArgs);
-      return { ...base, toolKind: "builtin", tool: "read", args };
+      const r = v.safeParse(ReadToolArgs, rawArgs);
+      if (r.success) return { ...base, toolKind: "builtin", tool: "read", args: r.output };
+      break;
     }
     case "write": {
-      const args: WriteToolInput = v.parse(WriteToolArgs, rawArgs);
-      return { ...base, toolKind: "builtin", tool: "write", args };
+      const r = v.safeParse(WriteToolArgs, rawArgs);
+      if (r.success) return { ...base, toolKind: "builtin", tool: "write", args: r.output };
+      break;
     }
     case "edit": {
-      const args: EditToolInput = v.parse(EditToolArgs, rawArgs);
-      return { ...base, toolKind: "builtin", tool: "edit", args };
+      const r = v.safeParse(EditToolArgs, rawArgs);
+      if (r.success) return { ...base, toolKind: "builtin", tool: "edit", args: r.output };
+      break;
     }
     case "bash": {
-      const args: BashToolInput = v.parse(BashToolArgs, rawArgs);
-      return { ...base, toolKind: "builtin", tool: "bash", args };
+      const r = v.safeParse(BashToolArgs, rawArgs);
+      if (r.success) return { ...base, toolKind: "builtin", tool: "bash", args: r.output };
+      break;
     }
-    default:
-      return {
-        ...base,
-        toolKind: "custom",
-        tool: toolName,
-        args: v.parse(CustomToolArgs, rawArgs),
-      };
   }
+
+  const custom = v.safeParse(CustomToolArgs, rawArgs);
+  return { ...base, toolKind: "custom", tool: toolName, args: custom.success ? custom.output : {} };
 };
 
 const assistantText = (content: PiAssistantMessage["content"]): string =>
