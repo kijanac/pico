@@ -11,6 +11,15 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <script>
+      (() => {
+        const mode = localStorage.getItem("pico.theme") || "system";
+        const systemDark = matchMedia("(prefers-color-scheme: dark)").matches;
+        const resolved = mode === "light" ? "light" : mode === "dark" ? "dark" : systemDark ? "dark" : "light";
+        document.documentElement.classList.toggle("dark", resolved === "dark");
+        if (mode === "light" || mode === "dark") document.documentElement.dataset.theme = mode;
+      })();
+    </script>
     <title>Pico</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

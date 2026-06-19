@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { navigateTo, routePaths } from "@/app/routes";
   import { settingsState } from "@/features/settings/settings.state.svelte";
+  import AppearanceCard from "@/features/settings/components/AppearanceCard.svelte";
   import HostStatusCard from "@/features/settings/components/HostStatusCard.svelte";
   import GuidedOnboardingCard from "@/features/settings/components/GuidedOnboardingCard.svelte";
   import ManualHostConnectCard from "@/features/settings/components/ManualHostConnectCard.svelte";
@@ -36,6 +37,8 @@
     {/if}
 
     {#if settingsState.loaded}
+      <AppearanceCard />
+
       {#if settingsState.hostUrlConfigured}
         <HostStatusCard />
         <GuidedOnboardingCard />

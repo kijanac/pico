@@ -4,6 +4,7 @@
   import { Capacitor } from "@capacitor/core";
   import AppShell from "@/app/shell/AppShell.svelte";
   import { consumeNavKind, currentPath, matchRoute, navigateTo, type RouteMatch } from "@/app/routes";
+  import { themeState } from "@/shared/theme/theme.svelte";
 
   // Chunks load from local disk in Capacitor, so lazy routes cost ~nothing on first visit.
   function lazy<T>(load: () => Promise<T>): () => Promise<T> {
@@ -86,6 +87,9 @@
 
   onMount(() => {
     let appUrlOpenHandle: { remove: () => Promise<void> } | null = null;
+
+    themeState.init();
+    void themeState.load();
 
     window.addEventListener("popstate", syncRoute);
     if (Capacitor.isNativePlatform()) {
