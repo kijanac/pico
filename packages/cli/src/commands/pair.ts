@@ -1,30 +1,10 @@
-import { mkdirSync } from "node:fs";
 import {
-  configureTailscaleServe,
-  getLocalAdminPairing,
-  getOrCreatePairingToken,
-  healthcheck,
   makePairingDeepLink,
-  picoHostPathsFromEnv,
-  portIsOpen,
-  readPairingToken,
-  rotateLocalAdminPairingToken,
-  rotatePairingToken,
-  startPicoHost,
-  tailscaleServeUrlForPort,
-  type PicoHostHandle,
+  preparePairing,
+  type Diagnostic,
+  type PairingPlan,
 } from "@pico/host";
 import { terminalQr } from "../lib/terminal.ts";
-
-async function waitForHealth(host: string, port: number): Promise<void> {
-  const deadline = Date.now() + 15_000;
-  const url = `http://${host}:${port}`;
-  while (Date.now() < deadline) {
-    if (await healthcheck(url, 1_000)) return;
-    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
-  }
-  throw new Error("Timed out waiting for Pico host /healthz");
-}
 
 export async function printPairingInfo(options: {
   readonly hostUrl: string | undefined;
@@ -62,99 +42,56 @@ export async function printPairingInfo(options: {
   if (options.foreground) console.log("\nPress Ctrl+C to stop this foreground host.");
 }
 
-async function waitUntilStopped(host: PicoHostHandle): Promise<void> {
-  let stopping = false;
-  await new Promise<void>((resolveStopped) => {
-    const stop = () => {
-      if (stopping) return;
-      stopping = true;
-      void host.close().finally(resolveStopped);
-    };
-
-    process.once("SIGINT", stop);
-    process.once("SIGTERM", stop);
-  });
-}
-
-function pairingHostUrl(port: number, configureServe: boolean): string | undefined {
-  if (process.env.PICO_HOST_URL?.trim()) return process.env.PICO_HOST_URL.trim();
-  return configureServe ? configureTailscaleServe(port) : tailscaleServeUrlForPort(port);
-}
-
 export async function pairCommand(): Promise<void> {
-  const paths = picoHostPathsFromEnv();
-
-  mkdirSync(paths.dataDir, { recursive: true });
-  mkdirSync(paths.workspacesDir, { recursive: true });
-
-  if (await portIsOpen(paths.host, paths.port)) {
-    const adminPairing = await getLocalAdminPairing(paths).catch(() => undefined);
-    const token = adminPairing?.token || process.env.PICO_PAIRING_TOKEN?.trim() || readPairingToken(paths.dataDir);
-    const hostUrl = pairingHostUrl(paths.port, true);
-    await printPairingInfo({
-      hostUrl,
-      token,
-      workspacesDir: paths.workspacesDir,
-      dataDir: paths.dataDir,
-      port: paths.port,
-      existing: true,
-      foreground: false,
-    });
-    if (!token) {
-      console.log("\nNo local pairing token file was found for the running host. If it is unclaimed, restart it with `pico serve` or `pico pair` to load a stored token.");
-    }
-    return;
-  }
-
-  const token = getOrCreatePairingToken(paths.dataDir);
-
-  const host = await startPicoHost({
-    dbPath: paths.dbPath,
-    workspacesDir: paths.workspacesDir,
-    pairingToken: token,
-    host: paths.host,
-    port: paths.port,
-    nodeEnv: process.env.NODE_ENV || "production",
-  });
-
+  const plan = await preparePairing({ startHost: true, configureServe: true, inheritTailscaleStdio: true });
   try {
-    await waitForHealth(paths.host, paths.port);
-    const hostUrl = pairingHostUrl(paths.port, true);
-    await printPairingInfo({ hostUrl, token, workspacesDir: paths.workspacesDir, dataDir: paths.dataDir, port: paths.port, foreground: true });
-    await waitUntilStopped(host);
-  } catch (error) {
-    await host.close();
-    throw error;
+    await printPairingPlan(plan, { foreground: plan.foregroundHostStarted });
+    if (plan.foregroundHostStarted) await waitForStopSignal();
+  } finally {
+    await plan.host?.close();
   }
 }
 
 export async function pairCodeCommand(options: { readonly rotate?: boolean } = {}): Promise<void> {
-  const paths = picoHostPathsFromEnv();
-  const existing = await portIsOpen(paths.host, paths.port);
-  const adminPairing = existing
-    ? options.rotate
-      ? await rotateLocalAdminPairingToken(paths).catch(() => undefined)
-      : await getLocalAdminPairing(paths).catch(() => undefined)
-    : undefined;
-  const token = existing
-    ? adminPairing?.token || process.env.PICO_PAIRING_TOKEN?.trim() || readPairingToken(paths.dataDir)
-    : options.rotate
-      ? rotatePairingToken(paths.dataDir)
-      : getOrCreatePairingToken(paths.dataDir);
-  const hostUrl = pairingHostUrl(paths.port, false) ?? pairingHostUrl(paths.port, true);
-  await printPairingInfo({
-    hostUrl,
-    token,
-    workspacesDir: paths.workspacesDir,
-    dataDir: paths.dataDir,
-    port: paths.port,
-    existing,
-    foreground: false,
-  });
-  if (options.rotate && existing && !adminPairing) {
+  const plan = await preparePairing({ rotate: options.rotate, startHost: false, configureServe: true });
+  await printPairingPlan(plan, { foreground: false });
+  if (plan.rotationUnavailable) {
     console.log("\nCould not rotate the running host token through local admin. Restart it with the current `pico serve`/`pico pair` first.");
   }
-  if (existing && !token) {
+}
+
+async function printPairingPlan(plan: PairingPlan, options: { readonly foreground: boolean }): Promise<void> {
+  printDiagnostics(plan.diagnostics);
+  await printPairingInfo({
+    hostUrl: plan.hostUrl,
+    token: plan.token,
+    workspacesDir: plan.workspacesDir,
+    dataDir: plan.dataDir,
+    port: plan.port,
+    existing: plan.existing,
+    foreground: options.foreground,
+  });
+  if (plan.existing && !plan.token) {
     console.log("\nNo local pairing token file was found for the running host. If it is unclaimed, restart it with `pico serve` or `pico pair` to load a stored token.");
   }
+}
+
+function printDiagnostics(diagnostics: readonly Diagnostic[]): void {
+  for (const diagnostic of diagnostics) {
+    const prefix = diagnostic.level === "fail" ? "WARNING" : "note";
+    console.log(`\n${prefix}: ${diagnostic.label}${diagnostic.detail ? `: ${diagnostic.detail}` : ""}`);
+    if (diagnostic.fix) console.log(`  ${diagnostic.fix}`);
+  }
+}
+
+async function waitForStopSignal(): Promise<void> {
+  await new Promise<void>((resolveStopped) => {
+    const stop = () => {
+      process.off("SIGINT", stop);
+      process.off("SIGTERM", stop);
+      resolveStopped();
+    };
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+  });
 }

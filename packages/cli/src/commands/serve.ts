@@ -1,11 +1,12 @@
 import { mkdirSync } from "node:fs";
 import {
-  configureTailscaleServe,
+  ensureTailscaleServe,
   getOrCreatePairingToken,
   healthcheck,
   picoHostPathsFromEnv,
   portIsOpen,
   startPicoHost,
+  type Diagnostic,
   type PicoHostHandle,
 } from "@pico/host";
 
@@ -55,15 +56,24 @@ export async function serveCommand(): Promise<void> {
 
   try {
     await waitForHealth(paths.host, paths.port);
-    const hostUrl = process.env.PICO_HOST_URL?.trim() || configureTailscaleServe(paths.port);
+    const tailscale = await ensureTailscaleServe(paths.port, { configure: true, inheritStdio: true });
+    printDiagnostics(tailscale.diagnostics);
     console.log("Pico host is serving");
     console.log(`  local:      http://${paths.host}:${paths.port}`);
-    if (hostUrl) console.log(`  tailnet:    ${hostUrl}`);
+    if (tailscale.serveUrl) console.log(`  tailnet:    ${tailscale.serveUrl}`);
     console.log(`  workspaces: ${paths.workspacesDir}`);
     console.log(`  data:       ${paths.dataDir}`);
     await waitUntilStopped(host);
   } catch (error) {
     await host.close();
     throw error;
+  }
+}
+
+function printDiagnostics(diagnostics: readonly Diagnostic[]): void {
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.level === "ok") continue;
+    console.warn(`\nWARNING: ${diagnostic.label}${diagnostic.detail ? `: ${diagnostic.detail}` : ""}`);
+    if (diagnostic.fix) console.warn(`  ${diagnostic.fix}`);
   }
 }

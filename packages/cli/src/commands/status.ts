@@ -1,12 +1,13 @@
-import { getLocalAdminStatus, healthcheck, localAdminTokenPath, pairingTokenPath, picoHostPathsFromEnv, portIsOpen, readLocalAdminToken, readPairingToken, systemPicoHostPathsFromEnv, tailscaleServeStatus, tailscaleServeUrlForPort, type ServiceMode } from "@pico/host";
+import { getLocalAdminStatus, healthcheck, inspectTailscale, localAdminTokenPath, pairingTokenPath, picoHostPathsFromEnv, portIsOpen, readLocalAdminToken, readPairingToken, systemPicoHostPathsFromEnv, type ServiceMode } from "@pico/host";
 
 export async function statusCommand(options: { readonly mode?: ServiceMode; readonly systemUser?: string } = {}): Promise<void> {
   const paths = options.mode === "system" ? systemPicoHostPathsFromEnv(options.systemUser) : picoHostPathsFromEnv();
   const localUrl = `http://${paths.host}:${paths.port}`;
   const open = await portIsOpen(paths.host, paths.port);
   const healthy = open ? await healthcheck(localUrl) : false;
-  const serveStatus = tailscaleServeStatus();
-  const tailnetUrl = process.env.PICO_HOST_URL?.trim() || tailscaleServeUrlForPort(paths.port);
+  const tailscale = inspectTailscale(paths.port);
+  const serveStatus = tailscale.serveStatus;
+  const tailnetUrl = tailscale.serveUrl;
   const token = readPairingToken(paths.dataDir);
   const adminToken = readLocalAdminToken(paths.dataDir);
   const adminStatus = open && adminToken ? await getLocalAdminStatus(paths).catch(() => undefined) : undefined;

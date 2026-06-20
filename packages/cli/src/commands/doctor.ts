@@ -1,12 +1,12 @@
-import { collectDoctorChecks, type CheckResult } from "@pico/host";
+import { collectDoctorChecks, type Diagnostic } from "@pico/host";
 
-function symbol(level: CheckResult["level"]): string {
+function symbol(level: Diagnostic["level"]): string {
   if (level === "ok") return "✓";
   if (level === "warn") return "!";
   return "✕";
 }
 
-function color(level: CheckResult["level"]): string {
+function color(level: Diagnostic["level"]): string {
   if (!process.stdout.isTTY) return "";
   if (level === "ok") return "\x1b[32m";
   if (level === "warn") return "\x1b[33m";

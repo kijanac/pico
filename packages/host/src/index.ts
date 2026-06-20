@@ -3,8 +3,9 @@ export type { PicoHostHandle, StartPicoHostOptions } from "@pico/host-runtime/ho
 export { getLocalAdminPairing, getLocalAdminStatus, localAdminTokenPath, readLocalAdminToken, rotateLocalAdminPairingToken } from "./admin.ts";
 export type { LocalAdminPairing, LocalAdminStatus } from "./admin.ts";
 export { collectDoctorChecks } from "./doctor.ts";
-export type { CheckResult } from "./doctor.ts";
-export { commandExists, commandLine, run } from "./exec.ts";
+export { PicoSetupError, setupErrorMessage } from "./errors.ts";
+export type { Diagnostic, DiagnosticCode, DiagnosticLevel } from "./errors.ts";
+export { commandExists, commandLine, run, runOutput, runStderr, runStdout } from "./exec.ts";
 export type { RunOptions } from "./exec.ts";
 export { healthcheck, portIsOpen } from "./network.ts";
 export { DEFAULT_PICO_HOST_BIND, DEFAULT_PICO_HOST_PORT, defaultPicoHostDataDir, picoHostPathsFromEnv, systemPicoHostPathsFromEnv } from "./paths.ts";
@@ -18,8 +19,10 @@ export {
   rotatePairingToken,
   writePairingToken,
 } from "./pairing.ts";
-export { configureTailscaleServe, hasTailscale, tailscaleDnsName, tailscaleHttpsUrl, tailscaleServeStatus, tailscaleServeUrlForPort, tailscaleStatus } from "./tailscale.ts";
-export type { TailscaleStatus } from "./tailscale.ts";
+export { ensureTailscaleServe, inspectTailscale } from "./tailscale.ts";
+export type { TailscaleState, TailscaleStatus } from "./tailscale.ts";
+export { preparePairing } from "./setup.ts";
+export type { PairingPlan, PreparePairingOptions } from "./setup.ts";
 export {
   defaultServiceCommand,
   installService,

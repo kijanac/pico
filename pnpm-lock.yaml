@@ -46,6 +46,9 @@ importers:
       '@trpc/client':
         specifier: ^11.17.0
         version: 11.17.0(@trpc/server@11.17.0(typescript@5.9.3))(typescript@5.9.3)
+      effect:
+        specifier: ^3.18.0
+        version: 3.21.2
     devDependencies:
       '@types/node':
         specifier: ^25.9.1

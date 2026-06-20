@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
-import { commandLine, run } from "./exec.ts";
+import { commandLine, run, runStderr } from "./exec.ts";
 import { picoHostPathsFromEnv, type PicoHostPaths } from "./paths.ts";
 
 const MAC_LABEL = "dev.pico.host";
@@ -205,14 +205,14 @@ function ensureSystemUser(user: string, paths: PicoHostPaths, create: boolean): 
 
   const result = run("useradd", ["--system", "--home-dir", paths.dataDir, "--create-home", "--shell", "/usr/sbin/nologin", user], { timeoutMs: 20_000 });
   if (result.status === 0) return [{ level: "ok", message: "Created system service user", detail: user }];
-  return [{ level: "fail", message: "Failed to create system service user", detail: result.stderr.trim() || result.error?.message || user }];
+  return [{ level: "fail", message: "Failed to create system service user", detail: runStderr(result).trim() || result.error?.message || user }];
 }
 
 function runLaunchctl(args: readonly string[], allowFailure: boolean): ServiceResult[] {
   const result = run("launchctl", args, { timeoutMs: 15_000 });
   if (result.status === 0) return [{ level: "ok", message: commandLine("launchctl", args) }];
   if (allowFailure) return [];
-  return [{ level: "warn", message: `${commandLine("launchctl", args)} failed`, detail: result.stderr.trim() || result.error?.message }];
+  return [{ level: "warn", message: `${commandLine("launchctl", args)} failed`, detail: runStderr(result).trim() || result.error?.message }];
 }
 
 function runSystemctl(args: readonly string[], allowFailure: boolean): ServiceResult {
@@ -221,7 +221,7 @@ function runSystemctl(args: readonly string[], allowFailure: boolean): ServiceRe
   return {
     level: allowFailure ? "ok" : "warn",
     message: `${commandLine("systemctl", args)} ${allowFailure ? "was not active" : "failed"}`,
-    detail: result.stderr.trim() || result.error?.message,
+    detail: runStderr(result).trim() || result.error?.message,
   };
 }
 

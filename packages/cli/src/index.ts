@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { setupErrorMessage } from "@pico/host";
 import { doctorCommand } from "./commands/doctor.ts";
 import { pairCodeCommand, pairCommand } from "./commands/pair.ts";
 import { installCommand, logsCommand, parseServiceCliOptions, startCommand, stopCommand, uninstallCommand } from "./commands/service.ts";
@@ -92,6 +93,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error(setupErrorMessage(error));
   process.exit(1);
 });
