@@ -10,8 +10,8 @@ import {
   uninstallService,
   systemPicoHostPathsFromEnv,
   type ServiceMode,
-  type ServiceResult,
 } from "@pico/host";
+import { printServiceResults } from "../lib/diagnostics.ts";
 
 export interface ServiceCliOptions {
   readonly mode: ServiceMode;
@@ -49,16 +49,6 @@ export function parseServiceCliOptions(args: readonly string[]): ServiceCliOptio
   return { mode, systemUser, createSystemUser };
 }
 
-function printResults(results: readonly ServiceResult[]): boolean {
-  for (const result of results) {
-    const marker = result.level === "ok" ? "✓" : result.level === "warn" ? "!" : "✗";
-    console.log(`${marker} ${result.message}${result.detail ? `: ${result.detail}` : ""}`);
-  }
-  const failed = results.some((result) => result.level === "fail");
-  if (failed) process.exitCode = 1;
-  return failed;
-}
-
 function serviceUsage(): string {
   return `Service options:
   --system              Install/control a Linux system service instead of a per-user service
@@ -86,7 +76,7 @@ export function installCommand(options: ServiceCliOptions = { mode: "user", crea
     systemUser: options.systemUser,
     createSystemUser: options.createSystemUser,
   });
-  if (printResults(results)) return;
+  if (printServiceResults(results)) return;
   console.log(`\nService file: ${serviceFilePath({ mode: options.mode })}`);
   if (options.mode === "system") {
     console.log("Run `pico status --system` or `pico logs --system` to inspect it.");
@@ -97,15 +87,15 @@ export function installCommand(options: ServiceCliOptions = { mode: "user", crea
 }
 
 export function uninstallCommand(options: ServiceCliOptions = { mode: "user", createSystemUser: false }): void {
-  printResults(uninstallService({ mode: options.mode }));
+  printServiceResults(uninstallService({ mode: options.mode }));
 }
 
 export function startCommand(options: ServiceCliOptions = { mode: "user", createSystemUser: false }): void {
-  printResults(startService({ mode: options.mode }));
+  printServiceResults(startService({ mode: options.mode }));
 }
 
 export function stopCommand(options: ServiceCliOptions = { mode: "user", createSystemUser: false }): void {
-  printResults(stopService({ mode: options.mode }));
+  printServiceResults(stopService({ mode: options.mode }));
 }
 
 export function logsCommand(options: ServiceCliOptions = { mode: "user", createSystemUser: false }): void {

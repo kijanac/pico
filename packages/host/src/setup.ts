@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { Effect } from "effect";
+import { Cause, Effect, Option } from "effect";
 import type { PicoHostHandle, StartPicoHostOptions } from "@pico/host-runtime/host";
 import { startPicoHost } from "@pico/host-runtime/host";
 import { getLocalAdminPairing, rotateLocalAdminPairingToken, type LocalAdminPairing } from "./admin.ts";
@@ -28,6 +28,21 @@ export interface PairingPlan {
   readonly port: number;
   readonly diagnostics: readonly Diagnostic[];
   readonly rotationUnavailable: boolean;
+}
+
+export interface PrepareServingOptions {
+  readonly paths?: PicoHostPaths;
+  readonly configureServe?: boolean;
+  readonly inheritTailscaleStdio?: boolean;
+}
+
+export interface ServingPlan {
+  readonly host: PicoHostHandle;
+  readonly hostUrl?: string;
+  readonly localUrl: string;
+  readonly workspacesDir: string;
+  readonly dataDir: string;
+  readonly diagnostics: readonly Diagnostic[];
 }
 
 export function ensurePicoHostDirectoriesEffect(paths: PicoHostPaths): Effect.Effect<void, PicoSetupError> {
@@ -97,7 +112,57 @@ export function preparePairingEffect(options: PreparePairingOptions = {}): Effec
 }
 
 export function preparePairing(options: PreparePairingOptions = {}): Promise<PairingPlan> {
-  return Effect.runPromise(preparePairingEffect(options));
+  return runSetupPromise(preparePairingEffect(options));
+}
+
+export function prepareServingEffect(options: PrepareServingOptions = {}): Effect.Effect<ServingPlan, PicoSetupError> {
+  return Effect.gen(function* () {
+    const paths = options.paths ?? picoHostPathsFromEnv();
+    yield* ensurePicoHostDirectoriesEffect(paths);
+
+    if (yield* hostPortIsOpenEffect(paths)) {
+      return yield* Effect.fail(new PicoSetupError({
+        code: "host_port_in_use",
+        message: `Port ${paths.host}:${paths.port} is already in use`,
+        detail: `${paths.host}:${paths.port}`,
+        fix: "Stop the existing Pico host process, or set PICO_HOST_PORT.",
+      }));
+    }
+
+    const token = yield* getOrCreatePairingTokenEffect(paths);
+    const host = yield* startPicoHostEffect({
+      dbPath: paths.dbPath,
+      workspacesDir: paths.workspacesDir,
+      pairingToken: token,
+      host: paths.host,
+      port: paths.port,
+      nodeEnv: process.env.NODE_ENV || "production",
+    });
+
+    const health = yield* waitForPicoHostHealthEffect(paths).pipe(Effect.either);
+    if (health._tag === "Left") {
+      yield* closePicoHostEffect(host);
+      return yield* Effect.fail(health.left);
+    }
+
+    const tailscale = yield* ensureTailscaleServeEffect(paths.port, {
+      configure: Boolean(options.configureServe),
+      inheritStdio: options.inheritTailscaleStdio,
+    });
+
+    return {
+      host,
+      hostUrl: tailscale.serveUrl,
+      localUrl: `http://${paths.host}:${paths.port}`,
+      workspacesDir: paths.workspacesDir,
+      dataDir: paths.dataDir,
+      diagnostics: tailscale.diagnostics.filter((diagnostic) => diagnostic.level !== "ok"),
+    } satisfies ServingPlan;
+  });
+}
+
+export function prepareServing(options: PrepareServingOptions = {}): Promise<ServingPlan> {
+  return runSetupPromise(prepareServingEffect(options));
 }
 
 export function hostPortIsOpenEffect(paths: PicoHostPaths): Effect.Effect<boolean, PicoSetupError> {
@@ -163,6 +228,14 @@ export function waitForPicoHostHealthEffect(paths: PicoHostPaths, timeoutMs = 15
       fix: "Check `pico logs` or run `pico serve` in the foreground.",
     }));
   });
+}
+
+async function runSetupPromise<A>(effect: Effect.Effect<A, PicoSetupError>): Promise<A> {
+  const exit = await Effect.runPromiseExit(effect);
+  if (exit._tag === "Success") return exit.value;
+  const failure = Option.getOrUndefined(Cause.failureOption(exit.cause));
+  if (failure) throw failure;
+  throw new Error(Cause.pretty(exit.cause));
 }
 
 function readRunningHostPairing(paths: PicoHostPaths, rotate: boolean, diagnostics: Diagnostic[]): Effect.Effect<LocalAdminPairing | undefined> {

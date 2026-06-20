@@ -21,8 +21,8 @@ export {
 } from "./pairing.ts";
 export { ensureTailscaleServe, inspectTailscale } from "./tailscale.ts";
 export type { TailscaleState, TailscaleStatus } from "./tailscale.ts";
-export { preparePairing } from "./setup.ts";
-export type { PairingPlan, PreparePairingOptions } from "./setup.ts";
+export { preparePairing, prepareServing } from "./setup.ts";
+export type { PairingPlan, PreparePairingOptions, PrepareServingOptions, ServingPlan } from "./setup.ts";
 export {
   defaultServiceCommand,
   installService,

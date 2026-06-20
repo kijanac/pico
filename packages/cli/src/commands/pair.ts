@@ -1,9 +1,6 @@
-import {
-  makePairingDeepLink,
-  preparePairing,
-  type Diagnostic,
-  type PairingPlan,
-} from "@pico/host";
+import { makePairingDeepLink, preparePairing, type PairingPlan } from "@pico/host";
+import { printActionDiagnostics } from "../lib/diagnostics.ts";
+import { waitForStopSignal } from "../lib/signals.ts";
 import { terminalQr } from "../lib/terminal.ts";
 
 export async function printPairingInfo(options: {
@@ -61,7 +58,7 @@ export async function pairCodeCommand(options: { readonly rotate?: boolean } = {
 }
 
 async function printPairingPlan(plan: PairingPlan, options: { readonly foreground: boolean }): Promise<void> {
-  printDiagnostics(plan.diagnostics);
+  printActionDiagnostics(plan.diagnostics);
   await printPairingInfo({
     hostUrl: plan.hostUrl,
     token: plan.token,
@@ -74,24 +71,4 @@ async function printPairingPlan(plan: PairingPlan, options: { readonly foregroun
   if (plan.existing && !plan.token) {
     console.log("\nNo local pairing token file was found for the running host. If it is unclaimed, restart it with `pico serve` or `pico pair` to load a stored token.");
   }
-}
-
-function printDiagnostics(diagnostics: readonly Diagnostic[]): void {
-  for (const diagnostic of diagnostics) {
-    const prefix = diagnostic.level === "fail" ? "WARNING" : "note";
-    console.log(`\n${prefix}: ${diagnostic.label}${diagnostic.detail ? `: ${diagnostic.detail}` : ""}`);
-    if (diagnostic.fix) console.log(`  ${diagnostic.fix}`);
-  }
-}
-
-async function waitForStopSignal(): Promise<void> {
-  await new Promise<void>((resolveStopped) => {
-    const stop = () => {
-      process.off("SIGINT", stop);
-      process.off("SIGTERM", stop);
-      resolveStopped();
-    };
-    process.once("SIGINT", stop);
-    process.once("SIGTERM", stop);
-  });
 }
