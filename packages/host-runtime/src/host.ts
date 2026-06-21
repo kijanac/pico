@@ -2,12 +2,11 @@ import { Effect } from "effect";
 import { serve } from "@hono/node-server";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DB_PATH } from "./config.ts";
+import { DB_PATH, HOST_INSECURE_NO_AUTH, USE_MOCK } from "./config.ts";
 import { hostRuntime as runtime } from "./runtime.ts";
 import { SessionManager } from "./session.ts";
 import { makeHttpApp } from "./http/app.ts";
 import { attachWebSocketUpgrade } from "./server.ts";
-import { HOST_INSECURE_NO_AUTH } from "./auth.ts";
 import { ensureLocalAdminToken } from "./local-admin.ts";
 
 export interface PicoHostOptions {
@@ -37,7 +36,7 @@ function closeServer(server: ReturnType<typeof serve>): Promise<void> {
 export function startPicoHost(options: PicoHostOptions = {}): PicoHostHandle {
   const port = options.port ?? DEFAULT_PORT;
   const host = options.host ?? DEFAULT_HOST;
-  const usingMock = process.env.PI_USE_MOCK === "1";
+  const usingMock = USE_MOCK;
 
   if (HOST_INSECURE_NO_AUTH) {
     runtime.runFork(

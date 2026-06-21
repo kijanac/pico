@@ -12,7 +12,7 @@ function queueSnapshot(queue: QueueState = emptyQueue): QueueState {
   };
 }
 
-function queueItems(sessionId: string): QueuedMessage[] {
+function queueItems(sessionId: string): readonly QueuedMessage[] {
   return queues[sessionId]?.queued ?? emptyQueue.queued;
 }
 

@@ -2,8 +2,10 @@ import {
   Context,
   Effect,
   Layer,
-  Stream,
+  Option,
   Queue,
+  Schema,
+  Stream,
 } from "effect";
 import {
   AuthStorage,
@@ -17,7 +19,6 @@ import {
   type SessionStats as PiSdkSessionStats,
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage as PiAssistantMessage, Model } from "@earendil-works/pi-ai";
-import * as v from "valibot";
 import { randomUUIDv7 } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
@@ -48,7 +49,7 @@ import {
   type TreeEntry,
 } from "@pico/protocol";
 import { hostErrorCodeFromUnknown, SessionNotFound } from "./errors.ts";
-import { HOST_DATA_DIR } from "./config.ts";
+import { HOST_DATA_DIR, PI_EPHEMERAL } from "./config.ts";
 import { createMobileExtensionUiChannel } from "./mobile-extension-ui-channel.ts";
 import { projectToolResult, projectToolResultContent, textFromContent } from "./tool-result-projection.ts";
 
@@ -387,8 +388,12 @@ const toolCallBase = (id: string) => ({
   status: "running" as const,
 });
 
+// A tool call is built when the call arrives, then updated in place once its
+// result streams in, so the working copy in `byToolCallId` is mutable.
+type Mutable<T> = T extends unknown ? { -readonly [K in keyof T]: T[K] } : never;
+
 // Tool args are model-generated JSON — the SDK types them `any`, so this is
-// the one boundary that turns them into a typed value. safeParse against the
+// the one boundary that turns them into a typed value. Decode against the
 // builtin schema; if the model emitted a shape we don't model, degrade to a
 // custom tool-call rather than throwing. (The bridge only forwards these for
 // rendering — it never executes them — so a generic render is a fine fallback,
@@ -402,29 +407,29 @@ const normalizeToolCall = (
 
   switch (toolName) {
     case "read": {
-      const r = v.safeParse(ReadToolArgs, rawArgs);
-      if (r.success) return { ...base, toolKind: "builtin", tool: "read", args: r.output };
+      const r = Schema.decodeUnknownOption(ReadToolArgs)(rawArgs);
+      if (Option.isSome(r)) return { ...base, toolKind: "builtin", tool: "read", args: r.value };
       break;
     }
     case "write": {
-      const r = v.safeParse(WriteToolArgs, rawArgs);
-      if (r.success) return { ...base, toolKind: "builtin", tool: "write", args: r.output };
+      const r = Schema.decodeUnknownOption(WriteToolArgs)(rawArgs);
+      if (Option.isSome(r)) return { ...base, toolKind: "builtin", tool: "write", args: r.value };
       break;
     }
     case "edit": {
-      const r = v.safeParse(EditToolArgs, rawArgs);
-      if (r.success) return { ...base, toolKind: "builtin", tool: "edit", args: r.output };
+      const r = Schema.decodeUnknownOption(EditToolArgs)(rawArgs);
+      if (Option.isSome(r)) return { ...base, toolKind: "builtin", tool: "edit", args: r.value };
       break;
     }
     case "bash": {
-      const r = v.safeParse(BashToolArgs, rawArgs);
-      if (r.success) return { ...base, toolKind: "builtin", tool: "bash", args: r.output };
+      const r = Schema.decodeUnknownOption(BashToolArgs)(rawArgs);
+      if (Option.isSome(r)) return { ...base, toolKind: "builtin", tool: "bash", args: r.value };
       break;
     }
   }
 
-  const custom = v.safeParse(CustomToolArgs, rawArgs);
-  return { ...base, toolKind: "custom", tool: toolName, args: custom.success ? custom.output : {} };
+  const custom = Schema.decodeUnknownOption(CustomToolArgs)(rawArgs);
+  return { ...base, toolKind: "custom", tool: toolName, args: Option.getOrElse(custom, (): CustomToolArgs => ({})) };
 };
 
 const assistantText = (content: PiAssistantMessage["content"]): string =>
@@ -449,7 +454,7 @@ const sessionStatsWithCwd = (stats: PiSdkSessionStats, cwd: string): SessionStat
 
 const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
   const logEntries: LogEntry[] = [];
-  const byToolCallId = new Map<string, ToolCallMessage>();
+  const byToolCallId = new Map<string, Mutable<ToolCallMessage>>();
 
   for (const entry of piSession.sessionManager.getBranch()) {
     const at = new Date(entry.timestamp).getTime();
@@ -976,7 +981,7 @@ const makeLiveSession = (
     const piSession = yield* Effect.tryPromise<AgentSession, PiError>({
       try: async () => {
         const sessionManager =
-          process.env.PI_EPHEMERAL === "1"
+          PI_EPHEMERAL
             ? PiSessionManager.inMemory(opts.cwd)
             : PiSessionManager.create(opts.cwd);
 

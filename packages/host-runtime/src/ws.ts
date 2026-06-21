@@ -1,4 +1,4 @@
-import { Cause, Effect, Fiber, Queue, Stream, ManagedRuntime, pipe } from "effect";
+import { Cause, Effect, Either, Fiber, Queue, Stream, ManagedRuntime, pipe } from "effect";
 import type { WebSocket } from "ws";
 import {
   decodeClientEvent,
@@ -62,15 +62,15 @@ export const makeConnectionHandler =
       }
 
       const result = decodeClientEvent(parsed);
-      if (!result.success) {
+      if (Either.isLeft(result)) {
         sendOob(ws, {
           error: "invalid_event",
-          issues: result.issues.map((i) => i.message),
+          issues: [result.left.message],
         });
         return;
       }
 
-      runtime.runFork(Queue.offer(state.queue, result.output));
+      runtime.runFork(Queue.offer(state.queue, result.right));
     });
 
     ws.on("close", () => {
@@ -119,7 +119,7 @@ const connection = (
       Effect.flatMap((evt) => {
         switch (evt.t) {
           case "send":
-            return mgr.send(bindings.sessionId, evt.text, evt.mode, evt.images, evt.clientId);
+            return mgr.send(bindings.sessionId, evt.text, evt.mode, evt.images ? [...evt.images] : undefined, evt.clientId);
           case "interrupt":
             return mgr.interrupt(bindings.sessionId);
           case "permission_reply":

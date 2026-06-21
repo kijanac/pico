@@ -1,3 +1,4 @@
+import { Either } from "effect";
 import { WebSocket as ReconnectingWS } from "partysocket";
 import { decodeWireEvent } from "@pico/protocol";
 import type { ClientEvent, WireEvent } from "@pico/protocol";
@@ -71,8 +72,8 @@ export class ApiClient {
     ws.addEventListener("message", (event: MessageEvent<string>) => {
       try {
         const result = decodeWireEvent(JSON.parse(event.data));
-        if (result.success) handlers.onEvent(result.output);
-        else console.error("invalid wire event:", result.issues);
+        if (Either.isRight(result)) handlers.onEvent(result.right);
+        else console.error("invalid wire event:", result.left.message);
       } catch (error) {
         console.error("invalid wire event:", error);
       }

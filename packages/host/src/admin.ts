@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { FileSystem } from "@effect/platform";
+import { Effect } from "effect";
 import { type PicoHostPaths, picoHostPathsFromEnv } from "./paths.ts";
 
 export interface LocalAdminStatus {
@@ -32,38 +33,47 @@ export function localAdminTokenPath(dataDir: string): string {
   return join(dataDir, "admin-token");
 }
 
-export function readLocalAdminToken(dataDir: string): string | undefined {
-  const path = localAdminTokenPath(dataDir);
-  if (!existsSync(path)) return undefined;
-  const token = readFileSync(path, "utf8").trim();
-  return token || undefined;
-}
+export const readLocalAdminToken = (dataDir: string) =>
+  FileSystem.FileSystem.pipe(
+    Effect.flatMap((fs) => fs.readFileString(localAdminTokenPath(dataDir))),
+    Effect.map((token) => token.trim() || undefined),
+    Effect.catchAll(() => Effect.succeed(undefined)),
+  );
 
-async function localAdminFetch<T>(path: string, opts: { readonly paths?: PicoHostPaths; readonly method?: "GET" | "POST" } = {}): Promise<T> {
-  const paths = opts.paths ?? picoHostPathsFromEnv();
-  const token = readLocalAdminToken(paths.dataDir);
-  if (!token) throw new Error(`local admin token not found at ${localAdminTokenPath(paths.dataDir)}`);
+const localAdminFetch = <T>(
+  path: string,
+  opts: { readonly paths?: PicoHostPaths; readonly method?: "GET" | "POST" } = {},
+) =>
+  Effect.gen(function* () {
+    const paths = opts.paths ?? picoHostPathsFromEnv();
+    const token = yield* readLocalAdminToken(paths.dataDir);
+    if (!token) {
+      return yield* Effect.fail(new Error(`local admin token not found at ${localAdminTokenPath(paths.dataDir)}`));
+    }
 
-  const response = await fetch(`http://${paths.host}:${paths.port}${path}`, {
-    method: opts.method ?? "GET",
-    headers: { authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(5_000),
+    const toError = (cause: unknown) => (cause instanceof Error ? cause : new Error(String(cause)));
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(`http://${paths.host}:${paths.port}${path}`, {
+          method: opts.method ?? "GET",
+          headers: { authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(5_000),
+        }),
+      catch: toError,
+    });
+
+    if (!response.ok) {
+      const text = yield* Effect.promise(() => response.text().catch(() => ""));
+      return yield* Effect.fail(new Error(`local admin ${path} failed: ${response.status}${text ? ` ${text}` : ""}`));
+    }
+    return (yield* Effect.tryPromise({ try: () => response.json(), catch: toError })) as T;
   });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`local admin ${path} failed: ${response.status}${text ? ` ${text}` : ""}`);
-  }
-  return await response.json() as T;
-}
 
-export function getLocalAdminStatus(paths?: PicoHostPaths): Promise<LocalAdminStatus> {
-  return localAdminFetch<LocalAdminStatus>("/admin/status", { paths });
-}
+export const getLocalAdminStatus = (paths?: PicoHostPaths) =>
+  localAdminFetch<LocalAdminStatus>("/admin/status", { paths });
 
-export function getLocalAdminPairing(paths?: PicoHostPaths): Promise<LocalAdminPairing> {
-  return localAdminFetch<LocalAdminPairing>("/admin/pairing", { paths });
-}
+export const getLocalAdminPairing = (paths?: PicoHostPaths) =>
+  localAdminFetch<LocalAdminPairing>("/admin/pairing", { paths });
 
-export function rotateLocalAdminPairingToken(paths?: PicoHostPaths): Promise<LocalAdminPairing> {
-  return localAdminFetch<LocalAdminPairing>("/admin/pairing/rotate", { paths, method: "POST" });
-}
+export const rotateLocalAdminPairingToken = (paths?: PicoHostPaths) =>
+  localAdminFetch<LocalAdminPairing>("/admin/pairing/rotate", { paths, method: "POST" });

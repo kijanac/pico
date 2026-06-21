@@ -5,8 +5,6 @@ export type { LocalAdminPairing, LocalAdminStatus } from "./admin.ts";
 export { collectDoctorChecks } from "./doctor.ts";
 export { PicoSetupError, setupErrorMessage } from "./errors.ts";
 export type { Diagnostic, DiagnosticCode, DiagnosticLevel } from "./errors.ts";
-export { commandExists, commandLine, run, runOutput, runStderr, runStdout } from "./exec.ts";
-export type { RunOptions } from "./exec.ts";
 export { healthcheck, portIsOpen } from "./network.ts";
 export { DEFAULT_PICO_HOST_BIND, DEFAULT_PICO_HOST_PORT, defaultPicoHostDataDir, picoHostPathsFromEnv, systemPicoHostPathsFromEnv } from "./paths.ts";
 export type { PicoHostPaths } from "./paths.ts";

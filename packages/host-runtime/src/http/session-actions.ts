@@ -1,11 +1,12 @@
 import { Cause, Effect, Option } from "effect";
 import type { Hono } from "hono";
+import { IS_PRODUCTION } from "../config.ts";
 import { SessionNotFound } from "../errors.ts";
 import { PiError } from "../pi.ts";
 import type { HostRuntime } from "../runtime.ts";
 import { SessionManager } from "../session.ts";
 
-const isDev = process.env.NODE_ENV !== "production";
+const isDev = !IS_PRODUCTION;
 
 export function mountSessionActionRoutes(app: Hono, runtime: HostRuntime): void {
   app.get("/sessions/:id/export.html", async (c) => {

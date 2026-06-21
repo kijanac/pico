@@ -1,46 +1,87 @@
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { Effect } from "effect";
+import { Command } from "@effect/platform";
+import { Effect, Stream } from "effect";
 
 export interface RunOptions {
   readonly cwd?: string;
-  readonly env?: NodeJS.ProcessEnv;
   readonly timeoutMs?: number;
-  readonly stdio?: "pipe" | "inherit";
 }
 
-export function run(command: string, args: readonly string[], options: RunOptions = {}): SpawnSyncReturns<string> {
-  return spawnSync(command, args, {
-    cwd: options.cwd,
-    env: options.env,
-    encoding: "utf8",
-    stdio: options.stdio ?? "pipe",
-    timeout: options.timeoutMs,
-  });
+export interface RunResult {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly timedOut: boolean;
 }
 
-export function commandExists(command: string, args: readonly string[] = ["--version"]): boolean {
-  return run(command, args, { timeoutMs: 5_000 }).status === 0;
-}
+const make = (command: string, args: readonly string[], cwd?: string) => {
+  const base = Command.make(command, ...args);
+  return cwd ? Command.workingDirectory(base, cwd) : base;
+};
 
-export function runEffect(command: string, args: readonly string[], options: RunOptions = {}): Effect.Effect<SpawnSyncReturns<string>> {
-  return Effect.sync(() => run(command, args, options));
-}
+// Total, like the spawnSync it replaces: a missing binary, non-zero exit, or
+// timeout yields a RunResult (exitCode -1 on spawn failure/timeout) rather than
+// a failed Effect. Callers branch on exitCode/timedOut.
+export const run = (command: string, args: readonly string[], options: RunOptions = {}) => {
+  const captured = Effect.scoped(
+    Effect.gen(function* () {
+      const proc = yield* Command.start(make(command, args, options.cwd));
+      const [exitCode, stdout, stderr] = yield* Effect.all(
+        [
+          proc.exitCode,
+          proc.stdout.pipe(Stream.decodeText(), Stream.mkString),
+          proc.stderr.pipe(Stream.decodeText(), Stream.mkString),
+        ],
+        { concurrency: 3 },
+      );
+      return { exitCode, stdout, stderr, timedOut: false } satisfies RunResult;
+    }),
+  ).pipe(
+    Effect.catchAll((error) =>
+      Effect.succeed({
+        exitCode: -1,
+        stdout: "",
+        stderr: error instanceof Error ? error.message : String(error),
+        timedOut: false,
+      } satisfies RunResult),
+    ),
+  );
 
-export function commandLine(command: string, args: readonly string[]): string {
-  return [command, ...args].map(shellQuote).join(" ");
-}
+  return options.timeoutMs === undefined
+    ? captured
+    : Effect.timeoutTo(captured, {
+        duration: `${options.timeoutMs} millis`,
+        onSuccess: (result): RunResult => result,
+        onTimeout: (): RunResult => ({ exitCode: -1, stdout: "", stderr: "", timedOut: true }),
+      });
+};
 
-export function runStdout(result: SpawnSyncReturns<string>): string {
-  return typeof result.stdout === "string" ? result.stdout : "";
-}
+// Inherits the terminal's stdio (log `--follow` tails, interactive commands).
+// Resolves with the exit code, or -1 if the command could not be spawned.
+export const runInherit = (command: string, args: readonly string[], options: RunOptions = {}) => {
+  const cmd = make(command, args, options.cwd).pipe(
+    Command.stdin("inherit"),
+    Command.stdout("inherit"),
+    Command.stderr("inherit"),
+  );
+  const ran = Effect.scoped(Command.start(cmd).pipe(Effect.flatMap((proc) => proc.exitCode))).pipe(
+    Effect.catchAll(() => Effect.succeed(-1)),
+  );
+  return options.timeoutMs === undefined
+    ? ran
+    : Effect.timeoutTo(ran, {
+        duration: `${options.timeoutMs} millis`,
+        onSuccess: (code): number => code,
+        onTimeout: (): number => -1,
+      });
+};
 
-export function runStderr(result: SpawnSyncReturns<string>): string {
-  return typeof result.stderr === "string" ? result.stderr : "";
-}
+export const commandExists = (command: string, args: readonly string[] = ["--version"]) =>
+  run(command, args, { timeoutMs: 5_000 }).pipe(Effect.map((result) => result.exitCode === 0));
 
-export function runOutput(result: SpawnSyncReturns<string>): string {
-  return runStdout(result).trim() || runStderr(result).trim();
-}
+export const runOutput = (result: RunResult): string => result.stdout.trim() || result.stderr.trim();
+
+export const commandLine = (command: string, args: readonly string[]): string =>
+  [command, ...args].map(shellQuote).join(" ");
 
 function shellQuote(value: string): string {
   if (/^[A-Za-z0-9_/:=-]+$/.test(value)) return value;

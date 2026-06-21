@@ -5,7 +5,8 @@ import type { HostRuntime } from "../runtime.ts";
 import { mountSystemRoutes } from "./system.ts";
 import { mountSessionActionRoutes } from "./session-actions.ts";
 import { mountTrpcRoutes } from "./trpc.ts";
-import { allowedOrigins, HOST_INSECURE_NO_AUTH, requireTailscaleAuth } from "../auth.ts";
+import { allowedOrigins, requireTailscaleAuth } from "../auth.ts";
+import { HOST_INSECURE_NO_AUTH } from "../config.ts";
 import { mountLocalAdminRoutes } from "../local-admin.ts";
 
 export function makeHttpApp(runtime: HostRuntime): Hono {

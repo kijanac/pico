@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { NodeContext, NodeRuntime } from "@effect/platform-node";
+import { Console, Effect } from "effect";
 import { setupErrorMessage } from "@pico/host";
 import { doctorCommand } from "./commands/doctor.ts";
 import { pairCodeCommand, pairCommand } from "./commands/pair.ts";
@@ -41,58 +43,56 @@ Advanced system service:
 `;
 }
 
-async function main(): Promise<void> {
+const program = Effect.gen(function* () {
   const args = process.argv.slice(2);
   if (args[0] === "--") args.shift();
   const command = args[0] ?? "help";
   const rest = args.slice(1);
+  // parseServiceCliOptions throws on bad flags/`--help`; surface it as a typed
+  // failure so the catchAll below prints it instead of crashing as a defect.
+  const serviceOptions = () => Effect.try({ try: () => parseServiceCliOptions(rest), catch: (error) => error });
 
   switch (command) {
     case "pair":
-      await pairCommand();
-      return;
+      return yield* pairCommand;
     case "pair-code":
-      await pairCodeCommand({ rotate: args.includes("--rotate") });
-      return;
+      return yield* pairCodeCommand({ rotate: args.includes("--rotate") });
     case "serve":
-      await serveCommand();
-      return;
+      return yield* serveCommand;
     case "doctor":
-      await doctorCommand();
-      return;
+      return yield* doctorCommand;
     case "status": {
-      const options = parseServiceCliOptions(rest);
-      await statusCommand({ mode: options.mode, systemUser: options.systemUser });
-      return;
+      const options = yield* serviceOptions();
+      return yield* statusCommand({ mode: options.mode, systemUser: options.systemUser });
     }
     case "install":
-      installCommand(parseServiceCliOptions(rest));
-      return;
+      return yield* installCommand(yield* serviceOptions());
     case "uninstall":
-      uninstallCommand(parseServiceCliOptions(rest));
-      return;
+      return yield* uninstallCommand(yield* serviceOptions());
     case "start":
-      startCommand(parseServiceCliOptions(rest));
-      return;
+      return yield* startCommand(yield* serviceOptions());
     case "stop":
-      stopCommand(parseServiceCliOptions(rest));
-      return;
+      return yield* stopCommand(yield* serviceOptions());
     case "logs":
-      logsCommand(parseServiceCliOptions(rest));
-      return;
+      return yield* logsCommand(yield* serviceOptions());
     case "help":
     case "--help":
     case "-h":
-      console.log(usage());
-      return;
+      return yield* Console.log(usage());
     default:
-      console.error(`Unknown command: ${command}\n`);
-      console.error(usage());
-      process.exit(1);
+      return yield* Effect.sync(() => {
+        console.error(`Unknown command: ${command}\n`);
+        console.error(usage());
+        process.exitCode = 1;
+      });
   }
-}
+}).pipe(
+  Effect.catchAll((error) =>
+    Effect.sync(() => {
+      console.error(setupErrorMessage(error));
+      process.exitCode = 1;
+    }),
+  ),
+);
 
-main().catch((error) => {
-  console.error(setupErrorMessage(error));
-  process.exit(1);
-});
+NodeRuntime.runMain(program.pipe(Effect.provide(NodeContext.layer)));

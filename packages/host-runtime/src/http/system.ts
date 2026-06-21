@@ -7,11 +7,9 @@ import {
   RECOMMENDED_MOBILE_VERSION,
   type HostUpdateStatus,
 } from "@pico/protocol";
+import { AUTO_UPDATE, UPDATE_REQUEST_PATH, UPDATE_STATE_PATH } from "../config.ts";
 
 const UPDATE_CHANNEL = "stable";
-const AUTO_UPDATE = process.env.PICO_HOST_AUTO_UPDATE === "1";
-const UPDATE_REQUEST_PATH = process.env.PICO_HOST_UPDATE_REQUEST_PATH ?? "/var/lib/pico-host/update-request";
-const UPDATE_STATE_PATH = process.env.PICO_HOST_UPDATE_STATE_PATH ?? "/var/lib/pico-host/update-state.json";
 
 export function readUpdateStatus(): HostUpdateStatus {
   let state: Partial<HostUpdateStatus> = {};

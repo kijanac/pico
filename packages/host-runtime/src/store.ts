@@ -1,6 +1,5 @@
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import * as v from "valibot";
 import {
   parseWireEvent,
   SessionStatus,
@@ -83,24 +82,23 @@ const MIGRATIONS = [
 ];
 
 
-const SqlBool = v.pipe(v.number(), v.integer());
-
-const SessionRow = v.object({
-  id: v.string(),
-  title: v.string(),
-  cwd: v.string(),
+const SessionRow = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  cwd: Schema.String,
   status: SessionStatus,
-  updated_at: v.number(),
-  tokens_in: v.number(),
-  tokens_out: v.number(),
-  cost_usd: v.number(),
-  archived: SqlBool,
-  created_at: v.number(),
+  updated_at: Schema.Number,
+  tokens_in: Schema.Number,
+  tokens_out: Schema.Number,
+  cost_usd: Schema.Number,
+  archived: Schema.Int,
+  created_at: Schema.Number,
 });
-type SessionRow = v.InferOutput<typeof SessionRow>;
+
+const decodeRow = Schema.decodeUnknownSync(SessionRow);
 
 const rowToRecord = (raw: unknown): SessionRecord => {
-  const r = v.parse(SessionRow, raw);
+  const r = decodeRow(raw);
   return {
     id: r.id,
     title: r.title,

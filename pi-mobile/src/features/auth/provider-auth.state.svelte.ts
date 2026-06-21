@@ -14,7 +14,7 @@ export interface ProviderAuthStateOptions {
 }
 
 export interface ProviderAuthState {
-  readonly providers: AuthProvider[];
+  readonly providers: readonly AuthProvider[];
   readonly loading: boolean;
   readonly job: AuthLoginJob | null;
   readonly input: string;
@@ -34,7 +34,7 @@ export interface ProviderAuthState {
 }
 
 export function createProviderAuthState(opts: ProviderAuthStateOptions): ProviderAuthState {
-  let providers = $state<AuthProvider[]>([]);
+  let providers = $state<readonly AuthProvider[]>([]);
   let loading = $state(false);
   let job = $state<AuthLoginJob | null>(null);
   let input = $state("");

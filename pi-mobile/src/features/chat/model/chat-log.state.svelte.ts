@@ -1,10 +1,18 @@
 import type { AssistantMessage, ClientEvent, CompactionEntry, LogEntry, WireEvent } from "@pico/protocol";
 import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
 
+// effect/Schema decodes to readonly types; this reactive log mutates the
+// freshly-decoded entries it owns in place, so it holds them as mutable drafts.
+type Mutable<T> = T extends ReadonlyArray<infer U>
+  ? Mutable<U>[]
+  : T extends object
+    ? { -readonly [K in keyof T]: Mutable<T[K]> }
+    : T;
+
 type SendEvent = Extract<ClientEvent, { t: "send" }>;
 
 interface SessionLog {
-  entries: LogEntry[];
+  entries: Mutable<LogEntry>[];
   cursor: number;
   activityVersion: number;
   indexById: Map<string, number>;
@@ -148,11 +156,11 @@ function bumpActivity(log: SessionLog): void {
 }
 
 function appendEntry(log: SessionLog, entry: LogEntry): void {
-  log.entries.push(entry);
+  log.entries.push(entry as Mutable<LogEntry>);
   log.indexById.set(entry.id, log.entries.length - 1);
 }
 
-function findEntry(log: SessionLog, id: string): LogEntry | undefined {
+function findEntry(log: SessionLog, id: string): Mutable<LogEntry> | undefined {
   const index = log.indexById.get(id);
   if (index !== undefined && log.entries[index]?.id === id) return log.entries[index];
 
@@ -167,7 +175,7 @@ function findEntry(log: SessionLog, id: string): LogEntry | undefined {
 
 type AssistantEndEvent = Extract<WireEvent, { t: "assistant_end" }>;
 
-function applyAssistantEnd(message: AssistantMessage, event: AssistantEndEvent): void {
+function applyAssistantEnd(message: Mutable<AssistantMessage>, event: AssistantEndEvent): void {
   message.streaming = false;
   if (event.stopReason) message.stopReason = event.stopReason;
   if (event.errorMessage) message.errorMessage = event.errorMessage;
@@ -175,8 +183,8 @@ function applyAssistantEnd(message: AssistantMessage, event: AssistantEndEvent):
   if (event.usage) message.usage = event.usage;
 }
 
-function assistantFromEnd(event: AssistantEndEvent): AssistantMessage {
-  const message: AssistantMessage = {
+function assistantFromEnd(event: AssistantEndEvent): Mutable<AssistantMessage> {
+  const message: Mutable<AssistantMessage> = {
     kind: "assistant",
     id: event.id,
     at: Date.now(),
@@ -238,7 +246,7 @@ function applyWireEventForSession(sessionId: string, event: WireEvent): void {
 
   if (event.t === "log_reset") {
     log.cursor = event.seq;
-    log.entries = [...event.entries];
+    log.entries = [...event.entries] as Mutable<LogEntry>[];
     log.indexById = new Map(log.entries.map((entry, i) => [entry.id, i]));
     clearEchoesForSession(sessionId);
     bumpActivity(log);
@@ -338,7 +346,7 @@ function applyWireEventForSession(sessionId: string, event: WireEvent): void {
       const entry = findEntry(log, event.id);
       if (entry?.kind === "tool_call") {
         entry.result = event.result;
-        if (event.resultContent) entry.resultContent = event.resultContent;
+        if (event.resultContent) entry.resultContent = [...event.resultContent];
         if (event.details !== undefined) entry.details = event.details;
         bumpActivity(log);
       }
@@ -350,7 +358,7 @@ function applyWireEventForSession(sessionId: string, event: WireEvent): void {
       if (entry?.kind === "tool_call") {
         entry.status = event.status;
         entry.result = event.result;
-        if (event.resultContent) entry.resultContent = event.resultContent;
+        if (event.resultContent) entry.resultContent = [...event.resultContent];
         else delete entry.resultContent;
         if (event.details !== undefined) entry.details = event.details;
         else delete entry.details;

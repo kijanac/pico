@@ -1,4 +1,4 @@
-import * as v from "valibot";
+import { Schema } from "effect";
 
 const HOST_ERROR_CODE_VALUES = [
   "host_unreachable",
@@ -11,8 +11,8 @@ const HOST_ERROR_CODE_VALUES = [
   "pairing_link_missing_url",
 ] as const;
 
-export const HostErrorCodeSchema = v.picklist(HOST_ERROR_CODE_VALUES);
-export type HostErrorCode = v.InferOutput<typeof HostErrorCodeSchema>;
+export const HostErrorCodeSchema = Schema.Literal(...HOST_ERROR_CODE_VALUES);
+export type HostErrorCode = typeof HostErrorCodeSchema.Type;
 
 const HOST_ERROR_CODES = new Set<string>(HOST_ERROR_CODE_VALUES);
 

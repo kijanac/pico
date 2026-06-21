@@ -4,14 +4,12 @@ import type { IncomingHttpHeaders } from "node:http";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { HostErrorCode } from "@pico/protocol";
 import type { Context, Next } from "hono";
-import { HOST_DATA_DIR, DB_PATH } from "./config.ts";
+import { DB_PATH, HOST_DATA_DIR, HOST_INSECURE_NO_AUTH, INITIAL_PAIRING_TOKEN } from "./config.ts";
 import { HostError } from "./errors.ts";
 
-// Auth is ON by default and must be explicitly disabled — a missing or wrong
-// NODE_ENV can no longer silently open the Pico host. Only local dev sets this.
-export const HOST_INSECURE_NO_AUTH = process.env.PICO_HOST_INSECURE_NO_AUTH === "1";
+// Auth is ON by default and must be explicitly disabled (PICO_HOST_INSECURE_NO_AUTH).
 const REQUIRE_TAILSCALE_AUTH = !HOST_INSECURE_NO_AUTH;
-let pairingToken = process.env.PICO_PAIRING_TOKEN ?? process.env.PICO_HOST_PAIRING_TOKEN;
+let pairingToken = INITIAL_PAIRING_TOKEN;
 
 const ALLOWED_ORIGINS = [
   "capacitor://localhost",
