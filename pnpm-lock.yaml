@@ -117,6 +117,9 @@ importers:
 
   packages/protocol:
     dependencies:
+      '@effect/rpc':
+        specifier: ^0.75.1
+        version: 0.75.1(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4)
       '@trpc/server':
         specifier: ^11.17.0
         version: 11.17.0(typescript@5.9.3)
