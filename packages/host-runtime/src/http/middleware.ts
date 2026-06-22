@@ -1,6 +1,6 @@
 import { HttpApp, HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { Effect } from "effect";
-import { authorizeHeaders, isAllowedBeforeClaim } from "../auth.ts";
+import { authorizeHeaders } from "../auth.ts";
 import { adminTokenAuthorized } from "../local-admin.ts";
 
 const pathOf = (url: string): string => {
@@ -10,8 +10,10 @@ const pathOf = (url: string): string => {
 
 // Single global gate wrapping the whole app, mirroring the previous Hono order:
 //   /admin/*  -> loopback admin-token (the CLI; no Tailscale identity present)
-//   /healthz + unclaimed-allowed tRPC paths -> public
-//   everything else -> Tailscale identity + claimed check
+//   /healthz  -> public
+//   /rpc      -> passed through; the RPC AuthMiddleware self-gates per method
+//                (it can see the rpc tag, which a single endpoint path cannot)
+//   everything else (the HTML export) -> Tailscale identity + claimed check
 // OPTIONS preflights pass straight through so the CORS layer can answer them.
 export const authMiddleware = (
   app: HttpApp.Default,
@@ -29,7 +31,7 @@ export const authMiddleware = (
       return yield* app;
     }
 
-    if (path === "/healthz" || isAllowedBeforeClaim(path)) {
+    if (path === "/healthz" || path === "/rpc") {
       return yield* app;
     }
 

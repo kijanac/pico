@@ -38,14 +38,6 @@ export function headerValue(headers: HeaderSource, name: string): string | undef
   return Array.isArray(value) ? value[0] : value;
 }
 
-const UNCLAIMED_ALLOWED_PATHS = new Set([
-  "/trpc/system.info",
-  "/trpc/system.identity",
-  "/trpc/system.claim",
-]);
-
-export const isAllowedBeforeClaim = (path: string): boolean => UNCLAIMED_ALLOWED_PATHS.has(path);
-
 interface OwnerDb {
   readonly db: DatabaseSync;
   readonly insertFirstOwner: StatementSync;

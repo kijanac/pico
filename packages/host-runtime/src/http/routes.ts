@@ -1,15 +1,14 @@
 import { HttpApiBuilder } from "@effect/platform";
 import { Effect } from "effect";
+import { SessionManager } from "../session.ts";
 import { exportRoute } from "./session-actions.ts";
-import { trpcRoute } from "./trpc.ts";
 
-// Non-API (raw) routes mounted on the same HttpApiBuilder.Router that serve()
-// builds: the tRPC catch-all and the streaming HTML export. Provided to the
-// serve layer so they attach to the shared (memoized) router before it is read.
-// These stay raw until the @effect/rpc phase retires tRPC.
+// Non-API routes mounted on the same HttpApiBuilder.Router that serve() builds.
+// The streaming HTML export is the only one left (tRPC became /rpc, served by
+// RpcServer). SessionManager is captured at build time and closed over.
 export const RawRoutesLive = HttpApiBuilder.Router.use((router) =>
   Effect.gen(function* () {
-    yield* router.all("/trpc/*", trpcRoute);
-    yield* router.get("/sessions/:id/export.html", exportRoute);
+    const manager = yield* SessionManager;
+    yield* router.get("/sessions/:id/export.html", exportRoute(manager));
   }),
 );

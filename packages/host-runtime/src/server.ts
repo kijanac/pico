@@ -1,9 +1,10 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
+import type { Runtime } from "effect";
 import { WebSocketServer } from "ws";
-import type { HostRuntime } from "./runtime.ts";
 import { makeConnectionHandler, type WsBindings } from "./ws.ts";
 import { authorizeHeaders, isAllowedBrowserOrigin } from "./auth.ts";
+import type { SessionManager } from "./session.ts";
 
 interface UpgradeServer {
   on(event: "upgrade", listener: (request: IncomingMessage, socket: Duplex, head: Buffer) => void): unknown;
@@ -14,7 +15,10 @@ function rejectUpgrade(socket: Duplex, status: number, reason: string): void {
   socket.destroy();
 }
 
-export function attachWebSocketUpgrade(server: UpgradeServer, runtime: HostRuntime): WebSocketServer {
+export function attachWebSocketUpgrade(
+  server: UpgradeServer,
+  runtime: Runtime.Runtime<SessionManager>,
+): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
   const onConnection = makeConnectionHandler(runtime);
 

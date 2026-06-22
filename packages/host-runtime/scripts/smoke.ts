@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "@effect/platform";
+import { RpcClient, RpcSerialization } from "@effect/rpc";
+import { Effect, Exit, Layer, ManagedRuntime, Scope } from "effect";
+import { PicoRpc } from "@pico/protocol/rpc";
 import { WebSocket } from "ws";
 
 // realpath so comparisons hold on platforms where tmpdir is a symlink (macOS
@@ -22,34 +26,9 @@ process.env.PI_CODING_AGENT_DIR = join(tempRoot, "agent");
 
 const authHeaders = { "tailscale-user-login": "smoke@example.test" };
 
-type TrpcEnvelope<T> = { result?: { data: T }; error?: { message?: string } };
-
 function addressInfo(serverAddress: string | AddressInfo | null): AddressInfo {
   assert(serverAddress && typeof serverAddress !== "string", "server did not expose a TCP address");
   return serverAddress;
-}
-
-async function trpcQuery<T>(baseUrl: string, path: string, input: object = {}): Promise<T> {
-  const encodedInput = encodeURIComponent(JSON.stringify(input));
-  const res = await fetch(`${baseUrl}/trpc/${path}?input=${encodedInput}`, { headers: authHeaders });
-  return unwrapTrpc<T>(path, res, await res.json() as TrpcEnvelope<T>);
-}
-
-async function trpcMutation<T>(baseUrl: string, path: string, input: object = {}): Promise<T> {
-  const res = await fetch(`${baseUrl}/trpc/${path}`, {
-    method: "POST",
-    headers: { ...authHeaders, "content-type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  return unwrapTrpc<T>(path, res, await res.json() as TrpcEnvelope<T>);
-}
-
-function unwrapTrpc<T>(path: string, res: Response, body: TrpcEnvelope<T>): T {
-  if (!res.ok || body.error) {
-    throw new Error(`${path} failed (${res.status}): ${body.error?.message ?? JSON.stringify(body)}`);
-  }
-  assert(body.result, `${path} did not return a tRPC result`);
-  return body.result.data;
 }
 
 type SmokeWireEvent = { t?: string; seq?: number; session?: { id?: string } };
@@ -138,11 +117,19 @@ async function expectIncrementalWsReplay(wsUrl: string, sessionId: string): Prom
   assert(!replay.some((event) => event.t === "log_reset"), "fresh cursor replay should not need a full log_reset");
 }
 
+// An RPC client over HTTP, sending the Tailscale identity header that the host
+// would normally receive from `tailscale serve`.
+function makeClientRuntime(baseUrl: string) {
+  const ProtocolLive = RpcClient.layerProtocolHttp({
+    url: `${baseUrl}/rpc`,
+    transformClient: (client) =>
+      HttpClient.mapRequest(client, HttpClientRequest.setHeader("tailscale-user-login", "smoke@example.test")),
+  }).pipe(Layer.provide(RpcSerialization.layerJson), Layer.provide(FetchHttpClient.layer));
+  return ManagedRuntime.make(ProtocolLive);
+}
+
 try {
-  const [{ launchHttpServer }, { hostRuntime }] = await Promise.all([
-    import("../src/host.ts"),
-    import("../src/runtime.ts"),
-  ]);
+  const { launchHttpServer } = await import("../src/host.ts");
 
   let resolveServer: (server: Server) => void;
   const serverReady = new Promise<Server>((resolve) => {
@@ -161,56 +148,51 @@ try {
     assert.equal(health.status, 200);
     assert.equal(await health.text(), "ok");
 
-    const identityBeforeClaim = await trpcQuery<{ user?: string; claimed: boolean }>(baseUrl, "system.identity");
+    const clientRuntime = makeClientRuntime(baseUrl);
+    const clientScope = await clientRuntime.runPromise(Scope.make());
+    const client = await clientRuntime.runPromise(Scope.extend(RpcClient.make(PicoRpc), clientScope));
+    const call = <A, E>(effect: Effect.Effect<A, E>): Promise<A> => clientRuntime.runPromise(effect);
+
+    const identityBeforeClaim = await call(client.system.identity());
     assert.equal(identityBeforeClaim.user, "smoke@example.test");
     assert.equal(identityBeforeClaim.claimed, false);
 
-    const claim = await trpcMutation<{ claimed: true; owner: string }>(baseUrl, "system.claim");
+    const claim = await call(client.system.claim({}));
     assert.equal(claim.claimed, true);
     assert.equal(claim.owner, "smoke@example.test");
 
-    const info = await trpcQuery<{ hostVersion: string; protocolVersion: number }>(baseUrl, "system.info");
+    const info = await call(client.system.info());
     assert.equal(typeof info.hostVersion, "string");
     assert.equal(typeof info.protocolVersion, "number");
 
-    const fsListing = await trpcQuery<{ path: string; entries: unknown[] }>(baseUrl, "fs.ls", { path: workspaceDir });
+    const fsListing = await call(client.fs.ls({ path: workspaceDir }));
     assert.equal(fsListing.path, workspaceDir);
     assert(Array.isArray(fsListing.entries));
 
-    const listBefore = await trpcQuery<unknown[]>(baseUrl, "sessions.list");
-    assert.deepEqual(listBefore, []);
+    assert.deepEqual(await call(client.sessions.list({})), []);
 
-    const session = await trpcMutation<{ id: string; title: string; cwd: string }>(baseUrl, "sessions.create", {
-      cwd: workspaceDir,
-      title: "Smoke session",
-    });
+    const session = await call(client.sessions.create({ cwd: workspaceDir, title: "Smoke session" }));
     assert.equal(typeof session.id, "string");
     assert(session.id.length > 0);
     assert.equal(session.cwd, workspaceDir);
 
-    const patched = await trpcMutation<{ id: string; title: string }>(baseUrl, "sessions.patch", {
-      id: session.id,
-      title: "Smoke session renamed",
-    });
+    const patched = await call(client.sessions.patch({ id: session.id, title: "Smoke session renamed" }));
     assert.equal(patched.title, "Smoke session renamed");
 
-    await trpcQuery(baseUrl, "sessions.controls", { id: session.id });
-    await trpcQuery(baseUrl, "sessions.queue", { id: session.id });
-    await trpcQuery(baseUrl, "sessions.stats", { id: session.id });
-    await trpcQuery(baseUrl, "sessions.tree", { id: session.id });
-    await trpcQuery(baseUrl, "sessions.commands", { id: session.id });
-    await trpcQuery(baseUrl, "commands.list");
+    await call(client.sessions.controls({ id: session.id }));
+    await call(client.sessions.queue({ id: session.id }));
+    await call(client.sessions.stats({ id: session.id }));
+    await call(client.sessions.tree({ id: session.id }));
+    await call(client.sessions.commands({ id: session.id }));
+    await call(client.commands.list());
 
-    const authProviders = await trpcQuery<{ providers: Array<{ id: string; authType: string; configured: boolean }> }>(baseUrl, "auth.providers");
+    const authProviders = await call(client.auth.providers());
     assert(authProviders.providers.length > 3, "auth provider list should include API-key providers, not only OAuth providers");
     assert(authProviders.providers.some((provider) => provider.authType === "oauth"));
     assert(authProviders.providers.some((provider) => provider.authType === "api_key"));
     assert(authProviders.providers.some((provider) => provider.id === "openrouter"));
 
-    const savedProviders = await trpcMutation<{ providers: Array<{ id: string; configured: boolean }> }>(baseUrl, "auth.saveApiKey", {
-      providerId: "openrouter",
-      apiKey: "sk-smoke-test",
-    });
+    const savedProviders = await call(client.auth.saveApiKey({ providerId: "openrouter", apiKey: "sk-smoke-test" }));
     assert.equal(savedProviders.providers.find((provider) => provider.id === "openrouter")?.configured, true);
 
     const exportRes = await fetch(`${baseUrl}/sessions/${encodeURIComponent(session.id)}/export.html`, {
@@ -223,14 +205,15 @@ try {
     await expectWsHello(wsUrl, session.id);
     await expectIncrementalWsReplay(wsUrl, session.id);
 
-    await trpcMutation<void>(baseUrl, "sessions.remove", { id: session.id });
-    const listAfter = await trpcQuery<unknown[]>(baseUrl, "sessions.list");
-    assert.deepEqual(listAfter, []);
+    await call(client.sessions.remove({ id: session.id }));
+    assert.deepEqual(await call(client.sessions.list({})), []);
+
+    await clientRuntime.runPromise(Scope.close(clientScope, Exit.void));
+    await clientRuntime.dispose();
 
     console.log("Pico host smoke tests passed");
   } finally {
     await running.stop();
-    await hostRuntime.dispose();
   }
 } finally {
   rmSync(tempRoot, { recursive: true, force: true });

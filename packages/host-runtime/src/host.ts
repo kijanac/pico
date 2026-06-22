@@ -7,13 +7,14 @@ import { dirname } from "node:path";
 import type { WebSocketServer } from "ws";
 import { DB_PATH, HOST_INSECURE_NO_AUTH, USE_MOCK } from "./config.ts";
 import { allowedOrigins } from "./auth.ts";
-import { hostRuntime as runtime } from "./runtime.ts";
+import { AppLayer } from "./runtime.ts";
 import { SessionManager } from "./session.ts";
 import { PicoHostApi } from "./http/api.ts";
 import { AdminApiLive, SystemApiLive } from "./http/handlers.ts";
 import { authMiddleware } from "./http/middleware.ts";
 import { compress } from "./http/compression.ts";
 import { RawRoutesLive } from "./http/routes.ts";
+import { RpcRoutesLive } from "./http/rpc.ts";
 import { attachWebSocketUpgrade } from "./server.ts";
 import { ensureLocalAdminToken } from "./local-admin.ts";
 
@@ -36,17 +37,19 @@ export interface LaunchedHttpServer {
   readonly stop: () => Promise<void>;
 }
 
-// Assembles the full HTTP server as one self-contained Effect layer (typed
-// HttpApi + raw routes + CORS + the global auth gate) and launches it on the
-// host runtime. The ws upgrade is attached to the very node server the layer
-// listens on. Exported so the smoke test exercises the real wiring.
+// Assembles the whole server as one self-contained layer (typed HttpApi + RPC +
+// raw routes + CORS/gzip + the global auth gate) and runs it in a single scope
+// with the app services provided once. The RPC handlers run in-context against
+// those services; ws + the export route reuse the same context (a captured
+// Runtime / build-time SessionManager). Exported so the smoke test exercises the
+// real wiring.
 export function launchHttpServer(
   port: number,
   host: string,
   onServer?: (server: Server) => void,
 ): LaunchedHttpServer {
-  // Created eagerly so the node server is a stable reference (the layer factory
-  // just hands it back); listen happens when the layer builds below.
+  // Created eagerly so the node server is a stable reference; listen happens
+  // when the layer builds below.
   const server = createServer();
   onServer?.(server);
   let wss: WebSocketServer | undefined;
@@ -65,35 +68,38 @@ export function launchHttpServer(
       }),
     ),
     Layer.provide(HttpApiBuilder.middleware(compress)),
+    Layer.provide(RpcRoutesLive),
     Layer.provide(RawRoutesLive),
     Layer.provide(ApiLive),
     Layer.provide(NodeHttpServer.layer(() => server, { port, host })),
   );
 
-  const fiber = runtime.runFork(
-    Effect.gen(function* () {
-      yield* Layer.build(ServerLive);
-      // NodeHttpServer attaches its own "upgrade" listener for Effect-native
-      // websockets. We run the session WebSocket on raw `ws` (until the
-      // @effect/rpc phase), so once the server is built we drop that listener
-      // and attach ours — otherwise both write to the same upgrade socket.
-      yield* Effect.sync(() => {
-        server.removeAllListeners("upgrade");
-        wss = attachWebSocketUpgrade(server, runtime);
-      });
-      yield* Effect.never;
-    }).pipe(
-      Effect.scoped,
-      Effect.tapErrorCause((cause) => Effect.logError(`http server failed: ${Cause.pretty(cause)}`)),
-    ),
+  const program = Effect.gen(function* () {
+    yield* Layer.build(ServerLive);
+    // NodeHttpServer attaches its own "upgrade" listener for Effect-native
+    // websockets; we run the session WebSocket on raw `ws`, so replace it once
+    // the server is built. ws forks effects on a Runtime captured from the same
+    // app context the RPC handlers use.
+    const runtime = yield* Effect.runtime<SessionManager>();
+    yield* Effect.sync(() => {
+      server.removeAllListeners("upgrade");
+      wss = attachWebSocketUpgrade(server, runtime);
+    });
+    yield* Effect.never;
+  }).pipe(
+    Effect.provide(AppLayer),
+    Effect.scoped,
+    Effect.tapErrorCause((cause) => Effect.logError(`http server failed: ${Cause.pretty(cause)}`)),
   );
+
+  const fiber = Effect.runFork(program);
 
   const stop = async () => {
     const currentWss = wss;
     if (currentWss) await new Promise<void>((resolve) => currentWss.close(() => resolve()));
-    // Interrupting the fiber closes the build scope, running the layer
-    // finalizers that shut the node server down.
-    await runtime.runPromise(Fiber.interrupt(fiber));
+    // Interrupting the fiber closes the scope, running the layer finalizers:
+    // the node server shuts down and SessionManager tears its sessions down.
+    await Effect.runPromise(Fiber.interrupt(fiber));
   };
 
   return { stop };
@@ -105,7 +111,7 @@ export function startPicoHost(options: PicoHostOptions = {}): PicoHostHandle {
   const usingMock = USE_MOCK;
 
   if (HOST_INSECURE_NO_AUTH) {
-    runtime.runFork(
+    Effect.runFork(
       Effect.logWarning(
         "PICO_HOST_INSECURE_NO_AUTH=1 — Tailscale identity checks are DISABLED. Anyone who can reach this port has full access. Local dev only.",
       ),
@@ -119,12 +125,12 @@ export function startPicoHost(options: PicoHostOptions = {}): PicoHostHandle {
   const url = `http://${host}:${port}`;
   let closed = false;
 
-  runtime.runFork(
+  Effect.runFork(
     Effect.logInfo(
       `Pico host listening on ${url}  ${usingMock ? "(mock pi)" : "(live pi)"}\n` +
         `   db   :  ${DB_PATH}\n` +
         `   HTTP :  GET    /healthz, /sessions/:id/export.html\n` +
-        `   tRPC :  /trpc/*\n` +
+        `   RPC  :  POST   /rpc\n` +
         `   WS   :  /ws?session=:id&cursor=:n`,
     ),
   );
@@ -132,10 +138,8 @@ export function startPicoHost(options: PicoHostOptions = {}): PicoHostHandle {
   const close = async () => {
     if (closed) return;
     closed = true;
-    await runtime.runPromise(Effect.logInfo("shutting down…"));
-    await runtime.runPromise(Effect.flatMap(SessionManager, (manager) => manager.closeAll()));
+    await Effect.runPromise(Effect.logInfo("shutting down…"));
     await server.stop();
-    await runtime.dispose();
   };
 
   return { host, port, url, close };

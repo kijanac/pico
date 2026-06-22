@@ -1,5 +1,5 @@
-import { Rpc, RpcGroup } from "@effect/rpc";
-import { Schema } from "effect";
+import { Rpc, RpcGroup, RpcMiddleware } from "@effect/rpc";
+import { Context, Schema } from "effect";
 import { HostErrorCodeSchema } from "./errors.ts";
 import {
   AuthLoginJob,
@@ -49,6 +49,19 @@ export class RequestError extends Schema.TaggedError<RequestError>()("RequestErr
   message: Schema.String,
 }) {}
 
+// Identity resolved by the auth middleware from the request's Tailscale headers,
+// consumed by the system.identity / system.claim handlers.
+export class CurrentIdentity extends Context.Tag("CurrentIdentity")<CurrentIdentity, HostIdentity>() {}
+
+// Server-only auth middleware: enforces Tailscale identity (and "claimed", except
+// for the unclaimed-allowed system.{info,identity,claim} tags) and provides the
+// resolved identity. The client needs no implementation — Tailscale Serve injects
+// the identity header at the network layer, not the client.
+export class AuthMiddleware extends RpcMiddleware.Tag<AuthMiddleware>()("AuthMiddleware", {
+  provides: CurrentIdentity,
+  failure: HostError,
+}) {}
+
 const SessionFail = Schema.Union(SessionNotFound, RequestError);
 const Trimmed = Schema.NonEmptyTrimmedString;
 
@@ -58,7 +71,7 @@ export const PicoRpc = RpcGroup.make(
   Rpc.make("system.updateStatus", { success: HostUpdateStatus, error: RequestError }),
   Rpc.make("system.triggerUpdate", { success: HostUpdateStatus, error: RequestError }),
   Rpc.make("system.identity", { success: HostIdentity, error: HostError }),
-  Rpc.make("system.claim", { payload: { token: Schema.optional(Schema.String) }, success: HostClaimResult, error: HostError }),
+  Rpc.make("system.claim", { payload: { token: Schema.optional(Schema.String) }, success: HostClaimResult, error: Schema.Union(HostError, RequestError) }),
   // sessions
   Rpc.make("sessions.list", { payload: { archived: Schema.optional(Schema.Boolean) }, success: Schema.Array(SessionMeta), error: RequestError }),
   Rpc.make("sessions.create", { payload: { cwd: Trimmed, title: Trimmed }, success: SessionMeta, error: RequestError }),
@@ -84,4 +97,4 @@ export const PicoRpc = RpcGroup.make(
   Rpc.make("commands.list", { success: Commands, error: RequestError }),
   // fs
   Rpc.make("fs.ls", { payload: { path: Schema.optional(Schema.String) }, success: FsListing, error: RequestError }),
-);
+).middleware(AuthMiddleware);

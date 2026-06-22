@@ -752,4 +752,10 @@ const make = Effect.gen(function* () {
   });
 });
 
-export const SessionManagerLive = Layer.effect(SessionManager, make);
+// Scoped so the unified server scope tears sessions down on shutdown (closes pi
+// sessions, interrupts pump fibers) — what the old ManagedRuntime close() did by
+// hand.
+export const SessionManagerLive = Layer.scoped(
+  SessionManager,
+  Effect.tap(make, (manager) => Effect.addFinalizer(() => manager.closeAll())),
+);

@@ -1,4 +1,4 @@
-import { Cause, Effect, Either, Fiber, Queue, Stream, ManagedRuntime, pipe } from "effect";
+import { Cause, Effect, Either, Fiber, Queue, Runtime, Stream, pipe } from "effect";
 import type { WebSocket } from "ws";
 import {
   decodeClientEvent,
@@ -33,9 +33,10 @@ const sendOob = (ws: WebSocket, payload: object) => {
 };
 
 export const makeConnectionHandler =
-  (runtime: ManagedRuntime.ManagedRuntime<SessionManager, never>) =>
+  (runtime: Runtime.Runtime<SessionManager>) =>
   (ws: WebSocket, bindings: WsBindings): void => {
-    runtime.runFork(
+    const runFork = Runtime.runFork(runtime);
+    runFork(
       Effect.gen(function* () {
         const queue = yield* Queue.unbounded<ClientEvent>();
         const fiber = yield* Effect.forkDaemon(
@@ -70,14 +71,14 @@ export const makeConnectionHandler =
         return;
       }
 
-      runtime.runFork(Queue.offer(state.queue, result.right));
+      runFork(Queue.offer(state.queue, result.right));
     });
 
     ws.on("close", () => {
       const state = STATE.get(ws);
       if (!state) return;
       STATE.delete(ws);
-      runtime.runFork(
+      runFork(
         Effect.all([
           Effect.logInfo(`ws close session=${state.bindings.sessionId}`),
           Fiber.interrupt(state.fiber),
@@ -87,7 +88,7 @@ export const makeConnectionHandler =
     });
 
     ws.on("error", (err) => {
-      runtime.runFork(
+      runFork(
         Effect.logError(`ws error session=${bindings.sessionId}`, err),
       );
     });
