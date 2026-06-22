@@ -1,4 +1,6 @@
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { FileSystem } from "@effect/platform";
+import type { PlatformError } from "@effect/platform/Error";
+import { Effect, Option } from "effect";
 import {
   MIN_MOBILE_VERSION,
   PRODUCT_VERSION,
@@ -10,30 +12,34 @@ import { AUTO_UPDATE, UPDATE_REQUEST_PATH, UPDATE_STATE_PATH } from "../config.t
 
 const UPDATE_CHANNEL = "stable";
 
-export function readUpdateStatus(): HostUpdateStatus {
-  let state: Partial<HostUpdateStatus> = {};
-  try {
-    if (existsSync(UPDATE_STATE_PATH)) {
-      state = JSON.parse(readFileSync(UPDATE_STATE_PATH, "utf8")) as Partial<HostUpdateStatus>;
-    }
-  } catch {
-    state = {};
-  }
+export const readUpdateStatus = (): Effect.Effect<HostUpdateStatus, never, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
 
-  const requestedAt = existsSync(UPDATE_REQUEST_PATH)
-    ? new Date(statSync(UPDATE_REQUEST_PATH).mtimeMs).toISOString()
-    : undefined;
+    const state = yield* fs.readFileString(UPDATE_STATE_PATH, "utf8").pipe(
+      Effect.flatMap((raw) => Effect.try(() => JSON.parse(raw) as Partial<HostUpdateStatus>)),
+      Effect.orElseSucceed(() => ({}) as Partial<HostUpdateStatus>),
+    );
 
-  return {
-    currentVersion: PRODUCT_VERSION,
-    autoUpdate: AUTO_UPDATE,
-    manualUpdate: existsSync("/etc/systemd/system/pico-host-update.path"),
-    ...(state.lastSeenVersion ? { lastSeenVersion: state.lastSeenVersion } : {}),
-    ...(requestedAt ? { requestedAt } : {}),
-    ...(state.updatedAt ? { updatedAt: new Date(state.updatedAt).toISOString() } : {}),
-    ...(state.failure ? { failure: state.failure } : {}),
-  };
-}
+    const requestedAt = yield* fs.stat(UPDATE_REQUEST_PATH).pipe(
+      Effect.map((info) => Option.map(info.mtime, (d) => d.toISOString())),
+      Effect.orElseSucceed(() => Option.none<string>()),
+    );
+
+    const manualUpdate = yield* fs
+      .exists("/etc/systemd/system/pico-host-update.path")
+      .pipe(Effect.orElseSucceed(() => false));
+
+    return {
+      currentVersion: PRODUCT_VERSION,
+      autoUpdate: AUTO_UPDATE,
+      manualUpdate,
+      ...(state.lastSeenVersion ? { lastSeenVersion: state.lastSeenVersion } : {}),
+      ...(Option.isSome(requestedAt) ? { requestedAt: requestedAt.value } : {}),
+      ...(state.updatedAt ? { updatedAt: new Date(state.updatedAt).toISOString() } : {}),
+      ...(state.failure ? { failure: state.failure } : {}),
+    };
+  });
 
 export function hostSystemInfo() {
   return {
@@ -46,7 +52,9 @@ export function hostSystemInfo() {
   };
 }
 
-export function requestHostUpdate(): HostUpdateStatus {
-  writeFileSync(UPDATE_REQUEST_PATH, `${Date.now()}\n`);
-  return readUpdateStatus();
-}
+export const requestHostUpdate = (): Effect.Effect<HostUpdateStatus, PlatformError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    yield* fs.writeFileString(UPDATE_REQUEST_PATH, `${Date.now()}\n`);
+    return yield* readUpdateStatus();
+  });

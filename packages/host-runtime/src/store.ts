@@ -1,4 +1,6 @@
+import { FileSystem } from "@effect/platform";
 import { Context, Effect, Layer, Option, Schema } from "effect";
+import { dirname } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import {
   parseWireEvent,
@@ -114,6 +116,10 @@ const rowToRecord = (raw: unknown): SessionRecord => {
 
 const make = (dbPath: string) =>
   Effect.gen(function* () {
+    // The data directory is owned here — the one place that opens the database.
+    const fs = yield* FileSystem.FileSystem;
+    yield* fs.makeDirectory(dirname(dbPath), { recursive: true });
+
     const db = yield* Effect.sync(() => {
       const d = new DatabaseSync(dbPath);
       d.exec("PRAGMA journal_mode = WAL");

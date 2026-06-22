@@ -60,8 +60,8 @@ const onProvider = <A>(
 
 const HandlersLive = PicoRpc.toLayer({
   "system.info": () => Effect.sync(() => hostSystemInfo()),
-  "system.updateStatus": () => Effect.sync(() => readUpdateStatus()),
-  "system.triggerUpdate": () => Effect.try({ try: () => requestHostUpdate(), catch: toRequestError }),
+  "system.updateStatus": () => readUpdateStatus(),
+  "system.triggerUpdate": () => requestHostUpdate().pipe(Effect.mapError(toRequestError)),
   "system.identity": () => CurrentIdentity,
   "system.claim": ({ token }) =>
     Effect.flatMap(CurrentIdentity, (identity) =>
@@ -97,8 +97,8 @@ const HandlersLive = PicoRpc.toLayer({
   "auth.saveApiKey": ({ providerId, apiKey }) => onProvider((a) => a.saveApiKey(providerId, apiKey)),
   "auth.cancelLogin": ({ jobId }) => onProvider((a) => a.cancelLogin(jobId)),
 
-  "commands.list": () => Effect.try({ try: () => loadCommands(), catch: toRequestError }),
-  "fs.ls": ({ path }) => Effect.try({ try: () => listFs(path), catch: toRequestError }),
+  "commands.list": () => loadCommands(),
+  "fs.ls": ({ path }) => listFs(path).pipe(Effect.mapError(toRequestError)),
 });
 
 // Mounts the RPC handler as a POST /rpc route on the shared HttpApiBuilder

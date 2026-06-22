@@ -95,7 +95,7 @@ const piCliVersionCheck = () =>
 
 const sdkVersionChecks = () =>
   Effect.gen(function* () {
-    const bundledVersion = getBundledPiSdkVersion();
+    const bundledVersion = yield* getBundledPiSdkVersion;
     const cliVersion = runOutput(yield* run("pi", ["--version"], { timeoutMs: 5_000 }));
     const checks: Diagnostic[] = [
       bundledVersion

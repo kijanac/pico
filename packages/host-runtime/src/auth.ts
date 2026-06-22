@@ -1,8 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
-import { mkdirSync } from "node:fs";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { HostErrorCode } from "@pico/protocol";
-import { DB_PATH, HOST_DATA_DIR, HOST_INSECURE_NO_AUTH, INITIAL_PAIRING_TOKEN } from "./config.ts";
+import { DB_PATH, HOST_INSECURE_NO_AUTH, INITIAL_PAIRING_TOKEN } from "./config.ts";
 import { HostError } from "./errors.ts";
 
 // Auth is ON by default and must be explicitly disabled (PICO_HOST_INSECURE_NO_AUTH).
@@ -48,7 +47,7 @@ let ownerDb: OwnerDb | undefined;
 
 function getOwnerDb(): OwnerDb {
   if (ownerDb) return ownerDb;
-  mkdirSync(HOST_DATA_DIR, { recursive: true });
+  // HOST_DATA_DIR is created when the Store layer opens the database at boot.
   const db = new DatabaseSync(DB_PATH);
   db.exec(`
     CREATE TABLE IF NOT EXISTS pico_host_owners (

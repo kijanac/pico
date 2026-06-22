@@ -1,6 +1,7 @@
-import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { FileSystem } from "@effect/platform";
+import { Effect } from "effect";
 
 export interface PicoHostHandle {
   readonly host: string;
@@ -18,6 +19,19 @@ export interface StartPicoHostOptions {
   readonly nodeEnv?: string;
 }
 
+// Best-effort: reads the embedded Pi SDK's package.json. Any failure (resolution,
+// missing file, bad JSON) degrades to undefined.
+export const getBundledPiSdkVersion: Effect.Effect<string | undefined, never, FileSystem.FileSystem> =
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const packageJsonPath = yield* Effect.try(() => {
+      const entry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
+      return join(dirname(dirname(entry)), "package.json");
+    });
+    const raw = yield* fs.readFileString(packageJsonPath, "utf8");
+    return yield* Effect.try(() => (JSON.parse(raw) as { version?: string }).version);
+  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+
 /**
  * Public host runner entrypoint for CLIs and future package extraction.
  *
@@ -26,17 +40,6 @@ export interface StartPicoHostOptions {
  * pass explicit paths/tokens here, and it imports the configured host only
  * after the env has been populated.
  */
-export function getBundledPiSdkVersion(): string | undefined {
-  try {
-    const entry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-    const packageJsonPath = join(dirname(dirname(entry)), "package.json");
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { version?: string };
-    return packageJson.version;
-  } catch {
-    return undefined;
-  }
-}
-
 export async function startPicoHost(options: StartPicoHostOptions): Promise<PicoHostHandle> {
   process.env.PICO_HOST_DB = options.dbPath;
   process.env.PICO_WORKSPACES_DIR = options.workspacesDir;

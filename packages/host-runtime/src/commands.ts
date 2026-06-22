@@ -1,6 +1,7 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
 import { sep as PATH_SEP } from "node:path";
 import { homedir } from "node:os";
+import { FileSystem } from "@effect/platform";
+import { Effect, Option } from "effect";
 import type { BuiltinCommandEntry, Commands, PromptCommandEntry, SkillCommandEntry } from "@pico/protocol";
 
 const BUILTIN_COMMANDS: Array<{
@@ -39,90 +40,56 @@ function firstNonEmptyLine(text: string): string {
   return "";
 }
 
-function readFileSyncUtf8(path: string): string | null {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return null;
-  }
-}
+const readFileText = (fs: FileSystem.FileSystem, path: string) =>
+  fs.readFileString(path, "utf8").pipe(Effect.option);
 
-function loadPromptTemplates(): PromptCommandEntry[] {
-  const dir = `${homedir()}${PATH_SEP}.pi${PATH_SEP}agent${PATH_SEP}prompts`;
-  let files: string[];
-  try {
-    files = readdirSync(dir);
-  } catch {
-    return [];
-  }
-  const out: PromptCommandEntry[] = [];
-  for (const file of files) {
-    if (!file.endsWith(".md")) continue;
-    const name = file.slice(0, -3);
-    try {
+const loadPromptTemplates = (fs: FileSystem.FileSystem) =>
+  Effect.gen(function* () {
+    const dir = `${homedir()}${PATH_SEP}.pi${PATH_SEP}agent${PATH_SEP}prompts`;
+    const files = yield* fs.readDirectory(dir).pipe(Effect.orElseSucceed(() => [] as string[]));
+    const out: PromptCommandEntry[] = [];
+    for (const file of files) {
+      if (!file.endsWith(".md")) continue;
+      const name = file.slice(0, -3);
       const path = `${dir}${PATH_SEP}${file}`;
-      const text = readFileSyncUtf8(path);
-      if (text === null) continue;
-      const { meta, body } = parseFrontmatter(text);
+      const text = yield* readFileText(fs, path);
+      if (Option.isNone(text)) continue;
+      const { meta, body } = parseFrontmatter(text.value);
       const description = meta.description || firstNonEmptyLine(body) || name;
-      out.push({
-        kind: "prompt",
-        name,
-        description,
-        takesArgs: true,
-        source: path,
-      });
-    } catch {
+      out.push({ kind: "prompt", name, description, takesArgs: true, source: path });
     }
-  }
-  return out;
-}
+    return out;
+  });
 
-function loadSkills(): SkillCommandEntry[] {
-  const dir = `${homedir()}${PATH_SEP}.pi${PATH_SEP}agent${PATH_SEP}skills`;
-  let subdirs: string[];
-  try {
-    subdirs = readdirSync(dir);
-  } catch {
-    return [];
-  }
-  const out: SkillCommandEntry[] = [];
-  for (const skillDir of subdirs) {
-    if (skillDir.startsWith(".")) continue;
-    const skillPath = `${dir}${PATH_SEP}${skillDir}`;
-    let stat;
-    try {
-      stat = statSync(skillPath);
-    } catch {
-      continue;
+const loadSkills = (fs: FileSystem.FileSystem) =>
+  Effect.gen(function* () {
+    const dir = `${homedir()}${PATH_SEP}.pi${PATH_SEP}agent${PATH_SEP}skills`;
+    const subdirs = yield* fs.readDirectory(dir).pipe(Effect.orElseSucceed(() => [] as string[]));
+    const out: SkillCommandEntry[] = [];
+    for (const skillDir of subdirs) {
+      if (skillDir.startsWith(".")) continue;
+      const skillPath = `${dir}${PATH_SEP}${skillDir}`;
+      const info = yield* fs.stat(skillPath).pipe(Effect.option);
+      if (Option.isNone(info) || info.value.type !== "Directory") continue;
+      const skillFile = `${skillPath}${PATH_SEP}SKILL.md`;
+      const text = yield* readFileText(fs, skillFile);
+      if (Option.isNone(text)) continue;
+      const { meta, body } = parseFrontmatter(text.value);
+      const description = meta.description || firstNonEmptyLine(body) || skillDir;
+      out.push({ kind: "skill", name: `skill:${skillDir}`, description, takesArgs: true, source: skillFile });
     }
-    if (!stat.isDirectory()) continue;
-    const skillFile = `${skillPath}${PATH_SEP}SKILL.md`;
-    const text = readFileSyncUtf8(skillFile);
-    if (text === null) continue;
-    const { meta, body } = parseFrontmatter(text);
-    const description = meta.description || firstNonEmptyLine(body) || skillDir;
-    out.push({
-      kind: "skill",
-      name: `skill:${skillDir}`,
-      description,
-      takesArgs: true,
-      source: skillFile,
-    });
-  }
-  return out;
-}
+    return out;
+  });
 
-export function loadCommands(): Commands {
-  const builtins: BuiltinCommandEntry[] = BUILTIN_COMMANDS.map((b) => ({
-    kind: "builtin",
-    name: b.name,
-    description: b.description,
-    takesArgs: b.takesArgs,
-  }));
-  return {
-    builtins,
-    prompts: loadPromptTemplates(),
-    skills: loadSkills(),
-  };
-}
+export const loadCommands = (): Effect.Effect<Commands, never, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const builtins: BuiltinCommandEntry[] = BUILTIN_COMMANDS.map((b) => ({
+      kind: "builtin",
+      name: b.name,
+      description: b.description,
+      takesArgs: b.takesArgs,
+    }));
+    const [prompts, skills] = yield* Effect.all([loadPromptTemplates(fs), loadSkills(fs)]);
+    return { builtins, prompts, skills };
+  });

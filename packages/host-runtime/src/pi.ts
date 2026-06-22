@@ -20,10 +20,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage as PiAssistantMessage, Model } from "@earendil-works/pi-ai";
 import { randomUUIDv7 } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { Readable } from "node:stream";
+import { FileSystem } from "@effect/platform";
 import {
   BashToolArgs,
   CustomToolArgs,
@@ -127,7 +125,7 @@ export interface SendImage {
 }
 
 export interface ExportedHtml {
-  readonly stream: ReadableStream<Uint8Array>;
+  readonly stream: Stream.Stream<Uint8Array>;
   readonly size?: number;
   readonly filename?: string;
 }
@@ -208,20 +206,25 @@ export const getAgentServices = (cwd: string): Promise<AgentSessionServices> => 
 const safeFilenamePart = (value: string) =>
   value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "session";
 
-async function cleanupOldExports(now = Date.now()): Promise<void> {
-  const entries = await readdir(EXPORT_DIR, { withFileTypes: true }).catch(() => []);
-  await Promise.all(
-    entries
-      .filter((entry) => entry.isFile() && (entry.name.endsWith(".html") || entry.name.endsWith(".tmp")))
-      .map(async (entry) => {
-        const path = join(EXPORT_DIR, entry.name);
-        const info = await stat(path).catch(() => undefined);
-        if (info && now - info.mtimeMs > EXPORT_MAX_AGE_MS) {
-          await rm(path, { force: true }).catch(() => undefined);
-        }
-      }),
-  );
-}
+const cleanupOldExports = (fs: FileSystem.FileSystem, now = Date.now()) =>
+  Effect.gen(function* () {
+    const names = yield* fs.readDirectory(EXPORT_DIR).pipe(Effect.orElseSucceed(() => [] as string[]));
+    yield* Effect.forEach(
+      names.filter((name) => name.endsWith(".html") || name.endsWith(".tmp")),
+      (name) =>
+        Effect.gen(function* () {
+          const path = join(EXPORT_DIR, name);
+          const mtime = yield* fs.stat(path).pipe(
+            Effect.map((info) => info.mtime),
+            Effect.orElseSucceed(() => Option.none<Date>()),
+          );
+          if (Option.isSome(mtime) && now - mtime.value.getTime() > EXPORT_MAX_AGE_MS) {
+            yield* fs.remove(path, { force: true }).pipe(Effect.ignore);
+          }
+        }),
+      { concurrency: "unbounded", discard: true },
+    );
+  });
 
 const queueModeOptions = [
   { value: "one-at-a-time", label: "one-at-a-time" },
@@ -540,6 +543,7 @@ const DELTA_COALESCE_MS = 75;
 const wirePiSession = (
   piSession: AgentSession,
   meta: SessionMeta,
+  fs: FileSystem.FileSystem,
 ): Effect.Effect<PiSession> =>
   Effect.gen(function* () {
     const q = yield* Queue.unbounded<PiEmission>();
@@ -887,33 +891,32 @@ const wirePiSession = (
           catch: (e) => new PiError(`compact failed: ${String(e)}`, { cause: e }),
         }),
       exportHtml: () =>
-        Effect.tryPromise({
-          try: async () => {
-            await mkdir(EXPORT_DIR, { recursive: true });
-            await cleanupOldExports();
+        Effect.gen(function* () {
+          const fail = (cause: unknown) => new PiError(`exportHtml failed: ${String(cause)}`, { cause });
 
-            const base = `pi-session-${safeFilenamePart(piSession.sessionId)}-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-            const tmpPath = join(EXPORT_DIR, `${base}-${randomUUIDv7()}.html.tmp`);
-            const finalName = `${base}.html`;
-            const finalPath = join(EXPORT_DIR, finalName);
+          yield* fs.makeDirectory(EXPORT_DIR, { recursive: true }).pipe(Effect.mapError(fail));
+          yield* cleanupOldExports(fs);
 
-            try {
-              const exportedPath = await piSession.exportToHtml(tmpPath);
-              await rename(exportedPath, finalPath);
-            } catch (e) {
-              await rm(tmpPath, { force: true }).catch(() => undefined);
-              await rm(finalPath, { force: true }).catch(() => undefined);
-              throw e;
-            }
+          const base = `pi-session-${safeFilenamePart(piSession.sessionId)}-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+          const tmpPath = join(EXPORT_DIR, `${base}-${randomUUIDv7()}.html.tmp`);
+          const finalName = `${base}.html`;
+          const finalPath = join(EXPORT_DIR, finalName);
 
-            const info = await stat(finalPath).catch(() => undefined);
-            return {
-              stream: Readable.toWeb(createReadStream(finalPath)) as ReadableStream<Uint8Array>,
-              filename: finalName,
-              ...(info ? { size: info.size } : {}),
-            };
-          },
-          catch: (e) => new PiError(`exportHtml failed: ${String(e)}`, { cause: e }),
+          yield* Effect.tryPromise({ try: () => piSession.exportToHtml(tmpPath), catch: fail }).pipe(
+            Effect.flatMap((exportedPath) => fs.rename(exportedPath, finalPath).pipe(Effect.mapError(fail))),
+            Effect.tapError(() =>
+              fs
+                .remove(tmpPath, { force: true })
+                .pipe(Effect.zipRight(fs.remove(finalPath, { force: true })), Effect.ignore),
+            ),
+          );
+
+          const info = yield* fs.stat(finalPath).pipe(Effect.option);
+          return {
+            stream: Stream.orDie(fs.stream(finalPath)),
+            filename: finalName,
+            ...(Option.isSome(info) ? { size: Number(info.value.size) } : {}),
+          } satisfies ExportedHtml;
         }),
       listCommands: () =>
         Effect.sync(() => ({
@@ -976,6 +979,7 @@ const makeLiveSession = (
     cwd: string;
     title: string;
   },
+  fs: FileSystem.FileSystem,
 ): Effect.Effect<PiSession, PiError> =>
   Effect.gen(function* () {
     const piSession = yield* Effect.tryPromise<AgentSession, PiError>({
@@ -1006,12 +1010,13 @@ const makeLiveSession = (
       archived: false,
     };
 
-    return yield* wirePiSession(piSession, meta);
+    return yield* wirePiSession(piSession, meta, fs);
   });
 
 const makeResumedSession = (
   services: AgentSessionServices,
   storedRecord: import("./session-record.ts").SessionRecord,
+  fs: FileSystem.FileSystem,
 ): Effect.Effect<PiSession, PiError | SessionNotFound> =>
   Effect.gen(function* () {
     const piSession = yield* Effect.tryPromise<
@@ -1051,7 +1056,7 @@ const makeResumedSession = (
       archived: storedRecord.archived,
     };
 
-    return yield* wirePiSession(piSession, meta);
+    return yield* wirePiSession(piSession, meta, fs);
   });
 
 
@@ -1061,14 +1066,15 @@ const loadServices = (cwd: string) =>
     catch: (e) => new PiError(`createAgentSessionServices failed: ${String(e)}`, { cause: e }),
   });
 
-export const PiClientLive = Layer.succeed(PiClient, {
-  create: (opts) =>
-    Effect.flatMap(loadServices(opts.cwd), (services) =>
-      makeLiveSession(services, opts),
-    ),
-  resume: (storedMeta) =>
-    Effect.flatMap(loadServices(storedMeta.cwd), (services) =>
-      makeResumedSession(services, storedMeta),
-    ),
-});
+export const PiClientLive = Layer.effect(
+  PiClient,
+  Effect.map(FileSystem.FileSystem, (fs) =>
+    PiClient.of({
+      create: (opts) =>
+        Effect.flatMap(loadServices(opts.cwd), (services) => makeLiveSession(services, opts, fs)),
+      resume: (storedMeta) =>
+        Effect.flatMap(loadServices(storedMeta.cwd), (services) => makeResumedSession(services, storedMeta, fs)),
+    }),
+  ),
+);
 

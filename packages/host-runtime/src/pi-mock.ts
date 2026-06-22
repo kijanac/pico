@@ -207,9 +207,10 @@ const makeMockSession = (opts: {
       compact: () => Effect.void,
       exportHtml: () => {
         const html = "<!doctype html><title>Mock session</title><p>Mock session</p>";
+        const bytes = new TextEncoder().encode(html);
         return Effect.succeed({
-          stream: new Blob([html], { type: "text/html; charset=utf-8" }).stream(),
-          size: new TextEncoder().encode(html).byteLength,
+          stream: Stream.fromIterable([bytes]),
+          size: bytes.byteLength,
           filename: "pi-session-mock.html",
         });
       },

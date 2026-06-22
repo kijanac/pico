@@ -1,9 +1,7 @@
 import { Cause, Effect, Fiber, Layer } from "effect";
 import { HttpApiBuilder } from "@effect/platform";
-import { NodeHttpServer } from "@effect/platform-node";
+import { NodeContext, NodeHttpServer } from "@effect/platform-node";
 import { createServer, type Server } from "node:http";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import type { WebSocketServer } from "ws";
 import { DB_PATH, HOST_INSECURE_NO_AUTH, USE_MOCK } from "./config.ts";
 import { allowedOrigins } from "./auth.ts";
@@ -75,6 +73,10 @@ export function launchHttpServer(
   );
 
   const program = Effect.gen(function* () {
+    // Pre-generate the loopback admin token before the server accepts requests,
+    // so the co-located CLI can read it the moment the host reports ready. The
+    // data directory already exists (the Store layer created it on build).
+    yield* ensureLocalAdminToken();
     yield* Layer.build(ServerLive);
     // NodeHttpServer attaches its own "upgrade" listener for Effect-native
     // websockets; we run the session WebSocket on raw `ws`, so replace it once
@@ -88,6 +90,7 @@ export function launchHttpServer(
     yield* Effect.never;
   }).pipe(
     Effect.provide(AppLayer),
+    Effect.provide(NodeContext.layer),
     Effect.scoped,
     Effect.tapErrorCause((cause) => Effect.logError(`http server failed: ${Cause.pretty(cause)}`)),
   );
@@ -117,9 +120,6 @@ export function startPicoHost(options: PicoHostOptions = {}): PicoHostHandle {
       ),
     );
   }
-
-  mkdirSync(dirname(DB_PATH), { recursive: true });
-  ensureLocalAdminToken();
 
   const server = launchHttpServer(port, host);
   const url = `http://${host}:${port}`;

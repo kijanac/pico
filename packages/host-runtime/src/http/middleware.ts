@@ -1,4 +1,4 @@
-import { HttpApp, HttpServerRequest, HttpServerResponse } from "@effect/platform";
+import { FileSystem, HttpApp, HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { Effect } from "effect";
 import { authorizeHeaders } from "../auth.ts";
 import { adminTokenAuthorized } from "../local-admin.ts";
@@ -17,7 +17,11 @@ const pathOf = (url: string): string => {
 // OPTIONS preflights pass straight through so the CORS layer can answer them.
 export const authMiddleware = (
   app: HttpApp.Default,
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> =>
+): Effect.Effect<
+  HttpServerResponse.HttpServerResponse,
+  never,
+  HttpServerRequest.HttpServerRequest | FileSystem.FileSystem
+> =>
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     if (request.method === "OPTIONS") return yield* app;
@@ -25,7 +29,7 @@ export const authMiddleware = (
     const path = pathOf(request.url);
 
     if (path.startsWith("/admin/")) {
-      if (!adminTokenAuthorized(request.headers)) {
+      if (!(yield* adminTokenAuthorized(request.headers))) {
         return HttpServerResponse.unsafeJson({ error: "invalid_admin_token" }, { status: 401 });
       }
       return yield* app;

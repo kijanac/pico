@@ -11,5 +11,5 @@ export const AdminApiLive = HttpApiBuilder.group(PicoHostApi, "admin", (handlers
   handlers
     .handle("status", () => Effect.sync(adminStatus))
     .handle("pairing", () => Effect.sync(adminPairing))
-    .handle("pairingRotate", () => Effect.sync(rotatePairing)),
+    .handle("pairingRotate", () => rotatePairing().pipe(Effect.orDie)),
 );

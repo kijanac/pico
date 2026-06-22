@@ -1,5 +1,5 @@
 import { HttpRouter, HttpServerResponse } from "@effect/platform";
-import { Context, Effect, Stream } from "effect";
+import { Context, Effect } from "effect";
 import { SessionManager } from "../session.ts";
 
 // Streams the rendered HTML export. Runs Effect-native against the SessionManager
@@ -8,16 +8,13 @@ export const exportRoute = (manager: Context.Tag.Service<SessionManager>) =>
   Effect.flatMap(HttpRouter.params, ({ id }) =>
     manager.exportHtml(id ?? "").pipe(
       Effect.map((html) =>
-        HttpServerResponse.stream(
-          Stream.fromReadableStream<Uint8Array, unknown>({ evaluate: () => html.stream, onError: (error) => error }),
-          {
-            contentType: "text/html; charset=utf-8",
-            headers: {
-              ...(html.filename ? { "content-disposition": `attachment; filename="${html.filename}"` } : {}),
-              ...(html.size !== undefined ? { "content-length": String(html.size) } : {}),
-            },
+        HttpServerResponse.stream(html.stream, {
+          contentType: "text/html; charset=utf-8",
+          headers: {
+            ...(html.filename ? { "content-disposition": `attachment; filename="${html.filename}"` } : {}),
+            ...(html.size !== undefined ? { "content-length": String(html.size) } : {}),
           },
-        ),
+        }),
       ),
       Effect.catchTags({
         SessionNotFound: () =>
