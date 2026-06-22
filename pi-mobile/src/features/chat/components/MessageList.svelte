@@ -54,8 +54,7 @@
     if (stuck) hasNewActivity = false;
   }
 
-  // Coalesce follow-scrolls into one rAF per frame: scrollTo forces layout,
-  // so doing it per activity bump during streaming costs a reflow per chunk.
+  // scrollTo forces layout; coalesce into one rAF/frame to avoid a reflow per streamed chunk.
   let scrollRaf: number | null = null;
 
   function scheduleScrollSync(): void {

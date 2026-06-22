@@ -40,7 +40,7 @@ const UpdateStateSchema = Schema.Struct({
   })),
 });
 
-// Mutable working copy (decoded state is mutated in place by state-set).
+// Mutable: state-set mutates decoded state in place; schema's inferred type is readonly.
 interface UpdateState {
   currentVersion?: string;
   lastSeenVersion?: string;

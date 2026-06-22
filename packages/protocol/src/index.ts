@@ -40,8 +40,7 @@ export const UserMessage = Schema.Struct({
   text: Schema.String,
   queued: Schema.optional(Schema.Boolean),
   queueKind: Schema.optional(SendMode),
-  // Echoed from the client's send event; lets the sender reconcile its
-  // optimistic echo exactly and makes retries idempotent.
+  // Echoed from the send event so the sender reconciles its optimistic echo and retries stay idempotent.
   clientId: Schema.optional(Schema.String),
 });
 export type UserMessage = typeof UserMessage.Type;
@@ -98,12 +97,7 @@ const EditReplacements = Schema.Array(
   }),
 );
 
-// `edits` is normally an array, but some models (e.g. Opus 4.6, GLM-5.1) emit
-// it as a JSON-encoded string. Accept either and decode the string form, so
-// the parsed output is always the canonical array. The host sends that
-// canonical shape over the wire, so re-parsing on the client (or on store
-// replay) just matches the array branch — the transform is a no-op on
-// already-parsed args.
+// Some models (e.g. Opus 4.6, GLM-5.1) emit `edits` as a JSON-encoded string; decode it to the canonical array. No-op on already-parsed args.
 export const EditToolArgs = Schema.Struct({
   path: Schema.String,
   edits: Schema.Union(EditReplacements, Schema.parseJson(EditReplacements)),
@@ -625,8 +619,7 @@ export const ClientEvent = Schema.Union(
     text: Schema.String,
     mode: Schema.optional(SendMode),
     images: Schema.optional(Schema.Array(ImageAttachment)),
-    // Client-generated idempotency key: the Pico host drops repeats and echoes
-    // it back on the user_message event.
+    // Idempotency key: the host drops repeats and echoes it back on user_message.
     clientId: Schema.optional(Schema.String),
   }),
   Schema.Struct({

@@ -9,9 +9,8 @@ const SessionLayer = SessionManagerLive.pipe(
   Layer.provide(Layer.mergeAll(PiClientFromEnv, StoreLive(DB_PATH))),
 );
 
-// The host's application services. Provided once into the unified server scope
-// (see host.ts); the RPC handlers run against it in-context, and ws + the HTML
-// export capture a Runtime / the SessionManager from the same context.
+// Provided once into the unified server scope (host.ts) so RPC handlers, ws,
+// and the HTML export all capture a Runtime from the same context.
 export const AppLayer = Layer.mergeAll(
   SessionLayer,
   ProviderAuthLive,

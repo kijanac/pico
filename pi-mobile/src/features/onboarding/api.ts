@@ -6,8 +6,7 @@ export function healthcheckHostUrl(url: string): Promise<boolean> {
   return createHostClient(url).healthcheck();
 }
 
-// Claim the host with the caller's Tailscale identity if it isn't already
-// claimed. Run against a specific host via runAt(url, claimReachableHost()).
+// Run against a specific host via runAt(url, claimReachableHost()).
 export const claimReachableHost = (token?: string) =>
   rpc((c) => c.system.identity()).pipe(
     Effect.flatMap((identity) =>

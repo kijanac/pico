@@ -1,7 +1,6 @@
 import { Config, Effect } from "effect";
 import { dirname, resolve } from "node:path";
 
-// Required env var, rejecting empty values to match the previous `if (!value)` check.
 const required = (name: string) =>
   Config.string(name).pipe(
     Config.validate({
@@ -10,14 +9,13 @@ const required = (name: string) =>
     }),
   );
 
-// `process.env.X === "1"`: absent or any non-"1" value is false, never fails.
 const flag = (name: string) =>
   Config.string(name).pipe(
     Config.map((value) => value === "1"),
     Config.withDefault(false),
   );
 
-// Resolved at load; env is already populated by the CLI wrapper and dev scripts.
+// runSync at load is safe: env is pre-populated by the CLI wrapper and dev scripts.
 const resolved = Effect.runSync(
   Config.all({
     dbPath: required("PICO_HOST_DB"),

@@ -14,7 +14,6 @@ import {
   SystemInfo,
 } from "./index.ts";
 
-// Success shapes that the tRPC contract carried as plain interfaces.
 export const HostIdentity = Schema.Struct({
   user: Schema.optional(Schema.String),
   claimed: Schema.Boolean,
@@ -35,8 +34,7 @@ export const FsListing = Schema.Struct({
 });
 export type FsListing = typeof FsListing.Type;
 
-// Typed failures carried across the wire. Host handlers map their internal
-// errors (HostError / SessionNotFound / PiError / …) onto these.
+// Wire failures; host handlers map their internal errors (PiError / …) onto these.
 export class HostError extends Schema.TaggedError<HostError>()("HostError", {
   code: HostErrorCodeSchema,
 }) {}
@@ -49,14 +47,11 @@ export class RequestError extends Schema.TaggedError<RequestError>()("RequestErr
   message: Schema.String,
 }) {}
 
-// Identity resolved by the auth middleware from the request's Tailscale headers,
-// consumed by the system.identity / system.claim handlers.
+// Resolved by the auth middleware from the request's Tailscale headers.
 export class CurrentIdentity extends Context.Tag("CurrentIdentity")<CurrentIdentity, HostIdentity>() {}
 
-// Server-only auth middleware: enforces Tailscale identity (and "claimed", except
-// for the unclaimed-allowed system.{info,identity,claim} tags) and provides the
-// resolved identity. The client needs no implementation — Tailscale Serve injects
-// the identity header at the network layer, not the client.
+// "claimed" enforced except for unclaimed-allowed system.{info,identity,claim} tags.
+// Client needs no implementation: Tailscale Serve injects the identity header at the network layer.
 export class AuthMiddleware extends RpcMiddleware.Tag<AuthMiddleware>()("AuthMiddleware", {
   provides: CurrentIdentity,
   failure: HostError,
@@ -66,13 +61,11 @@ const SessionFail = Schema.Union(SessionNotFound, RequestError);
 const Trimmed = Schema.NonEmptyTrimmedString;
 
 export const PicoRpc = RpcGroup.make(
-  // system
   Rpc.make("system.info", { success: SystemInfo, error: RequestError }),
   Rpc.make("system.updateStatus", { success: HostUpdateStatus, error: RequestError }),
   Rpc.make("system.triggerUpdate", { success: HostUpdateStatus, error: RequestError }),
   Rpc.make("system.identity", { success: HostIdentity, error: HostError }),
   Rpc.make("system.claim", { payload: { token: Schema.optional(Schema.String) }, success: HostClaimResult, error: Schema.Union(HostError, RequestError) }),
-  // sessions
   Rpc.make("sessions.list", { payload: { archived: Schema.optional(Schema.Boolean) }, success: Schema.Array(SessionMeta), error: RequestError }),
   Rpc.make("sessions.create", { payload: { cwd: Trimmed, title: Trimmed }, success: SessionMeta, error: RequestError }),
   Rpc.make("sessions.patch", { payload: { id: Schema.String, title: Schema.optional(Trimmed), archived: Schema.optional(Schema.Boolean) }, success: SessionMeta, error: SessionFail }),
@@ -86,15 +79,12 @@ export const PicoRpc = RpcGroup.make(
   Rpc.make("sessions.tree", { payload: { id: Schema.String }, success: SessionTree, error: SessionFail }),
   Rpc.make("sessions.navigateTree", { payload: { id: Schema.String, entryId: Schema.String, summarize: Schema.optional(Schema.Boolean) }, error: SessionFail }),
   Rpc.make("sessions.commands", { payload: { id: Schema.String }, success: Commands, error: SessionFail }),
-  // auth
   Rpc.make("auth.providers", { success: AuthProviders, error: RequestError }),
   Rpc.make("auth.startLogin", { payload: { providerId: Schema.String }, success: AuthLoginJob, error: RequestError }),
   Rpc.make("auth.getLogin", { payload: { jobId: Schema.String }, success: AuthLoginJob, error: RequestError }),
   Rpc.make("auth.submitLoginInput", { payload: { jobId: Schema.String, value: Schema.String }, success: AuthLoginJob, error: RequestError }),
   Rpc.make("auth.saveApiKey", { payload: { providerId: Schema.String, apiKey: Trimmed }, success: AuthProviders, error: RequestError }),
   Rpc.make("auth.cancelLogin", { payload: { jobId: Schema.String }, error: RequestError }),
-  // commands
   Rpc.make("commands.list", { success: Commands, error: RequestError }),
-  // fs
   Rpc.make("fs.ls", { payload: { path: Schema.optional(Schema.String) }, success: FsListing, error: RequestError }),
 ).middleware(AuthMiddleware);

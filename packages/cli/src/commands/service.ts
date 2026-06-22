@@ -19,8 +19,7 @@ export interface ServiceCliOptions {
   readonly createSystemUser: boolean;
 }
 
-// The CLI flags (--system/--user/--create-user) are parsed by @effect/cli; this
-// only enforces the cross-flag rule that --user/--create-user imply --system.
+// Flags are parsed by @effect/cli; this only enforces the cross-flag rule.
 export const resolveServiceOptions = (input: {
   readonly system: boolean;
   readonly user: Option.Option<string>;

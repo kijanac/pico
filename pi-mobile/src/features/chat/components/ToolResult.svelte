@@ -27,8 +27,8 @@
     return contentText;
   });
   const path = $derived.by(() => (msg.toolKind === "builtin" && (msg.tool === "read" || msg.tool === "write") ? msg.args.path : ""));
-  // ANSI parsing is synchronous and re-runs per streaming update, so cap it
-  // to the output tail; huge bash logs otherwise stall the main thread.
+  // ANSI parsing is synchronous and re-runs per streaming update; cap to the
+  // tail or huge bash logs stall the main thread.
   const MAX_ANSI_PARSE_CHARS = 32_768;
   const bashHtml = $derived.by(() => {
     let text = displayText;

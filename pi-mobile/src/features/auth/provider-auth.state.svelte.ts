@@ -44,8 +44,6 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   let savingApiKey = $state(false);
   let startingProviderId = $state<string | null>(null);
 
-  // Classify a failed host call and surface it via the onError callback. Used
-  // with catchAll, so the failure is swallowed after reporting.
   const reportFailure = (error: unknown) =>
     classifyHostFailure(error, { url: settingsState.hostUrl }).pipe(
       Effect.andThen((issue) => Effect.sync(() => opts.onError(`${issue.title}: ${issue.message}`))),

@@ -16,8 +16,7 @@ import {
 import { serveCommand } from "./commands/serve.ts";
 import { statusCommand } from "./commands/status.ts";
 
-// Shared service flags. --system selects a Linux system service over the default
-// per-user service; --user/--create-user apply only when installing one.
+// --user/--create-user apply only when installing a --system service.
 const systemMode = Options.boolean("system").pipe(
   Options.withDescription("Target a Linux system service instead of a per-user service"),
 );
@@ -80,7 +79,7 @@ const logs = Command.make("logs", { system: systemMode }, ({ system }) =>
   logsCommand({ mode: system ? "system" : "user" }),
 ).pipe(Command.withDescription("Follow installed service logs"));
 
-// Environment variables aren't flags, so document them in the help footer.
+// Env vars aren't flags, so document them in the footer.
 const envFooter = HelpDoc.sequence(
   HelpDoc.h1("ENVIRONMENT"),
   HelpDoc.descriptionList([
@@ -107,8 +106,7 @@ const cli = Command.run(pico, {
 });
 
 const program = cli(process.argv).pipe(
-  // @effect/cli prints validation/help errors itself; only friendly-print
-  // domain failures (setup/service errors). Always exit non-zero on failure.
+  // @effect/cli prints validation/help errors itself; only friendly-print domain failures.
   Effect.catchAll((error) =>
     Effect.sync(() => {
       if (!ValidationError.isValidationError(error)) {

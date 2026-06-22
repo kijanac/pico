@@ -7,11 +7,9 @@ import { settingsState } from "@/features/settings/settings.state.svelte";
 const makeClient = RpcClient.make(PicoRpc);
 export type PicoClientService = Effect.Effect.Success<typeof makeClient>;
 
-// The nested-by-prefix rpc client (client.sessions.list({...}), etc.). No auth
-// header is set — Tailscale Serve injects the identity at the network layer.
+// No auth header is set — Tailscale Serve injects the identity at the network layer.
 export class PicoClient extends Context.Tag("PicoClient")<PicoClient, PicoClientService>() {}
 
-// One runtime per host URL, holding the scoped client for that host.
 const runtimes = new Map<string, ManagedRuntime.ManagedRuntime<PicoClient, never>>();
 
 function runtimeFor(baseUrl: string): ManagedRuntime.ManagedRuntime<PicoClient, never> {
@@ -28,15 +26,12 @@ function runtimeFor(baseUrl: string): ManagedRuntime.ManagedRuntime<PicoClient, 
   return runtime;
 }
 
-// Build an rpc call as an Effect: `rpc((c) => c.sessions.list({ archived }))`.
 export const rpc = <A, E>(
   f: (client: PicoClientService) => Effect.Effect<A, E>,
 ): Effect.Effect<A, E, PicoClient> => Effect.flatMap(PicoClient, f);
 
-// Run an rpc Effect against a specific host (onboarding / diagnosis) or the
-// current host. This is the imperative edge — callers await the Promise. On
-// failure it rejects with the underlying typed error (HostError / RpcClientError
-// / …) rather than a wrapping FiberFailure, so callers can classify it.
+// Rejects with the underlying typed error (HostError / RpcClientError / …) rather
+// than a wrapping FiberFailure, so callers can classify it.
 export const runAt = async <A, E>(baseUrl: string, effect: Effect.Effect<A, E, PicoClient>): Promise<A> => {
   const exit = await runtimeFor(baseUrl).runPromiseExit(effect);
   if (Exit.isSuccess(exit)) return exit.value;

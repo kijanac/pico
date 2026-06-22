@@ -23,8 +23,6 @@ let error = $state<HostIssue | null>(null);
 const busy = $derived(refreshing || creating || mutatingSessionId !== null);
 const visibleCount = $derived(sessions.length);
 
-// Classify a failed host call into the reactive error state. Used with tapError,
-// which re-raises afterwards so callers still observe the failure.
 const recordError = (caught: unknown) =>
   classifyHostFailure(caught, { url: settingsState.hostUrl }).pipe(
     Effect.andThen((issue) => Effect.sync(() => { error = issue; })),
@@ -41,7 +39,6 @@ function replaceSession(session: SessionMeta): void {
     : sessions.map((candidate) => (candidate.id === session.id ? session : candidate));
 }
 
-// Run a single-session mutation behind the in-flight guard, recording failures.
 function mutate<A, E>(sessionId: string, effect: Effect.Effect<A, E, PicoClient>): Promise<A> {
   if (mutatingSessionId) throw new Error("session mutation already in progress");
   mutatingSessionId = sessionId;

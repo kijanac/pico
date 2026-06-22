@@ -12,8 +12,7 @@ const isInsideRoot = (root: string, path: string) => {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 };
 
-// readDirectory fails with a typed PlatformError; map its reason onto the wire
-// codes the caller already turns into RequestError messages.
+// Map reason onto wire codes the caller turns into RequestError messages.
 const readDirError = (error: PlatformError): Error => {
   if (error._tag === "SystemError") {
     if (error.reason === "NotFound") return new Error("not_found");

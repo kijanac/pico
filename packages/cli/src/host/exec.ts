@@ -18,9 +18,8 @@ const make = (command: string, args: readonly string[], cwd?: string) => {
   return cwd ? Command.workingDirectory(base, cwd) : base;
 };
 
-// Total, like the spawnSync it replaces: a missing binary, non-zero exit, or
-// timeout yields a RunResult (exitCode -1 on spawn failure/timeout) rather than
-// a failed Effect. Callers branch on exitCode/timedOut.
+// Total: spawn failure or timeout yields a RunResult (exitCode -1) rather than a
+// failed Effect. Callers branch on exitCode/timedOut.
 export const run = (command: string, args: readonly string[], options: RunOptions = {}) => {
   const captured = Effect.scoped(
     Effect.gen(function* () {
@@ -55,8 +54,6 @@ export const run = (command: string, args: readonly string[], options: RunOption
       });
 };
 
-// Inherits the terminal's stdio (log `--follow` tails, interactive commands).
-// Resolves with the exit code, or -1 if the command could not be spawned.
 export const runInherit = (command: string, args: readonly string[], options: RunOptions = {}) => {
   const cmd = make(command, args, options.cwd).pipe(
     Command.stdin("inherit"),

@@ -4,7 +4,7 @@ import type { HostErrorCode } from "@pico/protocol";
 import { DB_PATH, HOST_INSECURE_NO_AUTH, INITIAL_PAIRING_TOKEN } from "./config.ts";
 import { HostError } from "./errors.ts";
 
-// Auth is ON by default and must be explicitly disabled (PICO_HOST_INSECURE_NO_AUTH).
+// Disabled only via PICO_HOST_INSECURE_NO_AUTH.
 const REQUIRE_TAILSCALE_AUTH = !HOST_INSECURE_NO_AUTH;
 let pairingToken = INITIAL_PAIRING_TOKEN;
 
@@ -26,10 +26,8 @@ export type AuthResult =
   | { ok: true; user?: string; claimed: boolean }
   | { ok: false; status: 401 | 403; error: HostErrorCode; user?: string };
 
-// A lowercased-key header record. Both the raw ws upgrade (node
-// `IncomingHttpHeaders`) and the HttpApi middleware (`@effect/platform` header
-// record) are already this shape; the tRPC fetch adapter's web `Headers` is
-// converted to it at that call site. `string[]` covers node's multi-valued case.
+// Lowercased keys; `string[]` covers node's multi-valued headers. The tRPC fetch
+// adapter's web `Headers` is converted to this shape at its call site.
 export type HeaderSource = Record<string, string | string[] | undefined>;
 
 export function headerValue(headers: HeaderSource, name: string): string | undefined {
@@ -47,7 +45,7 @@ let ownerDb: OwnerDb | undefined;
 
 function getOwnerDb(): OwnerDb {
   if (ownerDb) return ownerDb;
-  // HOST_DATA_DIR is created when the Store layer opens the database at boot.
+  // HOST_DATA_DIR is created by the Store layer at boot.
   const db = new DatabaseSync(DB_PATH);
   db.exec(`
     CREATE TABLE IF NOT EXISTS pico_host_owners (

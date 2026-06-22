@@ -13,9 +13,9 @@ const LEGACY_HOST_URL_KEY = "bridge_url";
 const ONBOARDING_DRAFT_KEY = "onboarding_draft";
 const WELCOME_SKIPPED_KEY = "welcome_skipped";
 
-// The tailscale auth key is deliberately absent: it can add nodes to your
-// tailnet, and Capacitor Preferences is plaintext UserDefaults (not the
-// Keychain), so the key stays in memory during setup and never touches disk.
+// Tailscale auth key deliberately absent: it can add nodes to your tailnet, and
+// Capacitor Preferences is plaintext UserDefaults (not Keychain), so it stays in
+// memory during setup and never touches disk.
 export interface OnboardingDraft {
   readonly tailnet: string;
   readonly hostName: string;

@@ -73,9 +73,8 @@ const SCHEMA = `
   ) STRICT;
 `;
 
-// Cap stored events per session so the events table (and reconnect replay)
-// stays bounded. Clients whose cursor falls below the pruned boundary get a
-// full log_reset instead of a stored replay.
+// Clients whose cursor falls below the pruned boundary get a full log_reset
+// instead of a stored replay.
 const EVENTS_RETAIN_PER_SESSION = 5000;
 const PRUNE_EVERY = 256;
 
@@ -116,7 +115,6 @@ const rowToRecord = (raw: unknown): SessionRecord => {
 
 const make = (dbPath: string) =>
   Effect.gen(function* () {
-    // The data directory is owned here — the one place that opens the database.
     const fs = yield* FileSystem.FileSystem;
     yield* fs.makeDirectory(dirname(dbPath), { recursive: true });
 
@@ -125,8 +123,7 @@ const make = (dbPath: string) =>
       d.exec("PRAGMA journal_mode = WAL");
       d.exec("PRAGMA synchronous = NORMAL");
       d.exec("PRAGMA foreign_keys = ON");
-      // Checkpoint the WAL every ~2MB so the side file stays small and
-      // checkpoint stalls stay short.
+      // Checkpoint WAL every ~2MB to keep the side file small.
       d.exec("PRAGMA wal_autocheckpoint = 500");
 
       d.exec(SCHEMA);
@@ -137,11 +134,9 @@ const make = (dbPath: string) =>
         }
       }
 
-      // At boot, no turn is executing in this process, so any non-terminal
-      // status persisted by a previous (possibly crashed) run is stale —
-      // otherwise a session caught mid-turn shows a perpetual "thinking" dot
-      // in the list until it is reopened. Reset those to idle; idle/error are
-      // terminal and left untouched.
+      // Non-terminal status from a prior (possibly crashed) run is stale at
+      // boot; without this reset a session caught mid-turn shows a perpetual
+      // "thinking" dot until reopened.
       d.exec("UPDATE sessions SET status = 'idle' WHERE status IN ('thinking', 'tool', 'waiting')");
 
       return d;

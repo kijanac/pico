@@ -196,8 +196,7 @@ export async function highlightLines(
   }
 }
 
-// Engine + theme init costs hundreds of ms; pre-warming during idle keeps
-// the first code fence of a session from stalling on it.
+// Engine + theme init costs hundreds of ms; warm during idle so the first code fence doesn't stall.
 const WARM_LANGS = ["typescript", "bash"];
 
 export function warmHighlighter(): void {

@@ -45,7 +45,7 @@ export const pairCommand = Effect.gen(function* () {
   const host = plan.host;
   yield* Effect.addFinalizer(() => (host ? Effect.promise(() => host.close()) : Effect.void));
   yield* Effect.promise(() => printPairingPlan(plan, { foreground: plan.foregroundHostStarted }));
-  // Foreground host: run until interrupted (runMain closes it via the finalizer).
+  // runMain closes the host via the finalizer on interrupt.
   if (plan.foregroundHostStarted) yield* Effect.never;
 }).pipe(Effect.scoped);
 

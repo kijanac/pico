@@ -18,18 +18,15 @@ import { ProviderAuth } from "../provider-auth.ts";
 import { SessionManager } from "../session.ts";
 import { hostSystemInfo, readUpdateStatus, requestHostUpdate } from "./system.ts";
 
-// system.{info,identity,claim} are reachable before the host is claimed; every
-// other procedure additionally requires the caller to be an owner.
+// Reachable before the host is claimed; every other procedure requires an owner.
 const UNCLAIMED_ALLOWED = new Set(["system.info", "system.identity", "system.claim"]);
 
-// Resolves the Tailscale identity from the (forwarded) request headers, enforces
-// identity + claimed (with the unclaimed-allowed exceptions), and provides it.
 export const AuthLive = Layer.succeed(
   AuthMiddleware,
   AuthMiddleware.of(({ headers, rpc }) =>
     Effect.gen(function* () {
       const result = authorizeHeaders(headers);
-      // system.info is fully public — surface a best-effort identity, never fail.
+      // system.info is public: surface best-effort identity, never fail.
       if (rpc._tag === "system.info") {
         return result.ok ? { user: result.user, claimed: result.claimed } : { claimed: false };
       }
@@ -42,8 +39,6 @@ export const AuthLive = Layer.succeed(
   ),
 );
 
-// Map a host failure onto the wire errors. RequestError is the catch-all;
-// session lookups additionally surface the typed SessionNotFound.
 const toRequestError = (error: unknown) =>
   new RequestError({ message: error instanceof Error ? error.message : String(error) });
 
@@ -101,9 +96,6 @@ const HandlersLive = PicoRpc.toLayer({
   "fs.ls": ({ path }) => listFs(path).pipe(Effect.mapError(toRequestError)),
 });
 
-// Mounts the RPC handler as a POST /rpc route on the shared HttpApiBuilder
-// router. Handlers run Effect-native against the app services (provided by the
-// unified AppLayer); the auth middleware and JSON serialization are local.
 export const RpcRoutesLive = HttpApiBuilder.Router.use((router) =>
   Effect.gen(function* () {
     const app = yield* RpcServer.toHttpApp(PicoRpc);

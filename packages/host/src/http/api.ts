@@ -1,8 +1,7 @@
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
 import { Schema } from "effect";
 
-// Response shapes for the loopback "local admin" API the Pico CLI consumes.
-// These mirror @pico/host's LocalAdminStatus/LocalAdminPairing.
+// Must mirror @pico/host's LocalAdminStatus/LocalAdminPairing.
 const HostSystemInfo = Schema.Struct({
   hostVersion: Schema.String,
   protocolVersion: Schema.Number,

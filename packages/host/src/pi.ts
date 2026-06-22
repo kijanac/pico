@@ -391,16 +391,11 @@ const toolCallBase = (id: string) => ({
   status: "running" as const,
 });
 
-// A tool call is built when the call arrives, then updated in place once its
-// result streams in, so the working copy in `byToolCallId` is mutable.
+// Tool calls are updated in place once their result streams in.
 type Mutable<T> = T extends unknown ? { -readonly [K in keyof T]: T[K] } : never;
 
-// Tool args are model-generated JSON — the SDK types them `any`, so this is
-// the one boundary that turns them into a typed value. Decode against the
-// builtin schema; if the model emitted a shape we don't model, degrade to a
-// custom tool-call rather than throwing. (The bridge only forwards these for
-// rendering — it never executes them — so a generic render is a fine fallback,
-// and a throw here would fail the live turn and make the session unreplayable.)
+// Degrade an unmodeled shape to a custom tool-call rather than throwing: a
+// throw here would fail the live turn and make the session unreplayable.
 const normalizeToolCall = (
   id: string,
   toolName: string,
@@ -520,12 +515,10 @@ const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
     }
   }
 
-  // A tool call without a result is only legitimate while a turn is executing.
-  // When no turn is live (e.g. a session freshly resumed after the bridge was
-  // killed mid-command), any lingering "running" tool is an orphan from the
-  // dead process — mark it interrupted so the log doesn't replay a spinner
-  // that never resolves. isStreaming spans the whole turn including tool
-  // execution, so this never touches a genuinely in-flight tool.
+  // With no turn live (e.g. resumed after the bridge was killed mid-command), a
+  // lingering "running" tool is an orphan — mark it interrupted so the log
+  // doesn't replay a spinner that never resolves. isStreaming spans the whole
+  // turn including tool execution, so this never touches an in-flight tool.
   if (!piSession.isStreaming) {
     for (const toolCall of byToolCallId.values()) {
       if (toolCall.status !== "running") continue;
@@ -548,9 +541,9 @@ const wirePiSession = (
   Effect.gen(function* () {
     const q = yield* Queue.unbounded<PiEmission>();
 
-    // Coalesce per-token assistant deltas into ~75ms chunks so each chunk is
-    // one persisted event and one WS frame instead of one per token. Every
-    // other emission flushes the buffer first to preserve log order.
+    // Coalesce per-token deltas into ~75ms chunks: one persisted event and WS
+    // frame per chunk instead of per token. Every other emission flushes first
+    // to preserve log order.
     let pendingDelta: { id: string; text: string } | null = null;
     let deltaTimer: ReturnType<typeof setTimeout> | null = null;
 

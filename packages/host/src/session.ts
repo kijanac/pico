@@ -49,7 +49,7 @@ interface ManagedSessionState {
   readonly idleEvictionTimer: Ref.Ref<ReturnType<typeof setTimeout> | null>;
   readonly pendingSends: Ref.Ref<PendingSend[]>;
   readonly compacting: Ref.Ref<boolean>;
-  /** Recent send clientIds, newest last; retries with a seen id are dropped. */
+  /** Newest last; retries with a seen id are dropped. */
   readonly seenClientIds: Ref.Ref<string[]>;
 }
 
@@ -187,8 +187,7 @@ export { SessionNotFound } from "./errors.ts";
 
 const IDLE_EVICT_MS = 15 * 60 * 1000;
 
-// Ceiling on per-session live event buffering: a subscriber that falls this
-// far behind loses oldest events and heals on reconnect via cursor replay.
+// A subscriber that falls this far behind loses oldest events; heals on reconnect via cursor replay.
 const LIVE_BUFFER_CAPACITY = 4096;
 
 // Backstop against a runaway client queueing sends forever.
@@ -201,8 +200,7 @@ const make = Effect.gen(function* () {
   const pi = yield* PiClient;
   const store = yield* Store;
   const sessions = yield* Ref.make(HashMap.empty<string, ManagedSession>());
-  // Captured so the idle-eviction timer runs on the Pico host runtime (with its
-  // logger config) instead of escaping to the Effect default runtime.
+  // Runs the idle-eviction timer on the host runtime (its logger config) instead of the Effect default.
   const timerRuntime = yield* Effect.runtime<never>();
 
   const reattachInFlight = yield* Ref.make(
@@ -392,9 +390,7 @@ const make = Effect.gen(function* () {
         compacting: yield* Ref.make(false),
         seenClientIds: yield* Ref.make<string[]>([]),
       };
-      // A pump death (e.g. a store defect) silently zombifies the session —
-      // pi keeps running but no events reach the store or subscribers — so
-      // make sure it is at least loudly visible in the logs.
+      // A pump death silently zombifies the session: pi keeps running but no events reach store or subscribers.
       const pumpFiber = yield* Effect.forkDaemon(
         startPump(state, sessionId).pipe(
           Effect.tapErrorCause((cause) =>
@@ -752,9 +748,7 @@ const make = Effect.gen(function* () {
   });
 });
 
-// Scoped so the unified server scope tears sessions down on shutdown (closes pi
-// sessions, interrupts pump fibers) — what the old ManagedRuntime close() did by
-// hand.
+// Scoped so the server scope tears sessions down on shutdown (closes pi, interrupts pump fibers).
 export const SessionManagerLive = Layer.scoped(
   SessionManager,
   Effect.tap(make, (manager) => Effect.addFinalizer(() => manager.closeAll())),

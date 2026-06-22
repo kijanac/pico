@@ -11,8 +11,7 @@ import { Effect, Exit, Layer, ManagedRuntime, Scope } from "effect";
 import { PicoRpc } from "@pico/protocol/rpc";
 import { WebSocket } from "ws";
 
-// realpath so comparisons hold on platforms where tmpdir is a symlink (macOS
-// /var -> /private/var); listFs and session cwd are canonicalized host-side.
+// realpath: tmpdir is a symlink on macOS (/var -> /private/var) but host-side paths are canonicalized.
 const tempRoot = realpathSync(mkdtempSync(join(tmpdir(), "pico-host-smoke-")));
 const workspaceDir = join(tempRoot, "workspace");
 mkdirSync(workspaceDir, { recursive: true });
@@ -117,8 +116,7 @@ async function expectIncrementalWsReplay(wsUrl: string, sessionId: string): Prom
   assert(!replay.some((event) => event.t === "log_reset"), "fresh cursor replay should not need a full log_reset");
 }
 
-// An RPC client over HTTP, sending the Tailscale identity header that the host
-// would normally receive from `tailscale serve`.
+// Sends the Tailscale identity header the host normally receives from `tailscale serve`.
 function makeClientRuntime(baseUrl: string) {
   const ProtocolLive = RpcClient.layerProtocolHttp({
     url: `${baseUrl}/rpc`,

@@ -10,7 +10,7 @@ interface AuthJobState {
 }
 
 const TERMINAL_JOB_TTL_MS = 60_000;
-// Abandoned logins (never completed, never cancelled) expire outright.
+// Non-terminal (abandoned) logins expire after this.
 const MAX_JOB_AGE_MS = 30 * 60_000;
 const BEDROCK_PROVIDER_ID = "amazon-bedrock";
 const isTerminalStatus = (status: AuthLoginJob["status"]) => ["success", "failed", "cancelled"].includes(status);

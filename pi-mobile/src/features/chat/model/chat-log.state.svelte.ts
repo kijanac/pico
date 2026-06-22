@@ -1,8 +1,7 @@
 import type { AssistantMessage, ClientEvent, CompactionEntry, LogEntry, WireEvent } from "@pico/protocol";
 import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
 
-// effect/Schema decodes to readonly types; this reactive log mutates the
-// freshly-decoded entries it owns in place, so it holds them as mutable drafts.
+// effect/Schema decodes to readonly; this log mutates owned entries in place.
 type Mutable<T> = T extends ReadonlyArray<infer U>
   ? Mutable<U>[]
   : T extends object
@@ -25,12 +24,8 @@ const emptyEntries: LogEntry[] = [];
 
 const activeLog = $derived(activeSessionId ? logs[activeSessionId] : undefined);
 
-// Optimistic local echo: sends append a placeholder user entry immediately so
-// the message appears on tap instead of after the server round trip. The
-// server's user_message ack carries the send's clientId and replaces the
-// placeholder exactly (text match is the fallback for acks without one).
-// Unacked echoes flip to "failed" after a timeout; retry re-sends the same
-// clientId, which the Pico host dedupes, so retrying can't double-send.
+// Retry re-sends the same clientId, which the Pico host dedupes, so retrying
+// can't double-send.
 let localEchoCounter = 0;
 
 const ECHO_ACK_TIMEOUT_MS = 10_000;
@@ -258,10 +253,9 @@ function applyWireEventForSession(sessionId: string, event: WireEvent): void {
 
   switch (event.t) {
     case "hello":
-      // hello is the authoritative snapshot on every (re)connect. If the
-      // session is not mid-turn, any tool entry still "running" is an orphan
-      // from a turn that died with a previous bridge process — its tool_result
-      // was never persisted, so the cursor replay alone can't heal it.
+      // When not mid-turn, a still-"running" tool entry is an orphan from a turn
+      // that died with a previous bridge process; its tool_result was never
+      // persisted, so cursor replay alone can't heal it.
       if (event.session.status === "idle" || event.session.status === "error") {
         reconcileOrphanedToolCalls(log);
       }
@@ -288,8 +282,8 @@ function applyWireEventForSession(sessionId: string, event: WireEvent): void {
 
     case "user_message": {
       const entry = event.entry;
-      // An ack with a clientId belongs to one specific send; only its own
-      // echo may absorb it. Text matching covers acks from older hosts.
+      // An ack with a clientId may only be absorbed by its own echo; text
+      // matching is the fallback for acks from older hosts.
       const echoIndex = log.entries.findIndex((e) => {
         if (e.kind !== "user" || !isLocalEcho(e.id)) return false;
         if (entry.clientId) return localEchoes.get(e.id)?.event.clientId === entry.clientId;

@@ -20,9 +20,8 @@ interface WsState {
 
 const STATE = new WeakMap<WebSocket, WsState>();
 
-// A client that stops reading (locked phone, dead link) would otherwise let
-// the socket buffer grow without bound. Killing the connection is safe: the
-// client reconnects with its cursor and replays what it missed.
+// A client that stops reading would let the socket buffer grow unbounded;
+// killing the connection is safe since the client reconnects via its cursor.
 const MAX_WS_BUFFERED_BYTES = 8 * 1024 * 1024;
 
 const sendOob = (ws: WebSocket, payload: object) => {
@@ -137,8 +136,8 @@ const connection = (
     Effect.catchTag("SessionNotFound", (e) =>
       Effect.sync(() => ws.close(4004, `session not found: ${e.id}`)),
     ),
-    // catchAllCause (not catchAll) so defects also close the socket instead
-    // of killing the fiber and leaving the client on a dead connection.
+    // catchAllCause (not catchAll) so defects also close the socket rather
+    // than killing the fiber and stranding the client on a dead connection.
     Effect.catchAllCause((cause) =>
       Cause.isInterruptedOnly(cause)
         ? Effect.void

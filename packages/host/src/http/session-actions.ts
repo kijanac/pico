@@ -2,8 +2,7 @@ import { HttpRouter, HttpServerResponse } from "@effect/platform";
 import { Context, Effect } from "effect";
 import { SessionManager } from "../session.ts";
 
-// Streams the rendered HTML export. Runs Effect-native against the SessionManager
-// captured when the route layer is built (its methods need no further context).
+// manager is a captured service whose methods need no further Effect context.
 export const exportRoute = (manager: Context.Tag.Service<SessionManager>) =>
   Effect.flatMap(HttpRouter.params, ({ id }) =>
     manager.exportHtml(id ?? "").pipe(

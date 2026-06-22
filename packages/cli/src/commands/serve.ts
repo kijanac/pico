@@ -13,7 +13,6 @@ export const serveCommand = Effect.gen(function* () {
     console.log(`  workspaces: ${plan.workspacesDir}`);
     console.log(`  data:       ${plan.dataDir}`);
   });
-  // Run until interrupted; NodeRuntime.runMain handles Ctrl+C and closes the
-  // host via the finalizer above.
+  // NodeRuntime.runMain interrupts this on Ctrl+C, triggering the finalizer.
   yield* Effect.never;
 }).pipe(Effect.scoped);

@@ -51,8 +51,6 @@ export function classifyHostIssue(error: unknown, options: HostIssueOptions = {}
   return code ? hostIssueForCode(code, options) : genericIssue(error);
 }
 
-// Classify a failed host call. Typed HostErrors map directly; transport failures
-// are refined by checking reachability and probing identity against the host.
 export function classifyHostFailure(
   error: unknown,
   options: HostIssueOptions = {},

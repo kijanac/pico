@@ -8,13 +8,10 @@ const pathOf = (url: string): string => {
   return query === -1 ? url : url.slice(0, query);
 };
 
-// Single global gate wrapping the whole app, mirroring the previous Hono order:
-//   /admin/*  -> loopback admin-token (the CLI; no Tailscale identity present)
-//   /healthz  -> public
-//   /rpc      -> passed through; the RPC AuthMiddleware self-gates per method
-//                (it can see the rpc tag, which a single endpoint path cannot)
-//   everything else (the HTML export) -> Tailscale identity + claimed check
-// OPTIONS preflights pass straight through so the CORS layer can answer them.
+// /admin/* uses loopback admin-token: the CLI has no Tailscale identity.
+// /rpc is passed through so the RPC AuthMiddleware can self-gate per method
+// (it sees the rpc tag, which a single endpoint path cannot).
+// OPTIONS passes through so the CORS layer can answer preflights.
 export const authMiddleware = (
   app: HttpApp.Default,
 ): Effect.Effect<

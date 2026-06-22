@@ -188,8 +188,7 @@ const rpcClientLayer = (hostUrl: string) =>
     Layer.provide(FetchHttpClient.layer),
   );
 
-// Probe one rpc method on a host (8s timeout), returning an Either so the caller
-// can render a diagnostic from either the value or the typed failure.
+// Returns an Either so the caller can render a diagnostic from the typed failure instead of short-circuiting.
 const probeHost = <A, E>(hostUrl: string, call: (client: RpcClientService) => Effect.Effect<A, E>) =>
   makeRpcClient.pipe(
     Effect.flatMap(call),

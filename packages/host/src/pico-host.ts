@@ -19,8 +19,6 @@ export interface StartPicoHostOptions {
   readonly nodeEnv?: string;
 }
 
-// Best-effort: reads the embedded Pi SDK's package.json. Any failure (resolution,
-// missing file, bad JSON) degrades to undefined.
 export const getBundledPiSdkVersion: Effect.Effect<string | undefined, never, FileSystem.FileSystem> =
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -33,12 +31,8 @@ export const getBundledPiSdkVersion: Effect.Effect<string | undefined, never, Fi
   }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 
 /**
- * Public host runner entrypoint for CLIs and future package extraction.
- *
- * Most host runtime internals still read configuration from process env at module
- * initialization time. This wrapper keeps that constraint out of callers:
- * pass explicit paths/tokens here, and it imports the configured host only
- * after the env has been populated.
+ * Host internals read config from process env at module init, so env must be
+ * populated before the host is imported.
  */
 export async function startPicoHost(options: StartPicoHostOptions): Promise<PicoHostHandle> {
   process.env.PICO_HOST_DB = options.dbPath;

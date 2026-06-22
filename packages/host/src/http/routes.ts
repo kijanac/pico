@@ -3,9 +3,7 @@ import { Effect } from "effect";
 import { SessionManager } from "../session.ts";
 import { exportRoute } from "./session-actions.ts";
 
-// Non-API routes mounted on the same HttpApiBuilder.Router that serve() builds.
-// The streaming HTML export is the only one left (tRPC became /rpc, served by
-// RpcServer). SessionManager is captured at build time and closed over.
+// Only the streaming HTML export remains here; tRPC moved to /rpc, served by RpcServer.
 export const RawRoutesLive = HttpApiBuilder.Router.use((router) =>
   Effect.gen(function* () {
     const manager = yield* SessionManager;

@@ -77,7 +77,7 @@ export function createOnboardingState(): OnboardingState {
 
   async function load(): Promise<void> {
     await settingsState.load();
-    // tsAuthKey is intentionally not restored — it is never persisted.
+    // tsAuthKey is never persisted, so cannot be restored.
     tailnet = settingsState.onboardingDraft.tailnet ?? "";
     hostName = settingsState.onboardingDraft.hostName ?? hostName;
     loaded = true;

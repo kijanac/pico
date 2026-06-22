@@ -11,8 +11,7 @@ import type { LocalAdminPairingData, LocalAdminStatusData } from "./http/api.ts"
 const ADMIN_TOKEN_FILE = "admin-token";
 const PAIRING_TOKEN_FILE = "pairing-token";
 
-// `writeFileString`'s mode only applies on create; chmod enforces 0600 even when
-// the file already exists.
+// writeFileString's mode applies only on create; chmod enforces 0600 on existing files.
 const secureWrite = (fs: FileSystem.FileSystem, path: string, value: string) =>
   fs.writeFileString(path, `${value}\n`, { mode: 0o600 }).pipe(Effect.zipRight(fs.chmod(path, 0o600)));
 
@@ -51,8 +50,7 @@ function readAuthToken(headers: HeaderSource): string | undefined {
   return bearer || headerValue(headers, "x-pico-admin-token")?.trim() || undefined;
 }
 
-// A filesystem failure reading/creating the token denies admin access rather
-// than crashing the request gate.
+// Fail closed: filesystem failure denies admin access rather than crashing the gate.
 export const adminTokenAuthorized = (
   headers: HeaderSource,
 ): Effect.Effect<boolean, never, FileSystem.FileSystem> =>

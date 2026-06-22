@@ -5,7 +5,6 @@ import { Effect, Stream } from "effect";
 
 const gzipAsync = promisify(gzip);
 
-// Only text-ish payloads benefit; binary/already-compressed types do not.
 const COMPRESSIBLE = /^(?:text\/|application\/(?:json|javascript|xml|wasm)|image\/svg\+xml)/i;
 // Below this, gzip framing overhead outweighs the savings.
 const MIN_BYTES = 1024;
@@ -17,8 +16,8 @@ const compressible = (response: HttpServerResponse.HttpServerResponse): boolean 
   response.headers["content-encoding"] === undefined &&
   COMPRESSIBLE.test(response.headers["content-type"] ?? "");
 
-// content-length is dropped (it described the uncompressed body); the rebuilt
-// buffered body re-adds the correct one, streamed bodies go chunked.
+// content-length described the uncompressed body; buffered bodies re-add the
+// correct one, streamed bodies go chunked.
 const withGzipHeaders = (headers: Headers.Headers): Headers.Headers =>
   Headers.set(
     Headers.set(Headers.remove(headers, "content-length"), "content-encoding", "gzip"),
@@ -26,11 +25,9 @@ const withGzipHeaders = (headers: Headers.Headers): Headers.Headers =>
     "accept-encoding",
   );
 
-// gzip compressible response bodies for clients that accept it. Applied via
-// HttpApiBuilder.middleware so it runs INSIDE the app pipeline, before the
-// response is serialized — the serve() middleware slot runs after serialization
-// and so cannot rewrite the body. No @effect/platform compression exists, so
-// this is a thin node:zlib / CompressionStream shim.
+// Must run via HttpApiBuilder.middleware (inside the app pipeline, before
+// serialization); the serve() middleware slot runs after serialization and
+// cannot rewrite the body.
 export const compress = (
   httpApp: HttpApp.Default,
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> =>
@@ -55,9 +52,8 @@ export const compress = (
     }
 
     if (body._tag === "Stream") {
-      // CompressionStream is the stateful gzip transform (it flushes across
-      // chunks). The cast only bridges DOM vs node web-stream lib typings
-      // (WritableStream<BufferSource> variance); it is structurally compatible.
+      // Cast bridges DOM vs node web-stream lib typings (WritableStream<BufferSource>
+      // variance); structurally compatible.
       const gzip = new CompressionStream("gzip") as unknown as {
         readonly readable: ReadableStream<Uint8Array>;
         readonly writable: WritableStream<Uint8Array>;

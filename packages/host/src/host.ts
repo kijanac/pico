@@ -36,19 +36,14 @@ export interface LaunchedHttpServer {
   readonly stop: () => Promise<void>;
 }
 
-// Assembles the whole server as one self-contained layer (typed HttpApi + RPC +
-// raw routes + CORS/gzip + the global auth gate) and runs it in a single scope
-// with the app services provided once. The RPC handlers run in-context against
-// those services; ws + the export route reuse the same context (a captured
-// Runtime / build-time SessionManager). Exported so the smoke test exercises the
-// real wiring.
+// ws + the export route reuse the RPC handlers' app context via a captured
+// Runtime / build-time SessionManager.
 export function launchHttpServer(
   port: number,
   host: string,
   onServer?: (server: Server) => void,
 ): LaunchedHttpServer {
-  // Created eagerly so the node server is a stable reference; listen happens
-  // when the layer builds below.
+  // Created eagerly for a stable reference; listen happens when the layer builds.
   const server = createServer();
   onServer?.(server);
   let wss: WebSocketServer | undefined;
@@ -75,14 +70,11 @@ export function launchHttpServer(
 
   const program = Effect.gen(function* () {
     // Pre-generate the loopback admin token before the server accepts requests,
-    // so the co-located CLI can read it the moment the host reports ready. The
-    // data directory already exists (the Store layer created it on build).
+    // so the co-located CLI can read it the moment the host reports ready.
     yield* ensureLocalAdminToken();
     yield* Layer.build(ServerLive);
-    // NodeHttpServer attaches its own "upgrade" listener for Effect-native
-    // websockets; we run the session WebSocket on raw `ws`, so replace it once
-    // the server is built. ws forks effects on a Runtime captured from the same
-    // app context the RPC handlers use.
+    // NodeHttpServer attaches its own "upgrade" listener; we run the session
+    // WebSocket on raw `ws`, so replace it once the server is built.
     const runtime = yield* Effect.runtime<SessionManager>();
     yield* Effect.sync(() => {
       server.removeAllListeners("upgrade");
@@ -92,7 +84,6 @@ export function launchHttpServer(
   }).pipe(
     Effect.provide(AppLayer),
     Effect.provide(NodeContext.layer),
-    // OTel tracer for the whole server: HTTP + RPC spans flow through it.
     // No-op unless PICO_HOST_OTEL=1 (then spans print to the console).
     Effect.provide(TracingLive),
     Effect.scoped,
@@ -104,8 +95,7 @@ export function launchHttpServer(
   const stop = async () => {
     const currentWss = wss;
     if (currentWss) await new Promise<void>((resolve) => currentWss.close(() => resolve()));
-    // Interrupting the fiber closes the scope, running the layer finalizers:
-    // the node server shuts down and SessionManager tears its sessions down.
+    // Interrupting the fiber closes the scope, running the layer finalizers.
     await Effect.runPromise(Fiber.interrupt(fiber));
   };
 
