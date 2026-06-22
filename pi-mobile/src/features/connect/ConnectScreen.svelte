@@ -73,20 +73,17 @@
     {#if hostUrl}
       <p class="type-meta mt-2 break-all text-[color:var(--color-fg-muted)]">{hostUrl}</p>
     {/if}
-    {#if connectState === "failed"}
-      <div class="mt-4 space-y-3">
-        {#if issue}
-          <HostIssuePanel issue={issue} />
-        {:else}
-          <p class="type-copy text-[color:var(--color-fg-muted)]">{message}</p>
-        {/if}
-        <div class="flex gap-2">
-          <Button type="button" variant="outline" class="h-10 flex-1" onclick={() => navigateTo(routePaths.onboarding, "replace")}>setup</Button>
-          <Button type="button" class="h-10 flex-1" onclick={connectFromQuery}>retry</Button>
-        </div>
-      </div>
+    {#if connectState === "failed" && issue}
+      <HostIssuePanel issue={issue} class="mt-4" />
     {:else}
       <p class="type-copy mt-3 text-[color:var(--color-fg-muted)]">{message}</p>
+    {/if}
+
+    {#if connectState === "failed"}
+      <div class="mt-4 flex gap-2">
+        <Button type="button" variant="outline" class="h-10 flex-1" onclick={() => navigateTo(routePaths.onboarding, "replace")}>setup</Button>
+        <Button type="button" class="h-10 flex-1" onclick={connectFromQuery}>retry</Button>
+      </div>
     {/if}
   </div>
 </main>

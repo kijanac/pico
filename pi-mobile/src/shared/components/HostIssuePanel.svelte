@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import { AlertTriangle, KeyRound, PlugZap, ShieldAlert, WifiOff } from "@lucide/svelte";
   import type { HostIssue } from "@/shared/lib/host-issues";
 
@@ -6,10 +7,12 @@
     issue,
     compact = false,
     class: className = "",
+    action,
   }: {
     issue: HostIssue;
     compact?: boolean;
     class?: string;
+    action?: Snippet;
   } = $props();
 
   const toneClass = $derived(
@@ -45,5 +48,8 @@
         </ul>
       {/if}
     </div>
+    {#if action}
+      <div class="shrink-0 self-start">{@render action()}</div>
+    {/if}
   </div>
 </div>

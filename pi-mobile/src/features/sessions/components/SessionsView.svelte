@@ -85,12 +85,13 @@
   </header>
 
   {#if hostIssue && sessions.length > 0}
-    <div class="mx-3 mt-4 space-y-2">
-      <HostIssuePanel issue={hostIssue} compact />
-      <button type="button" class="type-meta underline text-[color:var(--color-fg-muted)]" onclick={() => void onRefresh()}>
-        retry
-      </button>
-    </div>
+    <HostIssuePanel issue={hostIssue} compact class="mx-3 mt-4">
+      {#snippet action()}
+        <button type="button" class="type-meta underline text-[color:var(--color-fg-muted)] active:opacity-70" onclick={() => void onRefresh()}>
+          retry
+        </button>
+      {/snippet}
+    </HostIssuePanel>
   {/if}
 
   <PullToRefresh onRefresh={onRefresh} class="mt-4 min-h-0 flex-1">
