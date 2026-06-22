@@ -1,9 +1,9 @@
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
-import { FileSystem } from "@effect/platform";
-import { Effect } from "effect";
-import { createTRPCClient, httpLink } from "@trpc/client";
-import type { AppRouter } from "@pico/protocol/trpc";
+import { FetchHttpClient, FileSystem } from "@effect/platform";
+import { RpcClient, RpcSerialization } from "@effect/rpc";
+import { Duration, Effect, Layer } from "effect";
+import { PicoRpc } from "@pico/protocol/rpc";
 import { getBundledPiSdkVersion } from "@pico/host-runtime/host";
 import { commandExists, run, runOutput } from "./exec.ts";
 import type { Diagnostic } from "./errors.ts";
@@ -179,16 +179,25 @@ const piModelRegistryCheck = (workspacesDir: string) =>
     } satisfies Diagnostic;
   });
 
-function trpcClientForHost(hostUrl: string) {
-  return createTRPCClient<AppRouter>({
-    links: [
-      httpLink({
-        url: `${hostUrl.replace(/\/+$/, "")}/trpc`,
-        fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(8_000) }),
-      }),
-    ],
-  });
-}
+const makeRpcClient = RpcClient.make(PicoRpc);
+type RpcClientService = Effect.Effect.Success<typeof makeRpcClient>;
+
+const rpcClientLayer = (hostUrl: string) =>
+  RpcClient.layerProtocolHttp({ url: `${hostUrl.replace(/\/+$/, "")}/rpc` }).pipe(
+    Layer.provide(RpcSerialization.layerJson),
+    Layer.provide(FetchHttpClient.layer),
+  );
+
+// Probe one rpc method on a host (8s timeout), returning an Either so the caller
+// can render a diagnostic from either the value or the typed failure.
+const probeHost = <A, E>(hostUrl: string, call: (client: RpcClientService) => Effect.Effect<A, E>) =>
+  makeRpcClient.pipe(
+    Effect.flatMap(call),
+    Effect.scoped,
+    Effect.provide(rpcClientLayer(hostUrl)),
+    Effect.timeout(Duration.seconds(8)),
+    Effect.either,
+  );
 
 const tailscaleIdentityCheck = (options: { readonly portOpen: boolean; readonly port: number; readonly hostUrl?: string }) =>
   Effect.gen(function* () {
@@ -226,10 +235,7 @@ const tailscaleIdentityCheck = (options: { readonly portOpen: boolean; readonly 
       } satisfies Diagnostic;
     }
 
-    const identityResult = yield* Effect.tryPromise({
-      try: () => trpcClientForHost(hostUrl).system.identity.query({}),
-      catch: (error) => error,
-    }).pipe(Effect.either);
+    const identityResult = yield* probeHost(hostUrl, (client) => client.system.identity());
 
     if (identityResult._tag === "Left") {
       const error = identityResult.left;
@@ -263,10 +269,7 @@ const hostProviderAuthCheck = (options: { readonly portOpen: boolean; readonly h
     if (!options.portOpen || !options.hostUrl) return undefined;
 
     const hostUrl = options.hostUrl;
-    const authResult = yield* Effect.tryPromise({
-      try: () => trpcClientForHost(hostUrl).auth.providers.query({}),
-      catch: (error) => error,
-    }).pipe(Effect.either);
+    const authResult = yield* probeHost(hostUrl, (client) => client.auth.providers());
 
     if (authResult._tag === "Left") {
       const error = authResult.left;

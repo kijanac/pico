@@ -22,9 +22,9 @@
   "dependencies": {
     "@effect/platform": "^0.96.2",
     "@effect/platform-node": "^0.107.0",
+    "@effect/rpc": "^0.75.1",
     "@pico/host-runtime": "workspace:*",
     "@pico/protocol": "workspace:*",
-    "@trpc/client": "^11.17.0",
     "effect": "^3.21.4"
   },
   "devDependencies": {

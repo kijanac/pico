@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 import { readFileSync, writeFileSync } from "node:fs";
-import * as v from "valibot";
+import { Schema } from "effect";
 import {
   MIN_MOBILE_VERSION,
   PROTOCOL_VERSION,
@@ -8,46 +8,51 @@ import {
 } from "../../protocol/src/version.ts";
 import { renderHostCloudInit } from "../../protocol/src/cloud-init.ts";
 
-const Asset = v.object({
-  name: v.string(),
-  browser_download_url: v.string(),
+const Asset = Schema.Struct({
+  name: Schema.String,
+  browser_download_url: Schema.String,
 });
 
-const Release = v.object({
-  tag_name: v.string(),
-  assets: v.array(Asset),
+const Release = Schema.Struct({
+  tag_name: Schema.String,
+  assets: Schema.Array(Asset),
 });
-type Release = v.InferOutput<typeof Release>;
+type Release = typeof Release.Type;
 
-const Manifest = v.object({
-  version: v.string(),
-  artifact: v.object({
-    name: v.string(),
-    sha256: v.string(),
+const Manifest = Schema.Struct({
+  version: Schema.String,
+  artifact: Schema.Struct({
+    name: Schema.String,
+    sha256: Schema.String,
   }),
 });
 
-const UpdateState = v.object({
-  currentVersion: v.optional(v.string()),
-  lastSeenVersion: v.optional(v.string()),
-  lastSeenAt: v.optional(v.number()),
-  updatedAt: v.optional(v.number()),
-  failedAt: v.optional(v.number()),
-  failure: v.optional(v.object({
-    version: v.string(),
-    reason: v.string(),
-    at: v.number(),
+const UpdateStateSchema = Schema.Struct({
+  currentVersion: Schema.optional(Schema.String),
+  lastSeenVersion: Schema.optional(Schema.String),
+  lastSeenAt: Schema.optional(Schema.Number),
+  updatedAt: Schema.optional(Schema.Number),
+  failedAt: Schema.optional(Schema.Number),
+  failure: Schema.optional(Schema.Struct({
+    version: Schema.String,
+    reason: Schema.String,
+    at: Schema.Number,
   })),
 });
-type UpdateState = v.InferOutput<typeof UpdateState>;
 
-function parseFile<TSchema extends v.GenericSchema>(
-  schema: TSchema,
-  path: string,
-  label: string,
-): v.InferOutput<TSchema> {
+// Mutable working copy (decoded state is mutated in place by state-set).
+interface UpdateState {
+  currentVersion?: string;
+  lastSeenVersion?: string;
+  lastSeenAt?: number;
+  updatedAt?: number;
+  failedAt?: number;
+  failure?: { version: string; reason: string; at: number };
+}
+
+function parseFile<A, I>(schema: Schema.Schema<A, I>, path: string, label: string): A {
   try {
-    return v.parse(schema, JSON.parse(readFileSync(path, "utf8")));
+    return Schema.decodeUnknownSync(schema)(JSON.parse(readFileSync(path, "utf8")));
   } catch (error) {
     throw new Error(`invalid ${label} JSON at ${path}: ${String(error)}`);
   }
@@ -55,7 +60,7 @@ function parseFile<TSchema extends v.GenericSchema>(
 
 function readUpdateState(path: string): UpdateState {
   try {
-    return v.parse(UpdateState, JSON.parse(readFileSync(path, "utf8")));
+    return Schema.decodeUnknownSync(UpdateStateSchema)(JSON.parse(readFileSync(path, "utf8"))) as UpdateState;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
     throw new Error(`invalid update state JSON at ${path}: ${String(error)}`);

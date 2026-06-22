@@ -9,10 +9,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./trpc": {
-      "types": "./dist/trpc.d.ts",
-      "import": "./dist/trpc.js"
-    },
     "./rpc": {
       "types": "./dist/rpc.d.ts",
       "import": "./dist/rpc.js"
@@ -25,9 +21,7 @@
   },
   "dependencies": {
     "@effect/rpc": "^0.75.1",
-    "@trpc/server": "^11.17.0",
-    "effect": "^3.21.4",
-    "valibot": "^1.0.0"
+    "effect": "^3.21.4"
   },
   "devDependencies": {
     "typescript": "^5.9.0"

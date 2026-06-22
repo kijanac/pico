@@ -1,6 +1,6 @@
 import { readdirSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve as resolvePath } from "node:path";
-import type { FsListing } from "@pico/protocol/trpc";
+import type { FsListing } from "@pico/protocol/rpc";
 import { WORKSPACES_DIR } from "./config.ts";
 
 const workspaceRoot = () => resolvePath(WORKSPACES_DIR);

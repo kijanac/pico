@@ -29,10 +29,8 @@
     "@effect/platform-node": "^0.107.0",
     "@effect/rpc": "^0.75.1",
     "@pico/protocol": "workspace:*",
-    "@trpc/server": "^11.17.0",
     "effect": "^3.21.4",
     "tsx": "^4.19.0",
-    "valibot": "^1.0.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
