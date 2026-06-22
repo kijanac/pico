@@ -52,7 +52,9 @@ export function launchHttpServer(
       HttpApiBuilder.middlewareCors({
         allowedOrigins: HOST_INSECURE_NO_AUTH ? () => true : allowedOrigins(),
         allowedMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allowedHeaders: ["content-type"],
+        // The Effect HTTP client attaches trace-propagation headers to every
+        // request; allow them through CORS or the browser blocks the POST.
+        allowedHeaders: ["content-type", "b3", "traceparent", "tracestate"],
       }),
     ),
     Layer.provide(HttpApiBuilder.middleware(compress)),
