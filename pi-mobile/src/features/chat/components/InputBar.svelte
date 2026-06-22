@@ -10,6 +10,7 @@
   import { haptics } from "@/shared/mobile/haptics";
   import { createLongPress } from "@/shared/gestures/long-press";
   import { clearSessionQueue, getSessionQueue } from "@/features/chat/api";
+  import { runHost } from "@/shared/lib/rpc-client";
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
   import { Button } from "@/shared/ui/button";
   import ImageTray from "@/features/chat/components/ImageTray.svelte";
@@ -243,7 +244,7 @@
     }
 
     try {
-      const next = await getSessionQueue(sessionId);
+      const next = await runHost(getSessionQueue(sessionId));
       if (requestId !== queueRequestId) return;
       chatQueueState.set(sessionId, next);
     } catch (error) {
@@ -261,7 +262,7 @@
   async function clearQueuedMessages(): Promise<void> {
     clearing = true;
     try {
-      await clearSessionQueue(sessionId);
+      await runHost(clearSessionQueue(sessionId));
       chatQueueState.clear(sessionId);
     } finally {
       clearing = false;

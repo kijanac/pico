@@ -1,25 +1,15 @@
-import { getHostTrpc } from "@/shared/lib/host-client";
+import { rpc } from "@/shared/lib/rpc-client";
 
-export function listAuthProviders() {
-  return getHostTrpc().auth.providers.query({});
-}
+export const listAuthProviders = () => rpc((c) => c.auth.providers());
 
-export function startAuthLogin(providerId: string) {
-  return getHostTrpc().auth.startLogin.mutate({ providerId });
-}
+export const startAuthLogin = (providerId: string) => rpc((c) => c.auth.startLogin({ providerId }));
 
-export function getAuthLoginJob(jobId: string) {
-  return getHostTrpc().auth.getLogin.query({ jobId });
-}
+export const getAuthLoginJob = (jobId: string) => rpc((c) => c.auth.getLogin({ jobId }));
 
-export function submitAuthLoginInput(jobId: string, value: string) {
-  return getHostTrpc().auth.submitLoginInput.mutate({ jobId, value });
-}
+export const submitAuthLoginInput = (jobId: string, value: string) =>
+  rpc((c) => c.auth.submitLoginInput({ jobId, value }));
 
-export function saveAuthApiKey(providerId: string, apiKey: string) {
-  return getHostTrpc().auth.saveApiKey.mutate({ providerId, apiKey });
-}
+export const saveAuthApiKey = (providerId: string, apiKey: string) =>
+  rpc((c) => c.auth.saveApiKey({ providerId, apiKey }));
 
-export function cancelAuthLogin(jobId: string) {
-  return getHostTrpc().auth.cancelLogin.mutate({ jobId });
-}
+export const cancelAuthLogin = (jobId: string) => rpc((c) => c.auth.cancelLogin({ jobId }));

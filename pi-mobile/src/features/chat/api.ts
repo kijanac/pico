@@ -1,34 +1,23 @@
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { getHostClient, getHostTrpc } from "@/shared/lib/host-client";
+import { getHostClient } from "@/shared/lib/host-client";
+import { rpc } from "@/shared/lib/rpc-client";
 
-export function compactSession(sessionId: string, instructions?: string) {
-  return getHostTrpc().sessions.compact.mutate({ id: sessionId, instructions: instructions?.trim() || undefined });
-}
+export const compactSession = (sessionId: string, instructions?: string) =>
+  rpc((c) => c.sessions.compact({ id: sessionId, instructions: instructions?.trim() || undefined }));
 
-export function getSessionQueue(sessionId: string) {
-  return getHostTrpc().sessions.queue.query({ id: sessionId });
-}
+export const getSessionQueue = (sessionId: string) => rpc((c) => c.sessions.queue({ id: sessionId }));
 
-export function clearSessionQueue(sessionId: string) {
-  return getHostTrpc().sessions.clearQueue.mutate({ id: sessionId });
-}
+export const clearSessionQueue = (sessionId: string) => rpc((c) => c.sessions.clearQueue({ id: sessionId }));
 
-export function listSessionCommands(sessionId: string) {
-  return getHostTrpc().sessions.commands.query({ id: sessionId });
-}
+export const listSessionCommands = (sessionId: string) => rpc((c) => c.sessions.commands({ id: sessionId }));
 
-export function getSessionSettings(sessionId: string) {
-  return getHostTrpc().sessions.controls.query({ id: sessionId });
-}
+export const getSessionSettings = (sessionId: string) => rpc((c) => c.sessions.controls({ id: sessionId }));
 
-export function patchSessionSetting(sessionId: string, key: string, value: string | boolean) {
-  return getHostTrpc().sessions.patchControl.mutate({ id: sessionId, key, value });
-}
+export const patchSessionSetting = (sessionId: string, key: string, value: string | boolean) =>
+  rpc((c) => c.sessions.patchControl({ id: sessionId, key, value }));
 
-export function getSessionStats(sessionId: string) {
-  return getHostTrpc().sessions.stats.query({ id: sessionId });
-}
+export const getSessionStats = (sessionId: string) => rpc((c) => c.sessions.stats({ id: sessionId }));
 
 const safeFilenamePart = (value: string): string =>
   value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "session";
@@ -69,10 +58,7 @@ function isShareCanceled(error: unknown): boolean {
   return error instanceof Error && error.message === "Share canceled";
 }
 
-export function getSessionTree(sessionId: string) {
-  return getHostTrpc().sessions.tree.query({ id: sessionId });
-}
+export const getSessionTree = (sessionId: string) => rpc((c) => c.sessions.tree({ id: sessionId }));
 
-export function navigateSessionTree(sessionId: string, opts: { entryId: string; summarize?: boolean }) {
-  return getHostTrpc().sessions.navigateTree.mutate({ id: sessionId, ...opts });
-}
+export const navigateSessionTree = (sessionId: string, opts: { entryId: string; summarize?: boolean }) =>
+  rpc((c) => c.sessions.navigateTree({ id: sessionId, ...opts }));

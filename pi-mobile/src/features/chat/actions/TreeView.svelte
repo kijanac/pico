@@ -1,10 +1,11 @@
 <script lang="ts">
   import { Loader2 } from "@lucide/svelte";
+  import type { SessionTree } from "@pico/protocol";
   import type { ActionErrorHandler } from "./types";
   import { getSessionTree, navigateSessionTree } from "@/features/chat/api";
+  import { runHost } from "@/shared/lib/rpc-client";
   import ActionRow from "@/shared/components/ActionRow.svelte";
 
-  type SessionTree = Awaited<ReturnType<typeof getSessionTree>>;
   type TreeEntry = SessionTree["entries"][number];
 
   let { sessionId, onDone, onError }: { sessionId: string; onDone: () => void; onError: ActionErrorHandler } = $props();
@@ -21,7 +22,7 @@
   async function loadTree(): Promise<void> {
     loading = true;
     try {
-      tree = await getSessionTree(sessionId);
+      tree = await runHost(getSessionTree(sessionId));
     } catch (error) {
       onError(String(error));
     } finally {
@@ -34,7 +35,7 @@
     jumping = entry.id;
     onError(null);
     try {
-      await navigateSessionTree(sessionId, { entryId: entry.id, summarize });
+      await runHost(navigateSessionTree(sessionId, { entryId: entry.id, summarize }));
       onDone();
     } catch (error) {
       onError(String(error));

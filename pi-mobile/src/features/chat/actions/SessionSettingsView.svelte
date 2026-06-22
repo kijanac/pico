@@ -1,10 +1,11 @@
 <script lang="ts">
+  import type { SessionControls } from "@pico/protocol";
   import type { ActionErrorHandler } from "./types";
   import { getSessionSettings, patchSessionSetting } from "@/features/chat/api";
+  import { runHost } from "@/shared/lib/rpc-client";
   import { haptics } from "@/shared/mobile/haptics";
   import ActionRow from "@/shared/components/ActionRow.svelte";
 
-  type SessionControls = Awaited<ReturnType<typeof getSessionSettings>>;
   type SessionControl = SessionControls["controls"][number];
 
   let {
@@ -36,7 +37,7 @@
   async function loadSettings(): Promise<void> {
     loading = true;
     try {
-      settings = await getSessionSettings(sessionId);
+      settings = await runHost(getSessionSettings(sessionId));
     } catch (error) {
       onError(String(error));
     } finally {
@@ -51,7 +52,7 @@
     onError(null);
     if (previous) settings = patchLocal(previous, key, value);
     try {
-      settings = await patchSessionSetting(sessionId, key, value);
+      settings = await runHost(patchSessionSetting(sessionId, key, value));
       haptics.success();
     } catch (error) {
       onError(String(error));

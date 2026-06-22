@@ -1,4 +1,4 @@
-import { getHostTrpc } from "@/shared/lib/host-client";
+import { rpc } from "@/shared/lib/rpc-client";
 
 export interface LoadSessionListOptions {
   archived?: boolean;
@@ -9,26 +9,17 @@ export interface CreateSessionInput {
   title: string;
 }
 
-export function loadSessionList(opts?: LoadSessionListOptions) {
-  return getHostTrpc().sessions.list.query(opts ?? {});
-}
+export const loadSessionList = (opts?: LoadSessionListOptions) =>
+  rpc((c) => c.sessions.list({ archived: opts?.archived }));
 
-export function createSession(input: CreateSessionInput) {
-  return getHostTrpc().sessions.create.mutate(input);
-}
+export const createSession = (input: CreateSessionInput) => rpc((c) => c.sessions.create(input));
 
-export function renameSession(sessionId: string, title: string) {
-  return getHostTrpc().sessions.patch.mutate({ id: sessionId, title });
-}
+export const renameSession = (sessionId: string, title: string) =>
+  rpc((c) => c.sessions.patch({ id: sessionId, title }));
 
-export function setSessionArchived(sessionId: string, archived: boolean) {
-  return getHostTrpc().sessions.patch.mutate({ id: sessionId, archived });
-}
+export const setSessionArchived = (sessionId: string, archived: boolean) =>
+  rpc((c) => c.sessions.patch({ id: sessionId, archived }));
 
-export function deleteSession(sessionId: string) {
-  return getHostTrpc().sessions.remove.mutate({ id: sessionId });
-}
+export const deleteSession = (sessionId: string) => rpc((c) => c.sessions.remove({ id: sessionId }));
 
-export function listDirectories(path?: string) {
-  return getHostTrpc().fs.ls.query({ path });
-}
+export const listDirectories = (path?: string) => rpc((c) => c.fs.ls({ path }));

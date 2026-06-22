@@ -172,6 +172,12 @@ importers:
       '@capacitor/share':
         specifier: ^8.0.0
         version: 8.0.1(@capacitor/core@8.3.4)
+      '@effect/platform':
+        specifier: ^0.96.2
+        version: 0.96.2(effect@3.21.4)
+      '@effect/rpc':
+        specifier: ^0.75.1
+        version: 0.75.1(@effect/platform@0.96.2(effect@3.21.4))(effect@3.21.4)
       '@fontsource-variable/jetbrains-mono':
         specifier: ^5.2.8
         version: 5.2.8
@@ -187,9 +193,6 @@ importers:
       '@shikijs/themes':
         specifier: ^4.1.0
         version: 4.1.0
-      '@trpc/client':
-        specifier: ^11.17.0
-        version: 11.17.0(@trpc/server@11.17.0(typescript@5.9.3))(typescript@5.9.3)
       anser:
         specifier: ^2.3.5
         version: 2.3.5

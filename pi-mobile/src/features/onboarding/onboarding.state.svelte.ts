@@ -1,8 +1,10 @@
 import { renderHostCloudInit } from "@pico/protocol";
+import { Effect } from "effect";
 import type { CarouselAPI } from "@/shared/ui/carousel/context";
 import { settingsState } from "@/features/settings/settings.state.svelte";
 import { claimReachableHost, healthcheckHostUrl } from "@/features/onboarding/api";
-import { hostIssueSummary } from "@/shared/lib/host-issues";
+import { classifyHostFailure, hostIssueSummary } from "@/shared/lib/host-issues";
+import { runAt } from "@/shared/lib/rpc-client";
 import { haptics } from "@/shared/mobile/haptics";
 
 export const onboardingSteps = ["tailscale", "keys", "cloud-init", "connect", "providers", "done"] as const;
@@ -138,17 +140,26 @@ export function createOnboardingState(): OnboardingState {
         connectState = "reachable";
         connectMessage = "Pico host is reachable. Saving URL and claiming it with your Tailscale identity…";
         await settingsState.setHostUrl(hostUrl);
-        try {
-          await claimReachableHost(hostUrl);
-          connectState = "claimed";
-          connectMessage = "Pico host connected and claimed. You’re ready to continue.";
-          await settingsState.clearOnboardingDraft();
-          haptics.success();
-          currentIndex = 4;
-        } catch (error) {
-          connectState = "failed";
-          connectMessage = hostIssueSummary(error, { url: hostUrl });
-        }
+        await runAt(
+          hostUrl,
+          claimReachableHost().pipe(
+            Effect.tap(() => Effect.sync(() => {
+              connectState = "claimed";
+              connectMessage = "Pico host connected and claimed. You’re ready to continue.";
+              haptics.success();
+              currentIndex = 4;
+            })),
+            Effect.tap(() => Effect.promise(() => settingsState.clearOnboardingDraft())),
+            Effect.catchAll((error) =>
+              classifyHostFailure(error, { url: hostUrl }).pipe(
+                Effect.andThen((issue) => Effect.sync(() => {
+                  connectState = "failed";
+                  connectMessage = `${issue.title}: ${issue.message}`;
+                })),
+              ),
+            ),
+          ),
+        );
         return;
       }
       connectMessage = `Still waiting for ${hostUrl}… (${attempt}/60)`;

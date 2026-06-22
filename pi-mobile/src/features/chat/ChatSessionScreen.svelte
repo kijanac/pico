@@ -12,7 +12,9 @@
   import SessionAgentActions from "@/features/chat/components/SessionAgentActions.svelte";
   import ExtensionUiSheet from "@/features/chat/components/ExtensionUiSheet.svelte";
   import ExtensionNotifications from "@/features/chat/components/ExtensionNotifications.svelte";
+  import type { SessionStats } from "@pico/protocol";
   import { getSessionStats } from "@/features/chat/api";
+  import { runHost } from "@/shared/lib/rpc-client";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
   import { formatCost, formatTokens } from "@/shared/lib/format";
   import { cwdDisplayName } from "@/shared/lib/path-display";
@@ -22,7 +24,6 @@
   import HomePreview from "@/features/sessions/components/HomePreview.svelte";
   import { warmHighlighter } from "@/shared/lib/highlighter";
 
-  type SessionStats = Awaited<ReturnType<typeof getSessionStats>>;
   type ContextUsage = NonNullable<SessionStats["contextUsage"]>;
 
   let { sessionId }: { sessionId: string } = $props();
@@ -54,7 +55,7 @@
   async function loadStats(): Promise<void> {
     const requestId = ++statsRequestId;
     try {
-      const next = await getSessionStats(sessionId);
+      const next = await runHost(getSessionStats(sessionId));
       if (requestId === statsRequestId) stats = next;
     } catch {
     }

@@ -7,6 +7,7 @@
   import { settingsState } from "@/features/settings/settings.state.svelte";
   import HostIssuePanel from "@/shared/components/HostIssuePanel.svelte";
   import { classifyHostIssue, type HostIssue } from "@/shared/lib/host-issues";
+  import { runAt } from "@/shared/lib/rpc-client";
   import { haptics } from "@/shared/mobile/haptics";
   import { Button } from "@/shared/ui/button";
 
@@ -36,7 +37,7 @@
         connectIssue = classifyHostIssue({ hostErrorCode: "host_unreachable" }, { url: candidate });
         return;
       }
-      await claimReachableHost(candidate);
+      await runAt(candidate, claimReachableHost());
       await settingsState.setHostUrl(candidate);
       haptics.success();
       navigateTo(routePaths.sessions, "replace");

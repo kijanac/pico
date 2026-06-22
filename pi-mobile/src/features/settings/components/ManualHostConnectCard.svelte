@@ -6,6 +6,7 @@
   import { settingsState } from "@/features/settings/settings.state.svelte";
   import HostIssuePanel from "@/shared/components/HostIssuePanel.svelte";
   import { classifyHostIssue, type HostIssue } from "@/shared/lib/host-issues";
+  import { runAt } from "@/shared/lib/rpc-client";
   import { haptics } from "@/shared/mobile/haptics";
   import { Button } from "@/shared/ui/button";
 
@@ -35,7 +36,7 @@
       }
 
       message = "Claiming Pico host with your Tailscale identity…";
-      await claimReachableHost(url, token);
+      await runAt(url, claimReachableHost(token));
       await settingsState.setHostUrl(url);
 
       connectState = "connected";

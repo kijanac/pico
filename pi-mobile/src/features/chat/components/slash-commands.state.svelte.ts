@@ -1,7 +1,8 @@
 import { untrack } from "svelte";
+import type { Commands } from "@pico/protocol";
 import { listSessionCommands } from "@/features/chat/api";
+import { runHost } from "@/shared/lib/rpc-client";
 
-type Commands = Awaited<ReturnType<typeof listSessionCommands>>;
 export type CommandEntry = Commands["builtins"][number] | Commands["prompts"][number] | Commands["skills"][number];
 
 export interface SlashCommandCompletion {
@@ -53,7 +54,7 @@ export function createSlashCommandsState(
     error = null;
 
     try {
-      const next = await listSessionCommands(currentSession);
+      const next = await runHost(listSessionCommands(currentSession));
       if (currentRequest !== requestId) return;
       commands = next;
     } catch (caught) {

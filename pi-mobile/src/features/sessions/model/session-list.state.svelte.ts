@@ -1,6 +1,6 @@
 import type { SessionMeta } from "@pico/protocol";
+import { Effect } from "effect";
 import { settingsState } from "@/features/settings/settings.state.svelte";
-import { healthcheckHostUrl, probeHostIdentity } from "@/features/settings/api";
 import {
   createSession as createSessionRequest,
   deleteSession as deleteSessionRequest,
@@ -10,7 +10,8 @@ import {
   type CreateSessionInput,
 } from "@/features/sessions/api";
 import { clearChatDraft } from "@/features/chat/model/chat-draft";
-import { classifyHostRequestFailure, type HostIssue } from "@/shared/lib/host-issues";
+import { type PicoClient, runHost } from "@/shared/lib/rpc-client";
+import { classifyHostFailure, type HostIssue } from "@/shared/lib/host-issues";
 
 let sessions = $state<SessionMeta[]>([]);
 let archivedView = $state(false);
@@ -22,65 +23,62 @@ let error = $state<HostIssue | null>(null);
 const busy = $derived(refreshing || creating || mutatingSessionId !== null);
 const visibleCount = $derived(sessions.length);
 
+// Classify a failed host call into the reactive error state. Used with tapError,
+// which re-raises afterwards so callers still observe the failure.
+const recordError = (caught: unknown) =>
+  classifyHostFailure(caught, { url: settingsState.hostUrl }).pipe(
+    Effect.andThen((issue) => Effect.sync(() => { error = issue; })),
+  );
+
+function removeLocal(sessionId: string): void {
+  sessions = sessions.filter((session) => session.id !== sessionId);
+}
+
+function replaceSession(session: SessionMeta): void {
+  const index = sessions.findIndex((candidate) => candidate.id === session.id);
+  sessions = index === -1
+    ? [session, ...sessions]
+    : sessions.map((candidate) => (candidate.id === session.id ? session : candidate));
+}
+
+// Run a single-session mutation behind the in-flight guard, recording failures.
+function mutate<A, E>(sessionId: string, effect: Effect.Effect<A, E, PicoClient>): Promise<A> {
+  if (mutatingSessionId) throw new Error("session mutation already in progress");
+  mutatingSessionId = sessionId;
+  return runHost(
+    effect.pipe(
+      Effect.tap(() => Effect.sync(() => { error = null; })),
+      Effect.tapError(recordError),
+    ),
+  ).finally(() => { mutatingSessionId = null; });
+}
+
 export const sessionListState = {
-  get sessions() {
-    return sessions;
-  },
+  get sessions() { return sessions; },
+  get archivedView() { return archivedView; },
+  get refreshing() { return refreshing; },
+  get creating() { return creating; },
+  get mutatingSessionId() { return mutatingSessionId; },
+  get busy() { return busy; },
+  get visibleCount() { return visibleCount; },
+  get error() { return error; },
 
-  get archivedView() {
-    return archivedView;
-  },
-
-  get refreshing() {
-    return refreshing;
-  },
-
-  get creating() {
-    return creating;
-  },
-
-  get mutatingSessionId() {
-    return mutatingSessionId;
-  },
-
-  get busy() {
-    return busy;
-  },
-
-  get visibleCount() {
-    return visibleCount;
-  },
-
-  get error() {
-    return error;
-  },
-
-  clearError(): void {
-    error = null;
-  },
-
-  upsert(session: SessionMeta): void {
-    replaceSession(session);
-  },
-
+  clearError(): void { error = null; },
+  upsert(session: SessionMeta): void { replaceSession(session); },
   patchLocal(sessionId: string, patch: Partial<SessionMeta>): void {
-    sessions = sessions.map((session) =>
-      session.id === sessionId ? { ...session, ...patch } : session,
-    );
+    sessions = sessions.map((session) => (session.id === sessionId ? { ...session, ...patch } : session));
   },
-
-  removeLocal(sessionId: string): void {
-    sessions = sessions.filter((session) => session.id !== sessionId);
-  },
+  removeLocal,
 
   async refresh(): Promise<void> {
     refreshing = true;
     try {
-      sessions = await loadSessionList({ archived: archivedView });
-      error = null;
-    } catch (caught) {
-      error = await classifyHostRequestFailure(caught, { url: settingsState.hostUrl, healthcheck: healthcheckHostUrl, identityProbe: probeHostIdentity });
-      throw caught;
+      await runHost(
+        loadSessionList({ archived: archivedView }).pipe(
+          Effect.tap((list) => Effect.sync(() => { sessions = [...list]; error = null; })),
+          Effect.tapError(recordError),
+        ),
+      );
     } finally {
       refreshing = false;
     }
@@ -94,69 +92,46 @@ export const sessionListState = {
 
   async create(input: CreateSessionInput): Promise<SessionMeta> {
     if (creating) throw new Error("session creation already in progress");
-
     creating = true;
     try {
-      const session = await createSessionRequest(input);
-      archivedView = false;
-      sessions = await loadSessionList({ archived: false });
-      error = null;
-      return session;
-    } catch (caught) {
-      error = await classifyHostRequestFailure(caught, { url: settingsState.hostUrl, healthcheck: healthcheckHostUrl, identityProbe: probeHostIdentity });
-      throw caught;
+      return await runHost(
+        Effect.gen(function* () {
+          const session = yield* createSessionRequest(input);
+          const list = yield* loadSessionList({ archived: false });
+          return { session, list };
+        }).pipe(
+          Effect.tap(({ list }) => Effect.sync(() => { archivedView = false; sessions = [...list]; error = null; })),
+          Effect.tapError(recordError),
+          Effect.map(({ session }) => session),
+        ),
+      );
     } finally {
       creating = false;
     }
   },
 
-  async rename(sessionId: string, title: string): Promise<SessionMeta> {
-    return mutateSession(sessionId, async () => {
-      const session = await renameSessionRequest(sessionId, title);
-      replaceSession(session);
-      return session;
-    });
+  rename(sessionId: string, title: string): Promise<SessionMeta> {
+    return mutate(
+      sessionId,
+      renameSessionRequest(sessionId, title).pipe(Effect.tap((session) => Effect.sync(() => replaceSession(session)))),
+    );
   },
 
-  async setArchived(sessionId: string, archived: boolean): Promise<SessionMeta> {
-    return mutateSession(sessionId, async () => {
-      const session = await setSessionArchived(sessionId, archived);
-      this.removeLocal(sessionId);
-      return session;
-    });
+  setArchived(sessionId: string, archived: boolean): Promise<SessionMeta> {
+    return mutate(
+      sessionId,
+      setSessionArchived(sessionId, archived).pipe(Effect.tap(() => Effect.sync(() => removeLocal(sessionId)))),
+    );
   },
 
-  async delete(sessionId: string): Promise<void> {
-    await mutateSession(sessionId, async () => {
-      await deleteSessionRequest(sessionId);
-      await clearChatDraft(sessionId).catch(() => undefined);
-      this.removeLocal(sessionId);
-    });
+  delete(sessionId: string): Promise<void> {
+    return mutate(
+      sessionId,
+      deleteSessionRequest(sessionId).pipe(
+        Effect.tap(() => Effect.promise(() => clearChatDraft(sessionId).catch(() => undefined))),
+        Effect.tap(() => Effect.sync(() => removeLocal(sessionId))),
+        Effect.asVoid,
+      ),
+    );
   },
 };
-
-async function mutateSession<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
-  if (mutatingSessionId) throw new Error("session mutation already in progress");
-
-  mutatingSessionId = sessionId;
-  try {
-    const result = await operation();
-    error = null;
-    return result;
-  } catch (caught) {
-    error = await classifyHostRequestFailure(caught, { url: settingsState.hostUrl, healthcheck: healthcheckHostUrl, identityProbe: probeHostIdentity });
-    throw caught;
-  } finally {
-    mutatingSessionId = null;
-  }
-}
-
-function replaceSession(session: SessionMeta): void {
-  const index = sessions.findIndex((candidate) => candidate.id === session.id);
-  if (index === -1) {
-    sessions = [session, ...sessions];
-    return;
-  }
-
-  sessions = sessions.map((candidate) => (candidate.id === session.id ? session : candidate));
-}

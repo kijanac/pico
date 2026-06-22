@@ -1,8 +1,8 @@
-import {
-  hostErrorPayloadFromUnknown,
-  isHostErrorCode,
-  type HostErrorCode,
-} from "@pico/protocol";
+import { Effect, Either } from "effect";
+import { isHostErrorCode, type HostErrorCode } from "@pico/protocol";
+import { HostError } from "@pico/protocol/rpc";
+import { healthcheckHostUrl } from "@/features/settings/api";
+import { PicoClient, rpc } from "@/shared/lib/rpc-client";
 
 export type HostIssueKind =
   | "host-unreachable"
@@ -24,15 +24,21 @@ export interface HostIssueOptions {
   readonly url?: string;
 }
 
-export function classifyHostIssue(error: unknown, options: HostIssueOptions = {}): HostIssue {
-  const code = hostErrorCodeFromIssueInput(error);
-  if (code) return hostIssueForCode(code, options);
+export function hostErrorCodeOf(error: unknown): HostErrorCode | undefined {
+  if (error instanceof HostError) return error.code;
+  if (isHostErrorCode(error)) return error;
+  if (typeof error === "object" && error !== null && "hostErrorCode" in error) {
+    const code = (error as { hostErrorCode: unknown }).hostErrorCode;
+    if (isHostErrorCode(code)) return code;
+  }
+  return undefined;
+}
 
-  const text = errorText(error);
+function genericIssue(error: unknown): HostIssue {
   return {
     kind: "generic",
     title: "Pico host request failed",
-    message: text || "The Pico host returned an unexpected error.",
+    message: errorText(error) || "The Pico host returned an unexpected error.",
     steps: [
       "Try again after checking that the host is running.",
       "Run `pico doctor` on the host for a more detailed diagnosis.",
@@ -40,29 +46,31 @@ export function classifyHostIssue(error: unknown, options: HostIssueOptions = {}
   };
 }
 
-export async function classifyHostRequestFailure(
+export function classifyHostIssue(error: unknown, options: HostIssueOptions = {}): HostIssue {
+  const code = hostErrorCodeOf(error);
+  return code ? hostIssueForCode(code, options) : genericIssue(error);
+}
+
+// Classify a failed host call. Typed HostErrors map directly; transport failures
+// are refined by checking reachability and probing identity against the host.
+export function classifyHostFailure(
   error: unknown,
-  options: HostIssueOptions & {
-    healthcheck?: (url: string) => Promise<boolean>;
-    identityProbe?: (url: string) => Promise<unknown>;
-  } = {},
-): Promise<HostIssue> {
-  if (hostErrorCodeFromIssueInput(error)) return classifyHostIssue(error, options);
-  if (options.url && options.healthcheck) {
-    if (!(await options.healthcheck(options.url).catch(() => false))) {
-      return classifyHostIssue({ hostErrorCode: "host_unreachable" }, options);
+  options: HostIssueOptions = {},
+): Effect.Effect<HostIssue, never, PicoClient> {
+  const code = hostErrorCodeOf(error);
+  if (code) return Effect.succeed(hostIssueForCode(code, options));
+  const url = options.url;
+  if (!url) return Effect.succeed(genericIssue(error));
+  return Effect.gen(function* () {
+    const reachable = yield* Effect.promise(() => healthcheckHostUrl(url).catch(() => false));
+    if (!reachable) return hostIssueForCode("host_unreachable", options);
+    const probe = yield* Effect.either(rpc((c) => c.system.identity()));
+    if (Either.isLeft(probe)) {
+      const probeCode = hostErrorCodeOf(probe.left);
+      if (probeCode) return hostIssueForCode(probeCode, options);
     }
-
-    if (options.identityProbe) {
-      try {
-        await options.identityProbe(options.url);
-      } catch (identityError) {
-        if (hostErrorCodeFromIssueInput(identityError)) return classifyHostIssue(identityError, options);
-      }
-    }
-  }
-
-  return classifyHostIssue(error, options);
+    return genericIssue(error);
+  });
 }
 
 export function providerAuthMissingIssue(): HostIssue {
@@ -72,11 +80,6 @@ export function providerAuthMissingIssue(): HostIssue {
 export function hostIssueSummary(error: unknown, options: HostIssueOptions = {}): string {
   const issue = classifyHostIssue(error, options);
   return `${issue.title}: ${issue.message}`;
-}
-
-export function hostErrorCodeFromIssueInput(error: unknown): HostErrorCode | undefined {
-  if (isHostErrorCode(error)) return error;
-  return hostErrorPayloadFromUnknown(error)?.hostErrorCode;
 }
 
 function hostIssueForCode(code: HostErrorCode, options: HostIssueOptions = {}): HostIssue {
