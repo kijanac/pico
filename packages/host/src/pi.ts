@@ -18,7 +18,7 @@ import {
   type SessionEntry,
   type SessionStats as PiSdkSessionStats,
 } from "@earendil-works/pi-coding-agent";
-import type { AssistantMessage as PiAssistantMessage, Model } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage as PiAssistantMessage, Model } from "@earendil-works/pi-ai";
 import { randomUUIDv7 } from "node:crypto";
 import { join, resolve } from "node:path";
 import { FileSystem } from "@effect/platform";
@@ -231,9 +231,14 @@ const queueModeOptions = [
   { value: "all", label: "all" },
 ];
 
-const modelControlValue = (model: Model<any>): string => `${model.provider}/${model.id}`;
+const toPiImages = (images?: readonly SendImage[]) =>
+  images && images.length > 0
+    ? images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType }))
+    : undefined;
 
-const modelControlDescription = (piSession: AgentSession, model: Model<any>): string => {
+const modelControlValue = (model: Model<Api>): string => `${model.provider}/${model.id}`;
+
+const modelControlDescription = (piSession: AgentSession, model: Model<Api>): string => {
   const provider = piSession.modelRegistry.getProviderDisplayName(model.provider);
   const tags = [provider, model.id];
   if (model.reasoning) tags.push("reasoning");
@@ -785,14 +790,7 @@ const wirePiSession = (
           yield* Queue.offer(q, { t: "status", status: "thinking" });
 
           const isStreaming = piSession.isStreaming;
-          const piImages =
-            images && images.length > 0
-              ? images.map((i) => ({
-                  type: "image" as const,
-                  data: i.data,
-                  mimeType: i.mimeType,
-                }))
-              : undefined;
+          const piImages = toPiImages(images);
 
           if (!isStreaming) {
             yield* Effect.forkDaemon(
@@ -837,9 +835,7 @@ const wirePiSession = (
             if (messages.length === 0) return;
 
             const queueIntoTurn = async (message: QueuedSend) => {
-              const images = message.images && message.images.length > 0
-                ? message.images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType }))
-                : undefined;
+              const images = toPiImages(message.images);
               if (message.mode === "follow_up") await piSession.followUp(message.text, images);
               else await piSession.steer(message.text, images);
             };
@@ -851,9 +847,7 @@ const wirePiSession = (
 
             const [first, ...rest] = messages;
             if (!first) return;
-            const firstImages = first.images && first.images.length > 0
-              ? first.images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType }))
-              : undefined;
+            const firstImages = toPiImages(first.images);
             offer({ t: "status", status: "thinking" });
             const prompt = piSession.prompt(first.text, firstImages ? { images: firstImages } : undefined);
             for (const message of rest) await queueIntoTurn(message);

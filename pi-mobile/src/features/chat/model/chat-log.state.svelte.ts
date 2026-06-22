@@ -73,20 +73,12 @@ export const chatLogState = {
     return activeLog?.entries ?? emptyEntries;
   },
 
-  get cursor() {
-    return activeLog?.cursor ?? 0;
-  },
-
   get activityVersion() {
     return activeLog?.activityVersion ?? 0;
   },
 
   activate(sessionId: string): void {
     activeSessionId = sessionId;
-  },
-
-  getCursor(sessionId: string): number {
-    return getLog(sessionId).cursor;
   },
 
   getConnectCursor(sessionId: string): number {

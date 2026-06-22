@@ -25,14 +25,6 @@ export const chatQueueState = {
     return queueItems(sessionId).length;
   },
 
-  steering(sessionId: string): QueuedMessage[] {
-    return queueItems(sessionId).filter((message) => message.queueKind === "steer");
-  },
-
-  followUp(sessionId: string): QueuedMessage[] {
-    return queueItems(sessionId).filter((message) => message.queueKind === "follow_up");
-  },
-
   set(sessionId: string, queue: QueueState): void {
     queues = { ...queues, [sessionId]: queueSnapshot(queue) };
   },

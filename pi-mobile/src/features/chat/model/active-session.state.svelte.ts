@@ -1,7 +1,7 @@
 import type { ClientEvent, ExtensionUiRequest, SessionMeta, WireEvent } from "@pico/protocol";
 import { retryState } from "@/features/chat/model/retry-state.svelte";
 
-export type ConnectionStatus = "offline" | "connecting" | "connected" | "reconnecting" | "error" | "gone";
+export type ConnectionStatus = "offline" | "connecting" | "connected" | "reconnecting" | "gone";
 export type InteractiveExtensionUiRequest = Extract<ExtensionUiRequest, { kind: "confirm" | "select" | "input" }>;
 export type ExtensionUiNotification = Extract<ExtensionUiRequest, { kind: "notify" }>;
 

@@ -317,12 +317,23 @@ const make = Effect.gen(function* () {
       Stream.runForEach((emission: PiEmission) =>
         Effect.gen(function* () {
           const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
-          const event = emission.t === "queue"
-            ? queueEvent(
-                seq,
-                yield* Ref.updateAndGet(ms.pendingSends, (pending) => reconcileSdkQueue(pending, emission)),
-              )
-            : parseWireEvent({ ...emission, seq });
+
+          let event: WireEvent;
+          if (emission.t === "queue") {
+            event = queueEvent(
+              seq,
+              yield* Ref.updateAndGet(ms.pendingSends, (pending) => reconcileSdkQueue(pending, emission)),
+            );
+          } else {
+            // A decode mismatch (PiEmission drifting from WireEvent) must not throw:
+            // a defect here kills the pump fiber and zombifies the session. Drop it.
+            const decoded = yield* Effect.either(Effect.try(() => parseWireEvent({ ...emission, seq })));
+            if (decoded._tag === "Left") {
+              yield* Effect.logError(`[pi] dropped undecodable emission (t=${emission.t}): ${String(decoded.left)}`);
+              return;
+            }
+            event = decoded.right;
+          }
 
           if (event.t === "status") {
             yield* Ref.update(ms.meta, (m) => ({

@@ -1,5 +1,5 @@
 import { Cause, Duration, Effect, Exit, Fiber, Stream } from "effect";
-import type { ClientEvent, SessionMeta, WireEvent } from "@pico/protocol";
+import type { ClientEvent, WireEvent } from "@pico/protocol";
 import { PicoSessionClient, sessionClientLayer, type PicoSessionClientService } from "@/shared/lib/rpc-client";
 import { activeSessionState, type ConnectionStatus } from "@/features/chat/model/active-session.state.svelte";
 import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
@@ -9,9 +9,7 @@ import { sessionListState } from "@/features/sessions/model/session-list.state.s
 export interface SessionStreamControllerOptions {
   sessionId: string;
   hostUrl: string;
-  onHello?: (session: SessionMeta) => void;
   onGone?: () => void;
-  onEvent?: (event: WireEvent) => void;
   onConnectionStatus?: (status: ConnectionStatus) => void;
 }
 
@@ -28,17 +26,13 @@ export class SessionStreamController {
   #closed = false;
   #everConnected = false;
   #replayBoundary = 0;
-  #onHello?: (session: SessionMeta) => void;
   #onGone?: () => void;
-  #onEvent?: (event: WireEvent) => void;
   #onConnectionStatus?: (status: ConnectionStatus) => void;
 
   constructor(opts: SessionStreamControllerOptions) {
     this.sessionId = opts.sessionId;
     this.#hostUrl = opts.hostUrl;
-    this.#onHello = opts.onHello;
     this.#onGone = opts.onGone;
-    this.#onEvent = opts.onEvent;
     this.#onConnectionStatus = opts.onConnectionStatus;
   }
 
@@ -142,7 +136,6 @@ export class SessionStreamController {
       this.#replayBoundary = event.cursor;
       sessionListState.upsert(event.session);
       activeSessionState.setStatus(event.session.status);
-      this.#onHello?.(event.session);
     }
 
     const isReplay = event.seq > 0 && event.seq <= this.#replayBoundary;
@@ -157,7 +150,6 @@ export class SessionStreamController {
     chatQueueState.applyWireEvent(this.sessionId, event);
     chatLogState.applyWireEvent(this.sessionId, event);
     if (!isReplay) activeSessionState.applyWireEvent(this.sessionId, event);
-    this.#onEvent?.(event);
   }
 
   #setConnectionStatus(status: ConnectionStatus): void {

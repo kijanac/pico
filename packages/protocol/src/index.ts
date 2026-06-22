@@ -315,11 +315,6 @@ export const SessionControls = Schema.Struct({
 });
 export type SessionControls = typeof SessionControls.Type;
 
-export const SessionControlValueBody = Schema.Struct({
-  value: Schema.Union(Schema.String, Schema.Boolean),
-});
-export type SessionControlValueBody = typeof SessionControlValueBody.Type;
-
 export const AuthProvider = Schema.Struct({
   id: Schema.String,
   name: Schema.String,

@@ -34,11 +34,11 @@ export const writePairingToken = (dataDir: string, token: string) =>
     return trimmed;
   });
 
-export const getOrCreatePairingToken = (dataDir: string, opts: { readonly rotate?: boolean } = {}) =>
+export const getOrCreatePairingToken = (dataDir: string) =>
   Effect.gen(function* () {
     const envToken = process.env.PICO_PAIRING_TOKEN?.trim();
     if (envToken) return envToken;
-    const existing = opts.rotate ? undefined : yield* readPairingToken(dataDir);
+    const existing = yield* readPairingToken(dataDir);
     return existing ?? (yield* writePairingToken(dataDir, makePairingToken()));
   });
 

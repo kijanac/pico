@@ -20,7 +20,6 @@ let creating = $state(false);
 let mutatingSessionId = $state<string | null>(null);
 let error = $state<HostIssue | null>(null);
 
-const busy = $derived(refreshing || creating || mutatingSessionId !== null);
 const visibleCount = $derived(sessions.length);
 
 const recordError = (caught: unknown) =>
@@ -56,7 +55,6 @@ export const sessionListState = {
   get refreshing() { return refreshing; },
   get creating() { return creating; },
   get mutatingSessionId() { return mutatingSessionId; },
-  get busy() { return busy; },
   get visibleCount() { return visibleCount; },
   get error() { return error; },
 

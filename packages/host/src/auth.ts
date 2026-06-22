@@ -17,11 +17,6 @@ const ALLOWED_ORIGINS = [
 
 export const allowedOrigins = () => ALLOWED_ORIGINS;
 
-export function isAllowedBrowserOrigin(origin: string | undefined): boolean {
-  if (!origin || HOST_INSECURE_NO_AUTH) return true;
-  return allowedOrigins().includes(origin);
-}
-
 export type AuthResult =
   | { ok: true; user?: string; claimed: boolean }
   | { ok: false; status: 401 | 403; error: HostErrorCode; user?: string };
