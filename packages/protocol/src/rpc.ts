@@ -5,13 +5,18 @@ import {
   AuthLoginJob,
   AuthProviders,
   Commands,
+  ExtensionUiResponseValue,
   HostUpdateStatus,
+  ImageAttachment,
+  PermissionChoice,
   QueueState,
+  SendMode,
   SessionControls,
   SessionMeta,
   SessionStats,
   SessionTree,
   SystemInfo,
+  WireEvent,
 } from "./index.ts";
 
 export const HostIdentity = Schema.Struct({
@@ -87,4 +92,35 @@ export const PicoRpc = RpcGroup.make(
   Rpc.make("auth.cancelLogin", { payload: { jobId: Schema.String }, error: RequestError }),
   Rpc.make("commands.list", { success: Commands, error: RequestError }),
   Rpc.make("fs.ls", { payload: { path: Schema.optional(Schema.String) }, success: FsListing, error: RequestError }),
+).middleware(AuthMiddleware);
+
+// The realtime session channel, served over a WebSocket. `events` is the
+// server push stream (resumed from `cursor`); the rest are the live commands a
+// viewer issues. One socket serves any session, so each rpc names its `id`.
+export const PicoSessionRpc = RpcGroup.make(
+  Rpc.make("session.events", {
+    payload: { id: Schema.String, cursor: Schema.Number },
+    success: WireEvent,
+    error: SessionFail,
+    stream: true,
+  }),
+  Rpc.make("session.send", {
+    payload: {
+      id: Schema.String,
+      text: Schema.String,
+      mode: Schema.optional(SendMode),
+      images: Schema.optional(Schema.Array(ImageAttachment)),
+      clientId: Schema.optional(Schema.String),
+    },
+    error: SessionFail,
+  }),
+  Rpc.make("session.interrupt", { payload: { id: Schema.String }, error: SessionFail }),
+  Rpc.make("session.permissionReply", {
+    payload: { id: Schema.String, messageId: Schema.String, choice: PermissionChoice },
+    error: SessionFail,
+  }),
+  Rpc.make("session.extensionUiResponse", {
+    payload: { id: Schema.String, requestId: Schema.String, value: ExtensionUiResponseValue },
+    error: SessionFail,
+  }),
 ).middleware(AuthMiddleware);

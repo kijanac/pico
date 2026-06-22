@@ -9,8 +9,8 @@ const pathOf = (url: string): string => {
 };
 
 // /admin/* uses loopback admin-token: the CLI has no Tailscale identity.
-// /rpc is passed through so the RPC AuthMiddleware can self-gate per method
-// (it sees the rpc tag, which a single endpoint path cannot).
+// /rpc and /ws are passed through so the RPC AuthMiddleware can self-gate per
+// method (it sees the rpc tag, which a single endpoint path cannot).
 // OPTIONS passes through so the CORS layer can answer preflights.
 export const authMiddleware = (
   app: HttpApp.Default,
@@ -32,7 +32,7 @@ export const authMiddleware = (
       return yield* app;
     }
 
-    if (path === "/healthz" || path === "/rpc") {
+    if (path === "/healthz" || path === "/rpc" || path === "/ws") {
       return yield* app;
     }
 

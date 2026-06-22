@@ -1,11 +1,12 @@
 import { HttpApiBuilder } from "@effect/platform";
 import { RpcSerialization, RpcServer } from "@effect/rpc";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Stream } from "effect";
 import {
   AuthMiddleware,
   CurrentIdentity,
   HostError,
   PicoRpc,
+  PicoSessionRpc,
   RequestError,
   SessionNotFound,
 } from "@pico/protocol/rpc";
@@ -103,6 +104,30 @@ export const RpcRoutesLive = HttpApiBuilder.Router.use((router) =>
   }),
 ).pipe(
   Layer.provide(HandlersLive),
+  Layer.provide(AuthLive),
+  Layer.provide(RpcSerialization.layerJson),
+);
+
+const SessionHandlersLive = PicoSessionRpc.toLayer({
+  "session.events": ({ id, cursor }) =>
+    Effect.map(SessionManager, (m) => m.subscribe(id, cursor)).pipe(Stream.unwrap, Stream.mapError(toSessionFail)),
+  "session.send": ({ id, text, mode, images, clientId }) =>
+    onSessions((m) => m.send(id, text, mode, images ? [...images] : undefined, clientId)),
+  "session.interrupt": ({ id }) => onSessions((m) => m.interrupt(id)),
+  "session.permissionReply": ({ id, messageId, choice }) => onSessions((m) => m.approve(id, messageId, choice)),
+  "session.extensionUiResponse": ({ id, requestId, value }) => onSessions((m) => m.extensionUiResponse(id, requestId, value)),
+});
+
+// The realtime channel rides a WebSocket: toHttpAppWebsocket upgrades the
+// request (NodeHttpServer's native upgrade path), so no raw `ws` server is
+// needed. Mounted as GET /ws on the same router serve() builds.
+export const SessionWsRoutesLive = HttpApiBuilder.Router.use((router) =>
+  Effect.gen(function* () {
+    const app = yield* RpcServer.toHttpAppWebsocket(PicoSessionRpc);
+    yield* router.get("/ws", app);
+  }),
+).pipe(
+  Layer.provide(SessionHandlersLive),
   Layer.provide(AuthLive),
   Layer.provide(RpcSerialization.layerJson),
 );

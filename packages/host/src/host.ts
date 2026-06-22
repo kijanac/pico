@@ -2,18 +2,15 @@ import { Cause, Effect, Fiber, Layer } from "effect";
 import { HttpApiBuilder } from "@effect/platform";
 import { NodeContext, NodeHttpServer } from "@effect/platform-node";
 import { createServer, type Server } from "node:http";
-import type { WebSocketServer } from "ws";
 import { DB_PATH, HOST_INSECURE_NO_AUTH, USE_MOCK } from "./config.ts";
 import { allowedOrigins } from "./auth.ts";
 import { AppLayer } from "./runtime.ts";
-import { SessionManager } from "./session.ts";
 import { PicoHostApi } from "./http/api.ts";
 import { AdminApiLive, SystemApiLive } from "./http/handlers.ts";
 import { authMiddleware } from "./http/middleware.ts";
 import { compress } from "./http/compression.ts";
 import { RawRoutesLive } from "./http/routes.ts";
-import { RpcRoutesLive } from "./http/rpc.ts";
-import { attachWebSocketUpgrade } from "./server.ts";
+import { RpcRoutesLive, SessionWsRoutesLive } from "./http/rpc.ts";
 import { ensureLocalAdminToken } from "./local-admin.ts";
 import { TracingLive } from "./tracing.ts";
 
@@ -36,8 +33,6 @@ export interface LaunchedHttpServer {
   readonly stop: () => Promise<void>;
 }
 
-// ws + the export route reuse the RPC handlers' app context via a captured
-// Runtime / build-time SessionManager.
 export function launchHttpServer(
   port: number,
   host: string,
@@ -46,7 +41,6 @@ export function launchHttpServer(
   // Created eagerly for a stable reference; listen happens when the layer builds.
   const server = createServer();
   onServer?.(server);
-  let wss: WebSocketServer | undefined;
 
   const ApiLive = HttpApiBuilder.api(PicoHostApi).pipe(
     Layer.provide(SystemApiLive),
@@ -63,6 +57,7 @@ export function launchHttpServer(
     ),
     Layer.provide(HttpApiBuilder.middleware(compress)),
     Layer.provide(RpcRoutesLive),
+    Layer.provide(SessionWsRoutesLive),
     Layer.provide(RawRoutesLive),
     Layer.provide(ApiLive),
     Layer.provide(NodeHttpServer.layer(() => server, { port, host })),
@@ -73,13 +68,6 @@ export function launchHttpServer(
     // so the co-located CLI can read it the moment the host reports ready.
     yield* ensureLocalAdminToken();
     yield* Layer.build(ServerLive);
-    // NodeHttpServer attaches its own "upgrade" listener; we run the session
-    // WebSocket on raw `ws`, so replace it once the server is built.
-    const runtime = yield* Effect.runtime<SessionManager>();
-    yield* Effect.sync(() => {
-      server.removeAllListeners("upgrade");
-      wss = attachWebSocketUpgrade(server, runtime);
-    });
     yield* Effect.never;
   }).pipe(
     Effect.provide(AppLayer),
@@ -92,12 +80,9 @@ export function launchHttpServer(
 
   const fiber = Effect.runFork(program);
 
-  const stop = async () => {
-    const currentWss = wss;
-    if (currentWss) await new Promise<void>((resolve) => currentWss.close(() => resolve()));
-    // Interrupting the fiber closes the scope, running the layer finalizers.
-    await Effect.runPromise(Fiber.interrupt(fiber));
-  };
+  // Interrupting the fiber closes the scope, running the layer finalizers
+  // (server shutdown + SessionManager teardown).
+  const stop = () => Effect.runPromise(Fiber.interrupt(fiber)).then(() => undefined);
 
   return { stop };
 }

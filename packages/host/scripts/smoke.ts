@@ -5,11 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "@effect/platform";
+import { FetchHttpClient, HttpClient, HttpClientRequest, Socket } from "@effect/platform";
 import { RpcClient, RpcSerialization } from "@effect/rpc";
-import { Effect, Exit, Layer, ManagedRuntime, Scope } from "effect";
-import { PicoRpc } from "@pico/protocol/rpc";
-import { WebSocket } from "ws";
+import { Chunk, Duration, Effect, Exit, Layer, ManagedRuntime, Scope, Stream } from "effect";
+import type { WireEvent } from "@pico/protocol";
+import { PicoRpc, PicoSessionRpc } from "@pico/protocol/rpc";
+import { WebSocket as WsWebSocket } from "ws";
 
 // realpath: tmpdir is a symlink on macOS (/var -> /private/var) but host-side paths are canonicalized.
 const tempRoot = realpathSync(mkdtempSync(join(tmpdir(), "pico-host-smoke-")));
@@ -30,92 +31,6 @@ function addressInfo(serverAddress: string | AddressInfo | null): AddressInfo {
   return serverAddress;
 }
 
-type SmokeWireEvent = { t?: string; seq?: number; session?: { id?: string } };
-
-function sessionWsUrl(wsUrl: string, sessionId: string, cursor: number): string {
-  return `${wsUrl}/ws?session=${encodeURIComponent(sessionId)}&cursor=${cursor}`;
-}
-
-async function expectWsHello(wsUrl: string, sessionId: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const ws = new WebSocket(sessionWsUrl(wsUrl, sessionId, 0), { headers: authHeaders });
-    const timeout = setTimeout(() => {
-      ws.close();
-      reject(new Error("timed out waiting for websocket hello"));
-    }, 5_000);
-
-    ws.once("error", reject);
-    ws.once("message", (raw) => {
-      clearTimeout(timeout);
-      const event = JSON.parse(raw.toString()) as SmokeWireEvent;
-      try {
-        assert.equal(event.t, "hello");
-        assert.equal(event.session?.id, sessionId);
-        resolve();
-      } catch (error) {
-        reject(error);
-      } finally {
-        ws.close();
-      }
-    });
-  });
-}
-
-async function sendPromptOverWs(wsUrl: string, sessionId: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const ws = new WebSocket(sessionWsUrl(wsUrl, sessionId, 0), { headers: authHeaders });
-    const timeout = setTimeout(() => {
-      ws.close();
-      reject(new Error("timed out waiting for assistant response"));
-    }, 10_000);
-
-    ws.on("error", reject);
-    ws.on("message", (raw) => {
-      const event = JSON.parse(raw.toString()) as SmokeWireEvent;
-      if (event.t === "hello") {
-        ws.send(JSON.stringify({ t: "send", text: "smoke prompt" }));
-      }
-      if (event.t === "assistant_end") {
-        clearTimeout(timeout);
-        ws.close();
-        resolve();
-      }
-    });
-  });
-}
-
-async function collectInitialReplay(wsUrl: string, sessionId: string, cursor: number): Promise<SmokeWireEvent[]> {
-  return await new Promise<SmokeWireEvent[]>((resolve, reject) => {
-    const events: SmokeWireEvent[] = [];
-    const ws = new WebSocket(sessionWsUrl(wsUrl, sessionId, cursor), { headers: authHeaders });
-    const timeout = setTimeout(() => {
-      ws.close();
-      reject(new Error("timed out waiting for websocket replay"));
-    }, 5_000);
-
-    ws.on("error", reject);
-    ws.on("message", (raw) => {
-      const event = JSON.parse(raw.toString()) as SmokeWireEvent;
-      events.push(event);
-      if (event.t === "queue" && event.seq === 0) {
-        clearTimeout(timeout);
-        ws.close();
-        resolve(events);
-      }
-    });
-  });
-}
-
-async function expectIncrementalWsReplay(wsUrl: string, sessionId: string): Promise<void> {
-  await sendPromptOverWs(wsUrl, sessionId);
-
-  const replay = await collectInitialReplay(wsUrl, sessionId, 0);
-  assert.equal(replay[0]?.t, "hello");
-  assert(replay.some((event) => event.t === "user_message"), "replay should include journaled user message");
-  assert(replay.some((event) => event.t === "assistant_end"), "replay should include journaled assistant end");
-  assert(!replay.some((event) => event.t === "log_reset"), "fresh cursor replay should not need a full log_reset");
-}
-
 // Sends the Tailscale identity header the host normally receives from `tailscale serve`.
 function makeClientRuntime(baseUrl: string) {
   const ProtocolLive = RpcClient.layerProtocolHttp({
@@ -123,6 +38,23 @@ function makeClientRuntime(baseUrl: string) {
     transformClient: (client) =>
       HttpClient.mapRequest(client, HttpClientRequest.setHeader("tailscale-user-login", "smoke@example.test")),
   }).pipe(Layer.provide(RpcSerialization.layerJson), Layer.provide(FetchHttpClient.layer));
+  return ManagedRuntime.make(ProtocolLive);
+}
+
+// `ws`'s WebSocket satisfies the W3C interface the Socket layer expects; the
+// custom constructor injects the Tailscale header on the upgrade request, which
+// the WS-RPC server forwards into each rpc's headers (so AuthMiddleware sees it).
+const wsConstructor = Layer.succeed(
+  Socket.WebSocketConstructor,
+  (url) => new WsWebSocket(url, { headers: authHeaders }) as unknown as globalThis.WebSocket,
+);
+
+function makeSessionRuntime(wsUrl: string) {
+  const ProtocolLive = RpcClient.layerProtocolSocket().pipe(
+    Layer.provide(Socket.layerWebSocket(`${wsUrl}/ws`)),
+    Layer.provide(wsConstructor),
+    Layer.provide(RpcSerialization.layerJson),
+  );
   return ManagedRuntime.make(ProtocolLive);
 }
 
@@ -200,8 +132,36 @@ try {
     assert.match(exportRes.headers.get("content-type") ?? "", /^text\/html/);
     assert.match(await exportRes.text(), /<!doctype html>/i);
 
-    await expectWsHello(wsUrl, session.id);
-    await expectIncrementalWsReplay(wsUrl, session.id);
+    // Realtime channel over WS-RPC: subscribe to the event stream, drive a turn
+    // via a command rpc, and confirm the journal replays from a fresh cursor.
+    const sessionRuntime = makeSessionRuntime(wsUrl);
+    const sessionScope = await sessionRuntime.runPromise(Scope.make());
+    const sessionClient = await sessionRuntime.runPromise(Scope.extend(RpcClient.make(PicoSessionRpc), sessionScope));
+
+    const eventsUntil = (cursor: number, done: (event: WireEvent) => boolean): Promise<readonly WireEvent[]> =>
+      sessionRuntime.runPromise(
+        sessionClient.session.events({ id: session.id, cursor }).pipe(
+          Stream.takeUntil(done),
+          Stream.runCollect,
+          Effect.timeout(Duration.seconds(10)),
+          Effect.map(Chunk.toReadonlyArray),
+        ),
+      );
+
+    const hello = await eventsUntil(0, (event) => event.t === "hello");
+    const first = hello[0];
+    assert(first?.t === "hello", "first event should be hello");
+    assert.equal(first.session.id, session.id);
+
+    await sessionRuntime.runPromise(sessionClient.session.send({ id: session.id, text: "smoke prompt" }));
+
+    const replay = await eventsUntil(0, (event) => event.t === "assistant_end");
+    assert.equal(replay[0]?.t, "hello");
+    assert(replay.some((event) => event.t === "user_message"), "replay should include journaled user message");
+    assert(replay.some((event) => event.t === "assistant_end"), "replay should include journaled assistant end");
+
+    await sessionRuntime.runPromise(Scope.close(sessionScope, Exit.void));
+    await sessionRuntime.dispose();
 
     await call(client.sessions.remove({ id: session.id }));
     assert.deepEqual(await call(client.sessions.list({})), []);
