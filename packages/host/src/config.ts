@@ -32,6 +32,7 @@ const resolved = Effect.runSync(
       Config.withDefault(undefined),
     ),
     useMock: flag("PI_USE_MOCK"),
+    otelConsole: flag("PICO_HOST_OTEL"),
     allowUnsafeTestClient: flag("PI_ALLOW_UNSAFE_TEST_CLIENT"),
     ephemeral: flag("PI_EPHEMERAL"),
     autoUpdate: flag("PICO_HOST_AUTO_UPDATE"),
@@ -51,6 +52,7 @@ export const IS_PRODUCTION = resolved.isProduction;
 export const HOST_INSECURE_NO_AUTH = resolved.insecureNoAuth;
 export const INITIAL_PAIRING_TOKEN = resolved.pairingToken;
 export const USE_MOCK = resolved.useMock;
+export const OTEL_CONSOLE = resolved.otelConsole;
 export const ALLOW_UNSAFE_TEST_CLIENT = resolved.allowUnsafeTestClient;
 export const PI_EPHEMERAL = resolved.ephemeral;
 export const AUTO_UPDATE = resolved.autoUpdate;

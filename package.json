@@ -7,8 +7,8 @@
     "node": ">=26.1.0"
   },
   "scripts": {
-    "dev:host": "PICO_HOST_DB=data/pico-host.db PICO_WORKSPACES_DIR=. PICO_HOST_INSECURE_NO_AUTH=1 pnpm --filter @pico/host dev",
-    "dev:host:mock": "PICO_HOST_DB=data/pico-host.db PICO_WORKSPACES_DIR=. PI_USE_MOCK=1 PICO_HOST_INSECURE_NO_AUTH=1 pnpm --filter @pico/host dev",
+    "dev:host": "PICO_HOST_DB=data/pico-host.db PICO_WORKSPACES_DIR=. PICO_HOST_INSECURE_NO_AUTH=1 PICO_HOST_OTEL=1 pnpm --filter @pico/host dev",
+    "dev:host:mock": "PICO_HOST_DB=data/pico-host.db PICO_WORKSPACES_DIR=. PI_USE_MOCK=1 PICO_HOST_INSECURE_NO_AUTH=1 PICO_HOST_OTEL=1 pnpm --filter @pico/host dev",
     "dev:mobile": "pnpm --filter pico dev",
     "typecheck": "pnpm --filter @pico/protocol typecheck && pnpm --filter @pico/host typecheck && pnpm --filter @pico/cli typecheck",
     "smoke:host": "pnpm --filter @pico/host smoke",

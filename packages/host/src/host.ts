@@ -15,6 +15,7 @@ import { RawRoutesLive } from "./http/routes.ts";
 import { RpcRoutesLive } from "./http/rpc.ts";
 import { attachWebSocketUpgrade } from "./server.ts";
 import { ensureLocalAdminToken } from "./local-admin.ts";
+import { TracingLive } from "./tracing.ts";
 
 export interface PicoHostOptions {
   readonly host?: string;
@@ -91,6 +92,9 @@ export function launchHttpServer(
   }).pipe(
     Effect.provide(AppLayer),
     Effect.provide(NodeContext.layer),
+    // OTel tracer for the whole server: HTTP + RPC spans flow through it.
+    // No-op unless PICO_HOST_OTEL=1 (then spans print to the console).
+    Effect.provide(TracingLive),
     Effect.scoped,
     Effect.tapErrorCause((cause) => Effect.logError(`http server failed: ${Cause.pretty(cause)}`)),
   );
