@@ -6,7 +6,7 @@ import { Effect } from "effect";
 import { HOST_DATA_DIR, DB_PATH, WORKSPACES_DIR } from "./config.ts";
 import { currentPairingToken, headerValue, picoHostOwnerLogins, setPairingToken, type HeaderSource } from "./auth.ts";
 import { hostSystemInfo } from "./http/system.ts";
-import type { LocalAdminPairingData, LocalAdminStatusData } from "./http/api.ts";
+import type { LocalAdminPairingData, LocalAdminStatusData } from "@pico/protocol/admin";
 
 const ADMIN_TOKEN_FILE = "admin-token";
 const PAIRING_TOKEN_FILE = "pairing-token";

@@ -1,33 +1,8 @@
 import { join } from "node:path";
 import { FileSystem } from "@effect/platform";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
+import { LocalAdminPairing, LocalAdminStatus } from "@pico/protocol/admin";
 import { type PicoHostPaths, picoHostPathsFromEnv } from "./paths.ts";
-
-export interface LocalAdminStatus {
-  readonly ok: true;
-  readonly pid: number;
-  readonly uptimeSeconds: number;
-  readonly cwd: string;
-  readonly dataDir: string;
-  readonly dbPath: string;
-  readonly workspacesDir: string;
-  readonly claimed: boolean;
-  readonly owners: string[];
-  readonly pairingTokenConfigured: boolean;
-  readonly system?: {
-    readonly hostVersion: string;
-    readonly protocolVersion: number;
-    readonly minMobileVersion: string;
-    readonly recommendedMobileVersion: string;
-    readonly updateChannel: string;
-    readonly autoUpdate: boolean;
-  };
-}
-
-export interface LocalAdminPairing extends LocalAdminStatus {
-  readonly token?: string;
-  readonly tokenConfigured: boolean;
-}
 
 export function localAdminTokenPath(dataDir: string): string {
   return join(dataDir, "admin-token");
@@ -40,8 +15,9 @@ export const readLocalAdminToken = (dataDir: string) =>
     Effect.catchAll(() => Effect.succeed(undefined)),
   );
 
-const localAdminFetch = <T>(
+const localAdminFetch = <A, I>(
   path: string,
+  schema: Schema.Schema<A, I>,
   opts: { readonly paths?: PicoHostPaths; readonly method?: "GET" | "POST" } = {},
 ) =>
   Effect.gen(function* () {
@@ -66,14 +42,17 @@ const localAdminFetch = <T>(
       const text = yield* Effect.promise(() => response.text().catch(() => ""));
       return yield* Effect.fail(new Error(`local admin ${path} failed: ${response.status}${text ? ` ${text}` : ""}`));
     }
-    return (yield* Effect.tryPromise({ try: () => response.json(), catch: toError })) as T;
+    const json = yield* Effect.tryPromise({ try: () => response.json(), catch: toError });
+    return yield* Schema.decodeUnknown(schema)(json).pipe(
+      Effect.mapError((cause) => new Error(`local admin ${path} returned an unexpected shape`, { cause })),
+    );
   });
 
 export const getLocalAdminStatus = (paths?: PicoHostPaths) =>
-  localAdminFetch<LocalAdminStatus>("/admin/status", { paths });
+  localAdminFetch("/admin/status", LocalAdminStatus, { paths });
 
 export const getLocalAdminPairing = (paths?: PicoHostPaths) =>
-  localAdminFetch<LocalAdminPairing>("/admin/pairing", { paths });
+  localAdminFetch("/admin/pairing", LocalAdminPairing, { paths });
 
 export const rotateLocalAdminPairingToken = (paths?: PicoHostPaths) =>
-  localAdminFetch<LocalAdminPairing>("/admin/pairing/rotate", { paths, method: "POST" });
+  localAdminFetch("/admin/pairing/rotate", LocalAdminPairing, { paths, method: "POST" });

@@ -1,8 +1,9 @@
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
+import type { LocalAdminPairingData } from "@pico/protocol/admin";
 import type { PicoHostHandle } from "@pico/host";
 import { startPicoHost } from "@pico/host";
-import { getLocalAdminPairing, rotateLocalAdminPairingToken, type LocalAdminPairing } from "./admin.ts";
+import { getLocalAdminPairing, rotateLocalAdminPairingToken } from "./admin.ts";
 import { PicoSetupError, type Diagnostic } from "./errors.ts";
 import { healthcheck, portIsOpen } from "./network.ts";
 import { getOrCreatePairingToken, readPairingToken, rotatePairingToken } from "./pairing.ts";
@@ -195,7 +196,7 @@ const waitForPicoHostHealth = (paths: PicoHostPaths, timeoutMs = 15_000) =>
 
 const readRunningHostPairing = (paths: PicoHostPaths, rotate: boolean, diagnostics: Diagnostic[]) =>
   (rotate ? rotateLocalAdminPairingToken(paths) : getLocalAdminPairing(paths)).pipe(
-    Effect.map((pairing): LocalAdminPairing | undefined => pairing),
+    Effect.map((pairing): LocalAdminPairingData | undefined => pairing),
     Effect.catchAll((error) => {
       if (rotate) {
         diagnostics.push({
@@ -213,7 +214,7 @@ const readRunningHostPairing = (paths: PicoHostPaths, rotate: boolean, diagnosti
 const pairingTokenForPlan = (
   paths: PicoHostPaths,
   existing: boolean,
-  adminPairing: LocalAdminPairing | undefined,
+  adminPairing: LocalAdminPairingData | undefined,
   rotate: boolean,
 ) =>
   Effect.gen(function* () {
