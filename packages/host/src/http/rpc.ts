@@ -11,7 +11,6 @@ import {
   SessionNotFound,
 } from "@pico/protocol/rpc";
 import { authorizeHeaders, claimPicoHostOwner } from "../auth.ts";
-import { loadCommands } from "../commands.ts";
 import { HostError as InternalHostError, SessionNotFound as InternalSessionNotFound } from "../errors.ts";
 import { listFs } from "../fs.ts";
 import { PiError } from "../pi.ts";
@@ -93,7 +92,6 @@ const HandlersLive = PicoRpc.toLayer({
   "auth.saveApiKey": ({ providerId, apiKey }) => onProvider((a) => a.saveApiKey(providerId, apiKey)),
   "auth.cancelLogin": ({ jobId }) => onProvider((a) => a.cancelLogin(jobId)),
 
-  "commands.list": () => loadCommands(),
   "fs.ls": ({ path }) => listFs(path).pipe(Effect.mapError(toRequestError)),
 });
 

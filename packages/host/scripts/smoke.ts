@@ -114,7 +114,6 @@ try {
     await call(client.sessions.stats({ id: session.id }));
     await call(client.sessions.tree({ id: session.id }));
     await call(client.sessions.commands({ id: session.id }));
-    await call(client.commands.list());
 
     const authProviders = await call(client.auth.providers());
     assert(authProviders.providers.length > 3, "auth provider list should include API-key providers, not only OAuth providers");

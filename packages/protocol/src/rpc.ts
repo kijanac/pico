@@ -90,7 +90,6 @@ export const PicoRpc = RpcGroup.make(
   Rpc.make("auth.submitLoginInput", { payload: { jobId: Schema.String, value: Schema.String }, success: AuthLoginJob, error: RequestError }),
   Rpc.make("auth.saveApiKey", { payload: { providerId: Schema.String, apiKey: Trimmed }, success: AuthProviders, error: RequestError }),
   Rpc.make("auth.cancelLogin", { payload: { jobId: Schema.String }, error: RequestError }),
-  Rpc.make("commands.list", { success: Commands, error: RequestError }),
   Rpc.make("fs.ls", { payload: { path: Schema.optional(Schema.String) }, success: FsListing, error: RequestError }),
 ).middleware(AuthMiddleware);
 
