@@ -170,8 +170,8 @@ function hostIssueForCode(code: HostErrorCode, options: HostIssueOptions = {}): 
         kind: tailnetUrl ? "tailscale-not-connected" : "host-unreachable",
         title: tailnetUrl ? "Tailscale not connected" : "host unreachable",
         message: tailnetUrl
-          ? "This phone cannot reach the Pico host over your tailnet."
-          : "This phone cannot reach the Pico host at that URL.",
+          ? "This phone can't reach the Pico host over your tailnet."
+          : "This phone can't reach the Pico host.",
         steps: [
           tailnetUrl
             ? "Open Tailscale on this phone and confirm it is connected to the same tailnet as the host."

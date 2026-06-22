@@ -46,7 +46,7 @@
       <div class="grid grid-cols-3 gap-1.5">
         <Button type="button" variant="outline" size="sm" onclick={() => choose("deny")} class="type-meta rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]">deny</Button>
         <Button type="button" variant="outline" size="sm" onclick={() => choose("allow")} class="type-meta rounded-[var(--radius-sm)] border-[color:var(--color-border-strong)] text-[color:var(--color-fg)] active:bg-[color:var(--color-surface-2)]">allow once</Button>
-        <Button type="button" size="sm" onclick={() => choose("allow_session")} class="type-meta rounded-[var(--radius-sm)] active:opacity-80">session</Button>
+        <Button type="button" size="sm" onclick={() => choose("allow_session")} class="type-meta rounded-[var(--radius-sm)] active:opacity-80">allow for session</Button>
       </div>
     </div>
   </div>
