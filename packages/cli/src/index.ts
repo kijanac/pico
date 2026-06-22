@@ -1,95 +1,119 @@
 #!/usr/bin/env node
+import { Command, HelpDoc, Options, Span, ValidationError } from "@effect/cli";
 import { NodeContext, NodeRuntime } from "@effect/platform-node";
-import { Console, Effect } from "effect";
+import { Effect } from "effect";
 import { setupErrorMessage } from "@pico/host";
 import { doctorCommand } from "./commands/doctor.ts";
 import { pairCodeCommand, pairCommand } from "./commands/pair.ts";
-import { installCommand, logsCommand, parseServiceCliOptions, startCommand, stopCommand, uninstallCommand } from "./commands/service.ts";
+import {
+  installCommand,
+  logsCommand,
+  resolveServiceOptions,
+  startCommand,
+  stopCommand,
+  uninstallCommand,
+} from "./commands/service.ts";
 import { serveCommand } from "./commands/serve.ts";
 import { statusCommand } from "./commands/status.ts";
 
-function usage(): string {
-  return `Pico host CLI
+// Shared service flags. --system selects a Linux system service over the default
+// per-user service; --user/--create-user apply only when installing one.
+const systemMode = Options.boolean("system").pipe(
+  Options.withDescription("Target a Linux system service instead of a per-user service"),
+);
+const systemUser = Options.text("user").pipe(
+  Options.withDescription("Service account for --system (default: pico-host)"),
+  Options.optional,
+);
+const createSystemUser = Options.boolean("create-user").pipe(
+  Options.withDescription("Create the --system service account if it does not exist"),
+);
 
-Usage:
-  pico pair        Run or reuse a Pico host and print a pairing QR/link
-  pico pair-code   Print the current pairing QR/link without starting a new host
-                   Add --rotate to rotate the token on a running host
-  pico serve       Run a durable foreground Pico host (used by services)
-  pico doctor      Check local Pico host prerequisites
-  pico status      Show local host/Tailscale status
-  pico install     Install and start a user service (LaunchAgent/systemd --user)
-                 Add --system --user <name> [--create-user] for an advanced Linux system service
-  pico start       Start the installed service (add --system for system service)
-  pico stop        Stop the installed service (add --system for system service)
-  pico logs        Follow installed service logs (add --system for system service)
-  pico uninstall   Remove the installed service (add --system for system service)
-  pico help        Show this help
+const pair = Command.make("pair", {}, () => pairCommand).pipe(
+  Command.withDescription("Run or reuse a Pico host and print a pairing QR/link"),
+);
 
-Environment:
-  PICO_HOST_PORT           Host port, default 7777
-  PICO_HOST_BIND           Bind address, default 127.0.0.1
-  PICO_HOST_DATA_DIR       Host state directory
-  PICO_WORKSPACES_DIR      Directory shown as cwd picker root, default current directory
-  PICO_PAIRING_TOKEN       Override generated/stored one-time pairing token
-  PICO_HOST_URL            Override printed pairing URL
-  PICO_SKIP_TAILSCALE_SERVE=1  Do not run tailscale serve
-  PICO_SERVICE_COMMAND     Override service command prefix, e.g. /path/to/pico
+const pairCode = Command.make(
+  "pair-code",
+  { rotate: Options.boolean("rotate").pipe(Options.withDescription("Rotate the token on a running host")) },
+  ({ rotate }) => pairCodeCommand({ rotate }),
+).pipe(Command.withDescription("Print the current pairing QR/link without starting a new host"));
 
-Advanced system service:
-  pico install --system --user pico-host --create-user
-  Installs a root-managed Linux systemd service under the named service account.
-  Default install remains a per-user service under the current OS user.
-`;
-}
+const serve = Command.make("serve", {}, () => serveCommand).pipe(
+  Command.withDescription("Run a durable foreground Pico host (used by services)"),
+);
 
-const program = Effect.gen(function* () {
-  const args = process.argv.slice(2);
-  if (args[0] === "--") args.shift();
-  const command = args[0] ?? "help";
-  const rest = args.slice(1);
-  // parseServiceCliOptions throws on bad flags/`--help`; surface it as a typed
-  // failure so the catchAll below prints it instead of crashing as a defect.
-  const serviceOptions = () => Effect.try({ try: () => parseServiceCliOptions(rest), catch: (error) => error });
+const doctor = Command.make("doctor", {}, () => doctorCommand).pipe(
+  Command.withDescription("Check local Pico host prerequisites"),
+);
 
-  switch (command) {
-    case "pair":
-      return yield* pairCommand;
-    case "pair-code":
-      return yield* pairCodeCommand({ rotate: args.includes("--rotate") });
-    case "serve":
-      return yield* serveCommand;
-    case "doctor":
-      return yield* doctorCommand;
-    case "status": {
-      const options = yield* serviceOptions();
-      return yield* statusCommand({ mode: options.mode, systemUser: options.systemUser });
-    }
-    case "install":
-      return yield* installCommand(yield* serviceOptions());
-    case "uninstall":
-      return yield* uninstallCommand(yield* serviceOptions());
-    case "start":
-      return yield* startCommand(yield* serviceOptions());
-    case "stop":
-      return yield* stopCommand(yield* serviceOptions());
-    case "logs":
-      return yield* logsCommand(yield* serviceOptions());
-    case "help":
-    case "--help":
-    case "-h":
-      return yield* Console.log(usage());
-    default:
-      return yield* Effect.sync(() => {
-        console.error(`Unknown command: ${command}\n`);
-        console.error(usage());
-        process.exitCode = 1;
-      });
-  }
-}).pipe(
+const status = Command.make("status", { system: systemMode, user: systemUser }, ({ system, user }) =>
+  resolveServiceOptions({ system, user, createUser: false }).pipe(
+    Effect.flatMap((options) => statusCommand({ mode: options.mode, systemUser: options.systemUser })),
+  ),
+).pipe(Command.withDescription("Show local host/Tailscale status"));
+
+const install = Command.make(
+  "install",
+  { system: systemMode, user: systemUser, createUser: createSystemUser },
+  ({ system, user, createUser }) =>
+    resolveServiceOptions({ system, user, createUser }).pipe(Effect.flatMap(installCommand)),
+).pipe(
+  Command.withDescription(
+    "Install and start a service (per-user by default; --system installs a root-managed Linux system service)",
+  ),
+);
+
+const uninstall = Command.make("uninstall", { system: systemMode }, ({ system }) =>
+  uninstallCommand({ mode: system ? "system" : "user" }),
+).pipe(Command.withDescription("Remove the installed service"));
+
+const start = Command.make("start", { system: systemMode }, ({ system }) =>
+  startCommand({ mode: system ? "system" : "user" }),
+).pipe(Command.withDescription("Start the installed service"));
+
+const stop = Command.make("stop", { system: systemMode }, ({ system }) =>
+  stopCommand({ mode: system ? "system" : "user" }),
+).pipe(Command.withDescription("Stop the installed service"));
+
+const logs = Command.make("logs", { system: systemMode }, ({ system }) =>
+  logsCommand({ mode: system ? "system" : "user" }),
+).pipe(Command.withDescription("Follow installed service logs"));
+
+// Environment variables aren't flags, so document them in the help footer.
+const envFooter = HelpDoc.sequence(
+  HelpDoc.h1("ENVIRONMENT"),
+  HelpDoc.descriptionList([
+    [Span.code("PICO_HOST_PORT"), HelpDoc.p("Host port, default 7777")],
+    [Span.code("PICO_HOST_BIND"), HelpDoc.p("Bind address, default 127.0.0.1")],
+    [Span.code("PICO_HOST_DATA_DIR"), HelpDoc.p("Host state directory")],
+    [Span.code("PICO_WORKSPACES_DIR"), HelpDoc.p("Directory shown as cwd picker root, default current directory")],
+    [Span.code("PICO_PAIRING_TOKEN"), HelpDoc.p("Override generated/stored one-time pairing token")],
+    [Span.code("PICO_HOST_URL"), HelpDoc.p("Override printed pairing URL")],
+    [Span.code("PICO_SKIP_TAILSCALE_SERVE"), HelpDoc.p("Set to 1 to skip running tailscale serve")],
+    [Span.code("PICO_SERVICE_COMMAND"), HelpDoc.p("Override service command prefix, e.g. /path/to/pico")],
+  ]),
+);
+
+const pico = Command.make("pico").pipe(
+  Command.withDescription("Pico host CLI"),
+  Command.withSubcommands([pair, pairCode, serve, doctor, status, install, uninstall, start, stop, logs]),
+);
+
+const cli = Command.run(pico, {
+  name: "Pico host CLI",
+  version: "1.0.1",
+  footer: envFooter,
+});
+
+const program = cli(process.argv).pipe(
+  // @effect/cli prints validation/help errors itself; only friendly-print
+  // domain failures (setup/service errors). Always exit non-zero on failure.
   Effect.catchAll((error) =>
     Effect.sync(() => {
-      console.error(setupErrorMessage(error));
+      if (!ValidationError.isValidationError(error)) {
+        console.error(setupErrorMessage(error));
+      }
       process.exitCode = 1;
     }),
   ),
