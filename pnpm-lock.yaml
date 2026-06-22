@@ -195,9 +195,6 @@ importers:
       embla-carousel-svelte:
         specifier: ^8.6.0
         version: 8.6.0(svelte@5.56.0)
-      partysocket:
-        specifier: ^1.1.5
-        version: 1.1.19
       shiki:
         specifier: ^4.0.2
         version: 4.1.0
@@ -1623,9 +1620,6 @@ packages:
       '@typescript-eslint/types':
         optional: true
 
-  event-target-polyfill@0.0.4:
-    resolution: {integrity: sha512-Gs6RLjzlLRdT8X9ZipJdIZI/Y6/HhRLyq9RdDlCsnpxr/+Nn6bU2EFGuC94GjxqhM+Nmij2Vcq98yoHrU8uNFQ==}
-
   extend@3.0.2:
     resolution: {integrity: sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g==}
 
@@ -2027,14 +2021,6 @@ packages:
 
   partial-json@0.1.7:
     resolution: {integrity: sha512-Njv/59hHaokb/hRUjce3Hdv12wd60MtM9Z5Olmn+nehe0QDAsRtRbJPvJ0Z91TusF0SuZRIvnM+S4l6EIP8leA==}
-
-  partysocket@1.1.19:
-    resolution: {integrity: sha512-hPwsXSdUc8PKNCinET6TD3JQOxzQ2JaP0bUZQXBVl6UM8UuLn1odgf1LcJXHy4UHSQwWL/RU3AnyhEsGM+W+sg==}
-    peerDependencies:
-      react: '>=17'
-    peerDependenciesMeta:
-      react:
-        optional: true
 
   path-exists@4.0.0:
     resolution: {integrity: sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w==}
@@ -3909,8 +3895,6 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  event-target-polyfill@0.0.4: {}
-
   extend@3.0.2: {}
 
   fast-check@3.23.2:
@@ -4314,10 +4298,6 @@ snapshots:
   package-json-from-dist@1.0.1: {}
 
   partial-json@0.1.7: {}
-
-  partysocket@1.1.19:
-    dependencies:
-      event-target-polyfill: 0.0.4
 
   path-exists@4.0.0: {}
 

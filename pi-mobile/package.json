@@ -37,7 +37,6 @@
     "diff": "^9.0.0",
     "effect": "^3.21.4",
     "embla-carousel-svelte": "^8.6.0",
-    "partysocket": "^1.1.5",
     "shiki": "^4.0.2",
     "streaming-markdown": "^0.2.15",
     "svelte": "^5.0.0",

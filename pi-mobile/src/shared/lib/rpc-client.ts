@@ -1,7 +1,7 @@
-import { FetchHttpClient } from "@effect/platform";
+import { FetchHttpClient, Socket } from "@effect/platform";
 import { RpcClient, RpcSerialization } from "@effect/rpc";
 import { Cause, Context, Effect, Exit, Layer, ManagedRuntime } from "effect";
-import { PicoRpc } from "@pico/protocol/rpc";
+import { PicoRpc, PicoSessionRpc } from "@pico/protocol/rpc";
 import { settingsState } from "@/features/settings/settings.state.svelte";
 
 const makeClient = RpcClient.make(PicoRpc);
@@ -40,3 +40,20 @@ export const runAt = async <A, E>(baseUrl: string, effect: Effect.Effect<A, E, P
 
 export const runHost = <A, E>(effect: Effect.Effect<A, E, PicoClient>): Promise<A> =>
   runAt(settingsState.hostUrl, effect);
+
+const makeSessionClient = RpcClient.make(PicoSessionRpc);
+export type PicoSessionClientService = Effect.Effect.Success<typeof makeSessionClient>;
+
+// The realtime session channel over @effect/rpc's WebSocket transport. The
+// browser WebSocket can't set headers, but Tailscale Serve injects the identity
+// at the upgrade, so none is needed. The stream controller provides a fresh
+// layer (fresh socket) per connection attempt and reconnects by re-providing it.
+export class PicoSessionClient extends Context.Tag("PicoSessionClient")<PicoSessionClient, PicoSessionClientService>() {}
+
+export const sessionClientLayer = (baseUrl: string): Layer.Layer<PicoSessionClient> =>
+  Layer.scoped(PicoSessionClient, makeSessionClient).pipe(
+    Layer.provide(RpcClient.layerProtocolSocket()),
+    Layer.provide(Socket.layerWebSocket(`${baseUrl.replace(/^http/, "ws")}/ws`)),
+    Layer.provide(Socket.layerWebSocketConstructorGlobal),
+    Layer.provide(RpcSerialization.layerJson),
+  );
