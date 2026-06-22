@@ -1,7 +1,8 @@
-import { FetchHttpClient, Socket } from "@effect/platform";
-import { RpcClient, RpcSerialization } from "@effect/rpc";
+import { Socket } from "@effect/platform";
+import { RpcClient } from "@effect/rpc";
 import { Cause, Context, Effect, Exit, Layer, ManagedRuntime } from "effect";
 import { PicoRpc, PicoSessionRpc } from "@pico/protocol/rpc";
+import { picoHttpProtocol, picoSocketProtocol } from "@pico/protocol/client";
 import { settingsState } from "@/features/settings/settings.state.svelte";
 
 const makeClient = RpcClient.make(PicoRpc);
@@ -16,9 +17,7 @@ function runtimeFor(baseUrl: string): ManagedRuntime.ManagedRuntime<PicoClient, 
   let runtime = runtimes.get(baseUrl);
   if (!runtime) {
     const ClientLive = Layer.scoped(PicoClient, makeClient).pipe(
-      Layer.provide(RpcClient.layerProtocolHttp({ url: `${baseUrl}/rpc` })),
-      Layer.provide(RpcSerialization.layerJson),
-      Layer.provide(FetchHttpClient.layer),
+      Layer.provide(picoHttpProtocol(baseUrl)),
     );
     runtime = ManagedRuntime.make(ClientLive);
     runtimes.set(baseUrl, runtime);
@@ -52,8 +51,5 @@ export class PicoSessionClient extends Context.Tag("PicoSessionClient")<PicoSess
 
 export const sessionClientLayer = (baseUrl: string): Layer.Layer<PicoSessionClient> =>
   Layer.scoped(PicoSessionClient, makeSessionClient).pipe(
-    Layer.provide(RpcClient.layerProtocolSocket()),
-    Layer.provide(Socket.layerWebSocket(`${baseUrl.replace(/^http/, "ws")}/ws`)),
-    Layer.provide(Socket.layerWebSocketConstructorGlobal),
-    Layer.provide(RpcSerialization.layerJson),
+    Layer.provide(picoSocketProtocol(baseUrl, Socket.layerWebSocketConstructorGlobal)),
   );

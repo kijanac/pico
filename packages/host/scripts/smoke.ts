@@ -5,10 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
-import { FetchHttpClient, HttpClient, HttpClientRequest, Socket } from "@effect/platform";
-import { RpcClient, RpcSerialization } from "@effect/rpc";
+import { HttpClient, HttpClientRequest, Socket } from "@effect/platform";
+import { RpcClient } from "@effect/rpc";
 import { Chunk, Duration, Effect, Exit, Layer, ManagedRuntime, Scope, Stream } from "effect";
 import type { WireEvent } from "@pico/protocol";
+import { picoHttpProtocol, picoSocketProtocol } from "@pico/protocol/client";
 import { PicoRpc, PicoSessionRpc } from "@pico/protocol/rpc";
 import { WebSocket as WsWebSocket } from "ws";
 
@@ -33,12 +34,11 @@ function addressInfo(serverAddress: string | AddressInfo | null): AddressInfo {
 
 // Sends the Tailscale identity header the host normally receives from `tailscale serve`.
 function makeClientRuntime(baseUrl: string) {
-  const ProtocolLive = RpcClient.layerProtocolHttp({
-    url: `${baseUrl}/rpc`,
-    transformClient: (client) =>
+  return ManagedRuntime.make(
+    picoHttpProtocol(baseUrl, (client) =>
       HttpClient.mapRequest(client, HttpClientRequest.setHeader("tailscale-user-login", "smoke@example.test")),
-  }).pipe(Layer.provide(RpcSerialization.layerJson), Layer.provide(FetchHttpClient.layer));
-  return ManagedRuntime.make(ProtocolLive);
+    ),
+  );
 }
 
 // `ws`'s WebSocket satisfies the W3C interface the Socket layer expects; the
@@ -49,13 +49,8 @@ const wsConstructor = Layer.succeed(
   (url) => new WsWebSocket(url, { headers: authHeaders }) as unknown as globalThis.WebSocket,
 );
 
-function makeSessionRuntime(wsUrl: string) {
-  const ProtocolLive = RpcClient.layerProtocolSocket().pipe(
-    Layer.provide(Socket.layerWebSocket(`${wsUrl}/ws`)),
-    Layer.provide(wsConstructor),
-    Layer.provide(RpcSerialization.layerJson),
-  );
-  return ManagedRuntime.make(ProtocolLive);
+function makeSessionRuntime(baseUrl: string) {
+  return ManagedRuntime.make(picoSocketProtocol(baseUrl, wsConstructor));
 }
 
 try {
@@ -72,7 +67,6 @@ try {
     await once(server, "listening");
     const address = addressInfo(server.address());
     const baseUrl = `http://127.0.0.1:${address.port}`;
-    const wsUrl = `ws://127.0.0.1:${address.port}`;
 
     const health = await fetch(`${baseUrl}/healthz`);
     assert.equal(health.status, 200);
@@ -133,7 +127,7 @@ try {
 
     // Realtime channel over WS-RPC: subscribe to the event stream, drive a turn
     // via a command rpc, and confirm the journal replays from a fresh cursor.
-    const sessionRuntime = makeSessionRuntime(wsUrl);
+    const sessionRuntime = makeSessionRuntime(baseUrl);
     const sessionScope = await sessionRuntime.runPromise(Scope.make());
     const sessionClient = await sessionRuntime.runPromise(Scope.extend(RpcClient.make(PicoSessionRpc), sessionScope));
 

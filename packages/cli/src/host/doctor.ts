@@ -1,9 +1,10 @@
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
-import { FetchHttpClient, FileSystem } from "@effect/platform";
-import { RpcClient, RpcSerialization } from "@effect/rpc";
-import { Duration, Effect, Layer } from "effect";
+import { FileSystem } from "@effect/platform";
+import { RpcClient } from "@effect/rpc";
+import { Duration, Effect } from "effect";
 import { PicoRpc } from "@pico/protocol/rpc";
+import { picoHttpProtocol } from "@pico/protocol/client";
 import { getBundledPiSdkVersion } from "@pico/host";
 import { commandExists, run, runOutput } from "./exec.ts";
 import type { Diagnostic } from "./errors.ts";
@@ -182,18 +183,12 @@ const piModelRegistryCheck = (workspacesDir: string) =>
 const makeRpcClient = RpcClient.make(PicoRpc);
 type RpcClientService = Effect.Effect.Success<typeof makeRpcClient>;
 
-const rpcClientLayer = (hostUrl: string) =>
-  RpcClient.layerProtocolHttp({ url: `${hostUrl.replace(/\/+$/, "")}/rpc` }).pipe(
-    Layer.provide(RpcSerialization.layerJson),
-    Layer.provide(FetchHttpClient.layer),
-  );
-
 // Returns an Either so the caller can render a diagnostic from the typed failure instead of short-circuiting.
 const probeHost = <A, E>(hostUrl: string, call: (client: RpcClientService) => Effect.Effect<A, E>) =>
   makeRpcClient.pipe(
     Effect.flatMap(call),
     Effect.scoped,
-    Effect.provide(rpcClientLayer(hostUrl)),
+    Effect.provide(picoHttpProtocol(hostUrl)),
     Effect.timeout(Duration.seconds(8)),
     Effect.either,
   );

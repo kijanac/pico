@@ -12,6 +12,10 @@
     "./rpc": {
       "types": "./dist/rpc.d.ts",
       "import": "./dist/rpc.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
     }
   },
   "scripts": {
@@ -20,6 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@effect/platform": "^0.96.2",
     "@effect/rpc": "^0.75.1",
     "effect": "^3.21.4"
   },
