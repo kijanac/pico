@@ -3,10 +3,10 @@
   import { themeState, type ThemeMode } from "@/shared/theme/theme.svelte";
   import { Button } from "@/shared/ui/button";
 
-  const options: Array<{ mode: ThemeMode; label: string; description: string; icon: typeof Monitor }> = [
-    { mode: "system", label: "system", description: "follow device", icon: Monitor },
-    { mode: "light", label: "light", description: "cream + terracotta", icon: Sun },
-    { mode: "dark", label: "dark", description: "terminal dark", icon: Moon },
+  const options: Array<{ mode: ThemeMode; label: string; icon: typeof Monitor }> = [
+    { mode: "system", label: "system", icon: Monitor },
+    { mode: "light", label: "light", icon: Sun },
+    { mode: "dark", label: "dark", icon: Moon },
   ];
 
   function choose(mode: ThemeMode): void {
@@ -17,9 +17,9 @@
 <section class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
   <div class="mb-3">
     <h2 class="type-title font-medium text-[color:var(--color-fg)]">appearance</h2>
-    <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">
-      Light mode uses Pico’s app-icon palette. Current: {themeState.resolved}.
-    </p>
+    {#if themeState.mode === "system"}
+      <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">Following your device — currently {themeState.resolved}.</p>
+    {/if}
   </div>
 
   <div data-slot="button-group" class="grid grid-cols-3 gap-1 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-1">
@@ -34,7 +34,6 @@
       >
         <Icon class="size-3.5" />
         <span class="type-meta font-medium">{option.label}</span>
-        <span class={`type-label truncate ${themeState.mode === option.mode ? "opacity-80" : "text-[color:var(--color-fg-faint)]"}`}>{option.description}</span>
       </Button>
     {/each}
   </div>
