@@ -61,7 +61,7 @@ const mockSettings = (): SessionControls => ({
   ],
 });
 
-const scriptedFlow = (q: Queue.Queue<PiEmission>, userText: string) =>
+const scriptedFlow = (q: Queue.Queue<PiEmission>) =>
   Effect.gen(function* () {
     yield* Queue.offer(q, { t: "status", status: "thinking" });
     yield* Effect.sleep("400 millis");
@@ -127,19 +127,7 @@ const scriptedFlow = (q: Queue.Queue<PiEmission>, userText: string) =>
       durationMs: 31,
     });
 
-    yield* Queue.offer(q, {
-      t: "permission",
-      entry: {
-        kind: "permission",
-        toolKind: "builtin",
-        id: randomUUIDv7(),
-        at: Date.now(),
-        tool: "bash",
-        args: { command: "openssl genrsa -out keys/private.pem 2048" },
-        rationale: `Need an RSA key for the test fixture (echoing your prompt: "${userText.slice(0, 40)}").`,
-      },
-    });
-    yield* Queue.offer(q, { t: "status", status: "waiting" });
+    yield* Queue.offer(q, { t: "status", status: "idle" });
   }).pipe(Effect.catchAll((e) => Effect.fail(new PiError({ message: String(e), cause: e }))));
 
 const makeMockSession = (opts: {
@@ -167,11 +155,11 @@ const makeMockSession = (opts: {
     return {
       meta,
       events: Stream.fromQueue(q),
-      send: (text, _mode) =>
+      send: () =>
         Effect.gen(function* () {
           const prev = yield* Ref.get(currentFiber);
           if (prev) yield* Fiber.interrupt(prev);
-          const f = yield* Effect.forkDaemon(scriptedFlow(q, text));
+          const f = yield* Effect.forkDaemon(scriptedFlow(q));
           yield* Ref.set(currentFiber, f);
         }),
       isCompacting: () => Effect.succeed(false),
@@ -181,7 +169,7 @@ const makeMockSession = (opts: {
           if (!first) return;
           const prev = yield* Ref.get(currentFiber);
           if (prev) yield* Fiber.interrupt(prev);
-          const f = yield* Effect.forkDaemon(scriptedFlow(q, first.text));
+          const f = yield* Effect.forkDaemon(scriptedFlow(q));
           yield* Ref.set(currentFiber, f);
         }),
       interrupt: () =>
@@ -191,19 +179,6 @@ const makeMockSession = (opts: {
           yield* Queue.offer(q, { t: "status", status: "idle" });
         }),
       extensionUiResponse: () => Effect.void,
-      approve: (id) =>
-        Effect.gen(function* () {
-          yield* Queue.offer(q, { t: "status", status: "thinking" });
-          yield* sleepRand(120, 80);
-          yield* Queue.offer(q, {
-            t: "tool_result",
-            id,
-            result: "Generating RSA private key, 2048 bit long modulus",
-            status: "ok",
-            durationMs: 240,
-          });
-          yield* Queue.offer(q, { t: "status", status: "idle" });
-        }),
       compact: () => Effect.void,
       exportHtml: () => {
         const html = "<!doctype html><title>Mock session</title><p>Mock session</p>";

@@ -78,8 +78,6 @@ export class SessionStreamController {
         return client.session.send({ id, text: event.text, mode: event.mode, images: event.images, clientId: event.clientId });
       case "interrupt":
         return client.session.interrupt({ id });
-      case "permission_reply":
-        return client.session.permissionReply({ id, messageId: event.id, choice: event.choice });
       case "extension_ui_response":
         return client.session.extensionUiResponse({ id, requestId: event.id, value: event.value });
     }

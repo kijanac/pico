@@ -20,7 +20,6 @@ import type {
   Commands,
   ExtensionUiResponseValue,
   LogEntry,
-  PermissionChoice,
   SendMode,
   SessionMeta,
   QueuedMessage,
@@ -145,11 +144,6 @@ export class SessionManager extends Context.Tag("SessionManager")<
       id: string,
       requestId: string,
       value: ExtensionUiResponseValue,
-    ) => Effect.Effect<void, PiError | SessionNotFound>;
-    readonly approve: (
-      id: string,
-      msgId: string,
-      choice: PermissionChoice,
     ) => Effect.Effect<void, PiError | SessionNotFound>;
     readonly compact: (
       id: string,
@@ -622,8 +616,6 @@ const make = Effect.gen(function* () {
   ) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.extensionUiResponse(requestId, value));
 
-  const approve = (id: string, msgId: string, choice: PermissionChoice) =>
-    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.approve(msgId, choice));
 
   const compact = (id: string, instructions?: string) =>
     Effect.gen(function* () {
@@ -742,7 +734,6 @@ const make = Effect.gen(function* () {
     send,
     interrupt,
     extensionUiResponse,
-    approve,
     compact,
     exportHtml,
     listCommands,

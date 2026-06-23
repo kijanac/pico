@@ -25,9 +25,6 @@ export type SessionStatus = typeof SessionStatus.Type;
 export const SendMode = Schema.Literal("steer", "follow_up");
 export type SendMode = typeof SendMode.Type;
 
-export const PermissionChoice = Schema.Literal("allow", "deny", "allow_session");
-export type PermissionChoice = typeof PermissionChoice.Type;
-
 
 const Base = {
   id: Schema.String,
@@ -191,55 +188,6 @@ export type CustomToolCallMessage = typeof CustomToolCallMessage.Type;
 export const ToolCallMessage = Schema.Union(BuiltinToolCallMessage, CustomToolCallMessage);
 export type ToolCallMessage = typeof ToolCallMessage.Type;
 
-const BuiltinPermissionBase = {
-  kind: Schema.Literal("permission"),
-  toolKind: Schema.Literal("builtin"),
-  ...Base,
-  rationale: Schema.optional(Schema.String),
-  resolved: Schema.optional(PermissionChoice),
-};
-
-const ReadPermissionRequest = Schema.Struct({
-  ...BuiltinPermissionBase,
-  tool: Schema.Literal("read"),
-  args: ReadToolArgs,
-});
-const WritePermissionRequest = Schema.Struct({
-  ...BuiltinPermissionBase,
-  tool: Schema.Literal("write"),
-  args: WriteToolArgs,
-});
-const EditPermissionRequest = Schema.Struct({
-  ...BuiltinPermissionBase,
-  tool: Schema.Literal("edit"),
-  args: EditToolArgs,
-});
-const BashPermissionRequest = Schema.Struct({
-  ...BuiltinPermissionBase,
-  tool: Schema.Literal("bash"),
-  args: BashToolArgs,
-});
-
-export const BuiltinPermissionRequest = Schema.Union(
-  ReadPermissionRequest,
-  WritePermissionRequest,
-  EditPermissionRequest,
-  BashPermissionRequest,
-);
-
-export const CustomPermissionRequest = Schema.Struct({
-  kind: Schema.Literal("permission"),
-  toolKind: Schema.Literal("custom"),
-  ...Base,
-  tool: Schema.String,
-  args: CustomToolArgs,
-  rationale: Schema.optional(Schema.String),
-  resolved: Schema.optional(PermissionChoice),
-});
-
-export const PermissionRequest = Schema.Union(BuiltinPermissionRequest, CustomPermissionRequest);
-export type PermissionRequest = typeof PermissionRequest.Type;
-
 export const CompactionReason = Schema.Literal("manual", "threshold", "overflow");
 export type CompactionReason = typeof CompactionReason.Type;
 
@@ -262,7 +210,6 @@ export const LogEntry = Schema.Union(
   UserMessage,
   AssistantMessage,
   ToolCallMessage,
-  PermissionRequest,
   CompactionEntry,
 );
 export type LogEntry = typeof LogEntry.Type;
@@ -568,7 +515,6 @@ export const WireEvent = Schema.Union(
     status: Schema.Literal("ok", "error"),
     durationMs: Schema.Number,
   }),
-  Schema.Struct({ t: Schema.Literal("permission"), ...Seq, entry: PermissionRequest }),
   Schema.Struct({ t: Schema.Literal("compaction"), ...Seq, entry: CompactionEntry }),
   Schema.Struct({ t: Schema.Literal("status"), ...Seq, status: SessionStatus }),
   Schema.Struct({
@@ -621,11 +567,6 @@ export const ClientEvent = Schema.Union(
     images: Schema.optional(Schema.Array(ImageAttachment)),
     // Idempotency key: the host drops repeats and echoes it back on user_message.
     clientId: Schema.optional(Schema.String),
-  }),
-  Schema.Struct({
-    t: Schema.Literal("permission_reply"),
-    id: Schema.String,
-    choice: PermissionChoice,
   }),
   Schema.Struct({ t: Schema.Literal("interrupt") }),
   Schema.Struct({

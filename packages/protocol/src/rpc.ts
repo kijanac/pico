@@ -8,7 +8,6 @@ import {
   ExtensionUiResponseValue,
   HostUpdateStatus,
   ImageAttachment,
-  PermissionChoice,
   QueueState,
   SendMode,
   SessionControls,
@@ -114,10 +113,6 @@ export const PicoSessionRpc = RpcGroup.make(
     error: SessionFail,
   }),
   Rpc.make("session.interrupt", { payload: { id: Schema.String }, error: SessionFail }),
-  Rpc.make("session.permissionReply", {
-    payload: { id: Schema.String, messageId: Schema.String, choice: PermissionChoice },
-    error: SessionFail,
-  }),
   Rpc.make("session.extensionUiResponse", {
     payload: { id: Schema.String, requestId: Schema.String, value: ExtensionUiResponseValue },
     error: SessionFail,

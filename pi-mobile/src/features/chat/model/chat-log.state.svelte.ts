@@ -1,5 +1,5 @@
 import type { ClientEvent, LogEntry, WireEvent } from "@pico/protocol";
-import { appendLogEntry, findLogEntry, type Mutable, reconcileOrphanedToolCalls, reduceLog } from "@pico/protocol/log";
+import { appendLogEntry, type Mutable, reconcileOrphanedToolCalls, reduceLog } from "@pico/protocol/log";
 import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
 
 type SendEvent = Extract<ClientEvent, { t: "send" }>;
@@ -110,15 +110,6 @@ export const chatLogState = {
     delete failedEchoes[entryId];
     send(echo.event);
     startEchoTimer(entryId, echo);
-  },
-
-  resolvePermission(sessionId: string, id: string, choice: "allow" | "deny" | "allow_session"): void {
-    const log = getLog(sessionId);
-    const entry = findLogEntry(log, id);
-    if (entry?.kind !== "permission") return;
-
-    entry.resolved = choice;
-    bumpActivity(log);
   },
 };
 

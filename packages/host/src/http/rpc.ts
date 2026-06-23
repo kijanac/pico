@@ -112,7 +112,6 @@ const SessionHandlersLive = PicoSessionRpc.toLayer({
   "session.send": ({ id, text, mode, images, clientId }) =>
     onSessions((m) => m.send(id, text, mode, images ? [...images] : undefined, clientId)),
   "session.interrupt": ({ id }) => onSessions((m) => m.interrupt(id)),
-  "session.permissionReply": ({ id, messageId, choice }) => onSessions((m) => m.approve(id, messageId, choice)),
   "session.extensionUiResponse": ({ id, requestId, value }) => onSessions((m) => m.extensionUiResponse(id, requestId, value)),
 });
 

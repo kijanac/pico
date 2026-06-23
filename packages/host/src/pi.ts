@@ -35,8 +35,6 @@ import {
   type ExtensionUiRequest,
   type ExtensionUiResponseValue,
   type HostErrorCode,
-  type PermissionChoice,
-  type PermissionRequest,
   type SendMode,
   type SessionControls,
   type ToolResultContent,
@@ -92,7 +90,6 @@ export type PiEmission =
       status: "ok" | "error";
       durationMs: number;
     }
-  | { t: "permission"; entry: PermissionRequest }
   | { t: "compaction"; entry: ProtocolCompactionEntry }
   | { t: "status"; status: SessionStatus }
   | ({ t: "queue" } & SdkQueueState)
@@ -153,10 +150,6 @@ export interface PiSession {
   readonly extensionUiResponse: (
     id: string,
     value: ExtensionUiResponseValue,
-  ) => Effect.Effect<void, PiError>;
-  readonly approve: (
-    id: string,
-    choice: PermissionChoice,
   ) => Effect.Effect<void, PiError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiError>;
   readonly exportHtml: () => Effect.Effect<ExportedHtml, PiError>;
@@ -858,9 +851,6 @@ const wirePiSession = (
       extensionUiResponse: (id, value) =>
         Effect.sync(() => {
           extensionUi.respond(id, value);
-        }),
-      approve: (_id, _choice) =>
-        Effect.sync(() => {
         }),
       compact: (instructions) =>
         Effect.tryPromise({

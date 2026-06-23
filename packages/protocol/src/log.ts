@@ -161,10 +161,6 @@ export function reduceLog(acc: LogAccumulator, event: WireEvent, now: number): b
       return true;
     }
 
-    case "permission":
-      appendLogEntry(acc, event.entry);
-      return true;
-
     case "compaction":
       applyCompaction(acc, event.entry);
       return true;
