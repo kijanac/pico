@@ -1,5 +1,6 @@
 <script lang="ts">
   import { compactSession } from "@/features/chat/api";
+  import { runHost } from "@/shared/lib/rpc-client";
   import { Button } from "@/shared/ui/button";
   import { Textarea } from "@/shared/ui/textarea";
 
@@ -10,7 +11,7 @@
   function compact(): void {
     const customInstructions = instructions;
     onStart();
-    void compactSession(sessionId, customInstructions).catch((error) => {
+    void runHost(compactSession(sessionId, customInstructions)).catch((error) => {
       console.warn("[compact-context] compaction request failed:", error);
     });
   }

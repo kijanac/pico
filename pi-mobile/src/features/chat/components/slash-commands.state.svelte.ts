@@ -1,8 +1,9 @@
 import { untrack } from "svelte";
+import type { Commands, CommandEntry } from "@pico/protocol";
 import { listSessionCommands } from "@/features/chat/api";
+import { runHost } from "@/shared/lib/rpc-client";
 
-type Commands = Awaited<ReturnType<typeof listSessionCommands>>;
-export type CommandEntry = Commands["builtins"][number] | Commands["prompts"][number] | Commands["skills"][number];
+export type { CommandEntry };
 
 export interface SlashCommandCompletion {
   value: string;
@@ -53,7 +54,7 @@ export function createSlashCommandsState(
     error = null;
 
     try {
-      const next = await listSessionCommands(currentSession);
+      const next = await runHost(listSessionCommands(currentSession));
       if (currentRequest !== requestId) return;
       commands = next;
     } catch (caught) {
@@ -139,7 +140,7 @@ function slashCommandQuery(text: string, cursor: number): string | null {
 function matchCommands(commands: Commands | null, query: string): CommandEntry[] {
   if (!commands) return [];
 
-  const entries = [...commands.builtins, ...commands.prompts, ...commands.skills];
+  const entries = [...commands.builtins, ...commands.prompts, ...commands.skills, ...commands.extensions];
   if (query.length === 0) return entries;
 
   return entries.filter((entry) => `${entry.name} ${entry.description}`.toLowerCase().includes(query));

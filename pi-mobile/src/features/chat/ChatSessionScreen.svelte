@@ -12,18 +12,16 @@
   import SessionAgentActions from "@/features/chat/components/SessionAgentActions.svelte";
   import ExtensionUiSheet from "@/features/chat/components/ExtensionUiSheet.svelte";
   import ExtensionNotifications from "@/features/chat/components/ExtensionNotifications.svelte";
+  import type { SessionStats } from "@pico/protocol";
   import { getSessionStats } from "@/features/chat/api";
+  import { runHost } from "@/shared/lib/rpc-client";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
-  import { formatCost, formatTokens } from "@/shared/lib/format";
   import { cwdDisplayName } from "@/shared/lib/path-display";
   import StatusDot from "@/shared/components/StatusDot.svelte";
   import { Button } from "@/shared/ui/button";
   import EdgeSwipeBack from "@/shared/components/EdgeSwipeBack.svelte";
   import HomePreview from "@/features/sessions/components/HomePreview.svelte";
   import { warmHighlighter } from "@/shared/lib/highlighter";
-
-  type SessionStats = Awaited<ReturnType<typeof getSessionStats>>;
-  type ContextUsage = NonNullable<SessionStats["contextUsage"]>;
 
   let { sessionId }: { sessionId: string } = $props();
 
@@ -54,16 +52,10 @@
   async function loadStats(): Promise<void> {
     const requestId = ++statsRequestId;
     try {
-      const next = await getSessionStats(sessionId);
+      const next = await runHost(getSessionStats(sessionId));
       if (requestId === statsRequestId) stats = next;
     } catch {
     }
-  }
-
-  function formatContextUsage(usage: ContextUsage): string {
-    const tokens = usage.tokens === null ? "?" : formatTokens(usage.tokens);
-    const percent = usage.percent === null ? "" : ` (${Math.round(usage.percent)}%)`;
-    return `context ${tokens} / ${formatTokens(usage.contextWindow)}${percent}`;
   }
 </script>
 
@@ -98,13 +90,6 @@
     </div>
   </header>
 
-  {#if contextStats}
-    <div class="type-label uppercase tracking-[0.08em] hairline-b flex items-center gap-2 px-3 py-1.5 text-[color:var(--color-fg-faint)]">
-      <span class="truncate">{formatContextUsage(contextStats.usage)}</span>
-      <span class="ml-auto shrink-0 tabular-nums text-[color:var(--color-fg-muted)]">{formatCost(contextStats.cost)}</span>
-    </div>
-  {/if}
-
   <RetryBanner />
   {#if activeSessionState.connectionStatus === "gone"}
     <div class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
@@ -116,9 +101,9 @@
     </div>
   {:else}
     <MessageList {sessionId} />
-    <InputBar {sessionId} />
+    <ExtensionNotifications />
+    <InputBar {sessionId} {contextStats} />
   {/if}
   <ExtensionUiSheet />
-  <ExtensionNotifications />
 </main>
 </EdgeSwipeBack>

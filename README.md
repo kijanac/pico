@@ -6,11 +6,10 @@ Pico is an independent, unofficial mobile companion for the Pi coding agent.
 
 | Path | Purpose |
 | --- | --- |
-| [`packages/host-runtime/`](./packages/host-runtime) | Current Node/TypeScript Pico host runtime package (`@pico/host-runtime`). |
-| [`packages/host/`](./packages/host) | Reusable Pico host facade/helpers (`@pico/host`: doctor checks, pairing, service install, local admin client). |
-| [`packages/cli/`](./packages/cli) | Experimental `pico` host CLI (`pair`, `doctor`, `install`, `status`). |
+| [`packages/host/`](./packages/host) | Node/TypeScript Pico host server (`@pico/host`): HTTP/RPC/WebSocket server, sessions, storage, Pi SDK integration. |
+| [`packages/cli/`](./packages/cli) | The `pico` host CLI (`pair`, `doctor`, `install`, `status`) plus the host control logic it drives (pairing, service install, diagnostics, local admin client). |
 | [`pi-mobile/`](./pi-mobile) | Pico Svelte + Capacitor mobile client. |
-| [`packages/protocol/`](./packages/protocol) | Shared Valibot schemas and TypeScript types for the REST/WS protocol. |
+| [`packages/protocol/`](./packages/protocol) | Shared Effect Schema definitions and TypeScript types for the RPC/WS protocol. |
 
 ## Requirements
 
@@ -57,11 +56,10 @@ This typechecks the protocol, host runtime/helper packages, CLI, and builds the 
 
 ```text
 .
-├── packages/host-runtime/ # current Pico host runtime package (@pico/host-runtime)
-├── packages/host/         # reusable host facade/helpers (@pico/host)
-├── packages/cli/          # experimental pico host CLI
-├── packages/protocol/     # shared protocol schemas/types
-├── pi-mobile/           # Pico Svelte + Capacitor client
+├── packages/host/      # Pico host server (@pico/host)
+├── packages/cli/       # pico host CLI + host control logic
+├── packages/protocol/  # shared protocol schemas/types
+├── pi-mobile/          # Pico Svelte + Capacitor client
 ├── package.json         # root workspace scripts
 ├── pnpm-workspace.yaml  # workspace package list
 └── README.md            # this file
@@ -125,4 +123,4 @@ The intended production shape is:
 iPhone app ──Tailscale HTTPS/WSS──> Hetzner VPS: tailscale serve ──localhost──> Pico host (pico-host service) ──> pi agent
 ```
 
-See [`packages/host-runtime/deploy/README.md`](./packages/host-runtime/deploy/README.md) for the current server-appliance setup. In short: run `packages/host-runtime/deploy/install.sh` on the VPS, deploy with `PICO_DEPLOY_HOST=root@YOURBOX ./packages/host-runtime/deploy/deploy.sh`, authenticate pi either by running `/login` as the `pico-host` server user or by setting API-key env vars in `/etc/pico-host/env`, expose `localhost:7777` with `tailscale serve`, then enter that `https://…ts.net` host URL in the iPhone app Settings.
+See [`packages/host/deploy/README.md`](./packages/host/deploy/README.md) for the current server-appliance setup. In short: run `packages/host/deploy/install.sh` on the VPS, deploy with `PICO_DEPLOY_HOST=root@YOURBOX ./packages/host/deploy/deploy.sh`, authenticate pi either by running `/login` as the `pico-host` server user or by setting API-key env vars in `/etc/pico-host/env`, expose `localhost:7777` with `tailscale serve`, then enter that `https://…ts.net` host URL in the iPhone app Settings.

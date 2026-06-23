@@ -27,7 +27,7 @@ export function renderHostCloudInit(options: HostCloudInitOptions): string {
     "    export PICO_HOST_AUTO_UPDATE=1",
     "    rm -rf /tmp/pico",
     `    git clone --depth=1 ${shellQuote(PICO_REPO_URL)} /tmp/pico`,
-    "    /tmp/pico/packages/host-runtime/deploy/install.sh",
+    "    /tmp/pico/packages/host/deploy/install.sh",
   ];
 
   return `${lines.join("\n")}\n`;

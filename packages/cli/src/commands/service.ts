@@ -1,16 +1,16 @@
 import { resolve } from "node:path";
+import { Effect, Option } from "effect";
+import { picoHostPathsFromEnv, systemPicoHostPathsFromEnv } from "../host/paths.ts";
 import {
   defaultServiceCommand,
   installService,
   logsService,
-  picoHostPathsFromEnv,
   serviceFilePath,
   startService,
   stopService,
   uninstallService,
-  systemPicoHostPathsFromEnv,
   type ServiceMode,
-} from "@pico/host";
+} from "../host/service.ts";
 import { printServiceResults } from "../lib/diagnostics.ts";
 
 export interface ServiceCliOptions {
@@ -19,43 +19,19 @@ export interface ServiceCliOptions {
   readonly createSystemUser: boolean;
 }
 
-export function parseServiceCliOptions(args: readonly string[]): ServiceCliOptions {
-  let mode: ServiceMode = "user";
-  let systemUser: string | undefined;
-  let createSystemUser = false;
-
-  for (let i = 0; i < args.length; i += 1) {
-    const arg = args[i];
-    if (arg === "--system") {
-      mode = "system";
-    } else if (arg === "--user") {
-      const value = args[i + 1];
-      if (!value) throw new Error("--user requires a service account name");
-      systemUser = value;
-      i += 1;
-    } else if (arg === "--create-user") {
-      createSystemUser = true;
-    } else if (arg === "--help" || arg === "-h") {
-      throw new Error(serviceUsage());
-    } else {
-      throw new Error(`Unknown service option: ${arg}`);
-    }
+// Flags are parsed by @effect/cli; this only enforces the cross-flag rule.
+export const resolveServiceOptions = (input: {
+  readonly system: boolean;
+  readonly user: Option.Option<string>;
+  readonly createUser: boolean;
+}): Effect.Effect<ServiceCliOptions, Error> => {
+  const mode: ServiceMode = input.system ? "system" : "user";
+  const systemUser = Option.getOrUndefined(input.user);
+  if (mode === "user" && (systemUser !== undefined || input.createUser)) {
+    return Effect.fail(new Error("--user and --create-user require --system"));
   }
-
-  if (mode === "user" && (systemUser || createSystemUser)) {
-    throw new Error("--user and --create-user require --system");
-  }
-
-  return { mode, systemUser, createSystemUser };
-}
-
-function serviceUsage(): string {
-  return `Service options:
-  --system              Install/control a Linux system service instead of a per-user service
-  --user <name>         Service account for --system (default: pico-host)
-  --create-user         Create the --system service account if it does not exist
-`;
-}
+  return Effect.succeed({ mode, systemUser, createSystemUser: input.createUser });
+};
 
 function currentServiceCommand() {
   const override = process.env.PICO_SERVICE_COMMAND?.trim();
@@ -65,39 +41,41 @@ function currentServiceCommand() {
   return defaultServiceCommand(process.execPath, resolve(process.argv[1] ?? "pico"));
 }
 
-export function installCommand(options: ServiceCliOptions = { mode: "user", createSystemUser: false }): void {
-  const paths = options.mode === "system"
-    ? systemPicoHostPathsFromEnv(options.systemUser)
-    : picoHostPathsFromEnv();
-  const results = installService({
-    command: currentServiceCommand(),
-    paths,
-    mode: options.mode,
-    systemUser: options.systemUser,
-    createSystemUser: options.createSystemUser,
+export const installCommand = (options: ServiceCliOptions) =>
+  Effect.gen(function* () {
+    const paths = options.mode === "system" ? systemPicoHostPathsFromEnv(options.systemUser) : picoHostPathsFromEnv();
+    const results = yield* installService({
+      command: currentServiceCommand(),
+      paths,
+      mode: options.mode,
+      systemUser: options.systemUser,
+      createSystemUser: options.createSystemUser,
+    });
+    yield* Effect.sync(() => {
+      if (printServiceResults(results)) return;
+      console.log(`\nService file: ${serviceFilePath({ mode: options.mode })}`);
+      if (options.mode === "system") {
+        console.log("Run `pico status --system` or `pico logs --system` to inspect it.");
+        console.log(`Expose it with: sudo tailscale serve --bg --https=443 http://localhost:${paths.port}`);
+      } else {
+        console.log("Run `pico status` or `pico logs` to inspect it.");
+      }
+    });
   });
-  if (printServiceResults(results)) return;
-  console.log(`\nService file: ${serviceFilePath({ mode: options.mode })}`);
-  if (options.mode === "system") {
-    console.log("Run `pico status --system` or `pico logs --system` to inspect it.");
-    console.log(`Expose it with: sudo tailscale serve --bg --https=443 http://localhost:${paths.port}`);
-  } else {
-    console.log("Run `pico status` or `pico logs` to inspect it.");
-  }
-}
 
-export function uninstallCommand(options: ServiceCliOptions = { mode: "user", createSystemUser: false }): void {
-  printServiceResults(uninstallService({ mode: options.mode }));
-}
+export const uninstallCommand = (options: { readonly mode: ServiceMode }) =>
+  uninstallService({ mode: options.mode }).pipe(
+    Effect.flatMap((results) => Effect.sync(() => void printServiceResults(results))),
+  );
 
-export function startCommand(options: ServiceCliOptions = { mode: "user", createSystemUser: false }): void {
-  printServiceResults(startService({ mode: options.mode }));
-}
+export const startCommand = (options: { readonly mode: ServiceMode }) =>
+  startService({ mode: options.mode }).pipe(
+    Effect.flatMap((results) => Effect.sync(() => void printServiceResults(results))),
+  );
 
-export function stopCommand(options: ServiceCliOptions = { mode: "user", createSystemUser: false }): void {
-  printServiceResults(stopService({ mode: options.mode }));
-}
+export const stopCommand = (options: { readonly mode: ServiceMode }) =>
+  stopService({ mode: options.mode }).pipe(
+    Effect.flatMap((results) => Effect.sync(() => void printServiceResults(results))),
+  );
 
-export function logsCommand(options: ServiceCliOptions = { mode: "user", createSystemUser: false }): void {
-  logsService({ mode: options.mode });
-}
+export const logsCommand = (options: { readonly mode: ServiceMode }) => logsService({ mode: options.mode });

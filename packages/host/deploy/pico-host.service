@@ -1,0 +1,71 @@
+[Unit]
+Description=pico-host — phone-to-pi WebSocket relay
+Documentation=https://github.com/your-org/pico-host
+After=network-online.target tailscaled.service
+Wants=network-online.target
+# Restart no more than 5 times in 60s — bursty crash-loops should fail
+# loud, not consume the box.
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=pico-host
+Group=pico-host
+WorkingDirectory=/opt/pi-mobile-workspace/current/packages/host
+
+# Secrets and runtime config live in /etc/pico-host/env (chmod 600).
+# See deploy/env.example for the keys.
+EnvironmentFile=/etc/pico-host/env
+
+# Pico host listener is hard-coded to 127.0.0.1:7777 so the only public surface
+# is via `tailscale serve`.
+Environment=PICO_HOST_DB=/var/lib/pico-host/pico-host.db
+Environment=HOME=/var/lib/pico-host
+Environment=PICO_WORKSPACES_DIR=/var/lib/pico-host/workspaces
+Environment=NODE_ENV=production
+
+# Heap cap: GC pressure + a catchable OOM beat a silent kernel OOM-kill
+# (which hit this box at 1.5G on 2026-05-30).
+ExecStart=/usr/bin/node --max-old-space-size=512 --import tsx --no-warnings src/main.ts
+
+Restart=on-failure
+RestartSec=2s
+
+# Stop semantics: give the Pico host 10s to drain WS connections cleanly
+# before SIGKILL. Node handles SIGTERM as a graceful shutdown via the
+# hono server's signal trap.
+KillMode=mixed
+TimeoutStopSec=10s
+
+# ── sandboxing ────────────────────────────────────────────────────────
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+# Writable: the SQLite DB and pi's per-cwd session JSONLs (under $HOME).
+ReadWritePaths=/var/lib/pico-host
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectClock=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+# Network: needs IPv4/IPv6 + UNIX (for tailscale). Block raw/packet.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryDenyWriteExecute=false
+# node's V8 JIT requires W^X relaxation; setting true would SIGSEGV.
+
+# ── observability ─────────────────────────────────────────────────────
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pico-host
+
+[Install]
+WantedBy=multi-user.target

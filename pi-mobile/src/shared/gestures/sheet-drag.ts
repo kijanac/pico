@@ -6,7 +6,7 @@ const MIN_DISMISS_DRAG_PX = 24;
 const UPWARD_RESISTANCE = 0.18;
 const DISMISS_MS = 200;
 const SPRING_BACK_MS = 360;
-// Overshoot curve so a cancelled drag lands with a small bounce.
+// Overshoot curve: cancelled drag lands with a bounce.
 const SPRING_BACK_EASE = "cubic-bezier(0.34, 1.56, 0.64, 1)";
 const DISMISS_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 
@@ -15,11 +15,6 @@ export interface SheetDragOptions {
   onDismiss: () => void;
 }
 
-/**
- * Drag-to-dismiss for bottom sheets: the handle tracks the finger (with
- * rubber-band resistance upward), fades the overlay in step, and on release
- * either springs back or commits the dismissal based on travel + velocity.
- */
 export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) {
   const sheet = options.sheet;
 
@@ -31,7 +26,7 @@ export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) 
   let dragging = false;
   let settled = false;
 
-  // Last overlay in the DOM belongs to the topmost (this) sheet.
+  // Last overlay in DOM is the topmost (this) sheet.
   const overlay = (): HTMLElement | null =>
     [...document.querySelectorAll<HTMLElement>('[data-slot="sheet-overlay"]')].at(-1) ?? null;
 
@@ -94,8 +89,7 @@ export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) 
     haptics.light();
     const shade = overlay();
     const finish = () => {
-      // Keep the dragged position through unmount: the inline animation
-      // override stops the data-closed slide/fade from replaying on top.
+      // Inline override stops the data-closed slide/fade replaying over the dragged position.
       sheet.style.animation = "none";
       if (shade) shade.style.animation = "none";
       options.onDismiss();

@@ -3,6 +3,7 @@
   import { MoreHorizontal } from "@lucide/svelte";
   import { createAgentActionsState } from "@/features/chat/actions/agent-actions.state.svelte";
   import { exportSessionHtml } from "@/features/chat/api";
+  import { hostIssueSummary } from "@/shared/lib/host-issues";
   import AgentActionSheet from "@/features/chat/actions/AgentActionSheet.svelte";
   import AuthView from "@/features/chat/actions/AuthView.svelte";
   import MenuView from "@/features/chat/actions/MenuView.svelte";
@@ -24,7 +25,7 @@
       if (await exportSessionHtml(sessionId)) actions.done();
     } catch (error) {
       actions.setOpen(true);
-      actions.setError(error instanceof Error ? error.message : String(error));
+      actions.setError(hostIssueSummary(error));
     }
   }
 </script>
@@ -50,15 +51,12 @@
   >
     {#if actions.view === "menu"}
       <MenuView
-        onModels={() => actions.setView("models")}
         onAuth={() => actions.setView("auth")}
         onTree={() => actions.setView("tree")}
         onSettings={() => actions.setView("settings")}
         onInfo={() => actions.setView("info")}
         onExport={exportToHtml}
       />
-    {:else if actions.view === "models"}
-      <SessionSettingsView {sessionId} onError={actions.setError} filterKeys={["model"]} />
     {:else if actions.view === "settings"}
       <SessionSettingsView {sessionId} onError={actions.setError} excludeKeys={["model"]} />
     {:else if actions.view === "tree"}

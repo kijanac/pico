@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FileText, Hash, Sparkles } from "@lucide/svelte";
+  import { FileText, Hash, Puzzle, Sparkles } from "@lucide/svelte";
   import type { CommandEntry } from "@/features/chat/components/slash-commands.state.svelte";
 
   let {
@@ -41,7 +41,7 @@
           class={`flex w-full items-start gap-2 rounded-[var(--radius-md)] px-2.5 py-2 text-left ${index === selectedIndex ? "bg-[color:var(--color-surface)]" : "active:bg-[color:var(--color-surface)]"}`}
         >
           <span class="mt-0.5 text-[color:var(--color-fg-faint)]">
-            {#if entry.kind === "prompt"}<FileText class="size-3" />{:else if entry.kind === "skill"}<Sparkles class="size-3" />{:else}<Hash class="size-3" />{/if}
+            {#if entry.kind === "prompt"}<FileText class="size-3" />{:else if entry.kind === "skill"}<Sparkles class="size-3" />{:else if entry.kind === "extension"}<Puzzle class="size-3" />{:else}<Hash class="size-3" />{/if}
           </span>
           <span class="min-w-0 flex-1">
             <span class="type-meta block truncate text-[color:var(--color-fg)]">{label(entry)}</span>

@@ -1,12 +1,13 @@
+import { Effect } from "effect";
 import { settingsState } from "@/features/settings/settings.state.svelte";
-import { healthcheckHostUrl, probeHostIdentity } from "@/features/settings/api";
 import { cancelAuthLogin, getAuthLoginJob, listAuthProviders, saveAuthApiKey, startAuthLogin, submitAuthLoginInput } from "@/features/auth/api";
-import { classifyHostRequestFailure, hostIssueSummary } from "@/shared/lib/host-issues";
+import { classifyHostFailure, hostIssueSummary } from "@/shared/lib/host-issues";
+import { runHost } from "@/shared/lib/rpc-client";
 import { haptics } from "@/shared/mobile/haptics";
 
-type AuthProviders = Awaited<ReturnType<typeof listAuthProviders>>;
+type AuthProviders = Effect.Effect.Success<ReturnType<typeof listAuthProviders>>;
 type AuthProvider = AuthProviders["providers"][number];
-type AuthLoginJob = Awaited<ReturnType<typeof startAuthLogin>>;
+type AuthLoginJob = Effect.Effect.Success<ReturnType<typeof startAuthLogin>>;
 
 export interface ProviderAuthStateOptions {
   onError: (message: string | null) => void;
@@ -14,7 +15,7 @@ export interface ProviderAuthStateOptions {
 }
 
 export interface ProviderAuthState {
-  readonly providers: AuthProvider[];
+  readonly providers: readonly AuthProvider[];
   readonly loading: boolean;
   readonly job: AuthLoginJob | null;
   readonly input: string;
@@ -34,7 +35,7 @@ export interface ProviderAuthState {
 }
 
 export function createProviderAuthState(opts: ProviderAuthStateOptions): ProviderAuthState {
-  let providers = $state<AuthProvider[]>([]);
+  let providers = $state<readonly AuthProvider[]>([]);
   let loading = $state(false);
   let job = $state<AuthLoginJob | null>(null);
   let input = $state("");
@@ -43,19 +44,21 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   let savingApiKey = $state(false);
   let startingProviderId = $state<string | null>(null);
 
-  async function setHostFailure(error: unknown): Promise<void> {
-    const issue = await classifyHostRequestFailure(error, { url: settingsState.hostUrl, healthcheck: healthcheckHostUrl, identityProbe: probeHostIdentity });
-    opts.onError(`${issue.title}: ${issue.message}`);
-  }
+  const reportFailure = (error: unknown) =>
+    classifyHostFailure(error, { url: settingsState.hostUrl }).pipe(
+      Effect.andThen((issue) => Effect.sync(() => opts.onError(`${issue.title}: ${issue.message}`))),
+    );
 
   async function loadProviders(): Promise<void> {
     loading = true;
     try {
       if (!settingsState.loaded) await settingsState.load();
-      providers = (await listAuthProviders()).providers;
-      opts.onError(null);
-    } catch (error) {
-      await setHostFailure(error);
+      await runHost(
+        listAuthProviders().pipe(
+          Effect.tap((result) => Effect.sync(() => { providers = result.providers; opts.onError(null); })),
+          Effect.catchAll(reportFailure),
+        ),
+      );
     } finally {
       loading = false;
     }
@@ -76,9 +79,12 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     startingProviderId = provider.id;
     opts.onError(null);
     try {
-      job = await startAuthLogin(provider.id);
-    } catch (error) {
-      await setHostFailure(error);
+      await runHost(
+        startAuthLogin(provider.id).pipe(
+          Effect.tap((next) => Effect.sync(() => { job = next; })),
+          Effect.catchAll(reportFailure),
+        ),
+      );
     } finally {
       startingProviderId = null;
     }
@@ -86,89 +92,76 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
 
   async function saveApiKey(): Promise<void> {
     if (!apiKeyProvider || savingApiKey) return;
+    const provider = apiKeyProvider;
     savingApiKey = true;
     opts.onError(null);
     try {
-      providers = (await saveAuthApiKey(apiKeyProvider.id, apiKeyInput)).providers;
-      apiKeyProvider = null;
-      apiKeyInput = "";
-      opts.onConfigured?.();
-      haptics.success();
-    } catch (error) {
-      await setHostFailure(error);
+      await runHost(
+        saveAuthApiKey(provider.id, apiKeyInput).pipe(
+          Effect.tap((result) => Effect.sync(() => {
+            providers = result.providers;
+            apiKeyProvider = null;
+            apiKeyInput = "";
+            opts.onConfigured?.();
+            haptics.success();
+          })),
+          Effect.catchAll(reportFailure),
+        ),
+      );
     } finally {
       savingApiKey = false;
     }
   }
 
   async function refreshJob(): Promise<void> {
-    if (!job) return;
-    try {
-      const next = await getAuthLoginJob(job.id);
-      job = next;
-      if (next.status === "success") {
-        haptics.success();
-        await loadProviders();
-        opts.onConfigured?.();
-      }
-    } catch (error) {
-      await setHostFailure(error);
+    const current = job;
+    if (!current) return;
+    await runHost(
+      getAuthLoginJob(current.id).pipe(
+        Effect.tap((next) => Effect.sync(() => { job = next; })),
+        Effect.catchAll(reportFailure),
+      ),
+    );
+    if (job?.status === "success") {
+      haptics.success();
+      await loadProviders();
+      opts.onConfigured?.();
     }
   }
 
   async function submit(): Promise<void> {
-    if (!job) return;
-    try {
-      job = await submitAuthLoginInput(job.id, input);
-      input = "";
-      opts.onError(null);
-    } catch (error) {
-      await setHostFailure(error);
-    }
+    const current = job;
+    if (!current) return;
+    await runHost(
+      submitAuthLoginInput(current.id, input).pipe(
+        Effect.tap((next) => Effect.sync(() => { job = next; input = ""; opts.onError(null); })),
+        Effect.catchAll(reportFailure),
+      ),
+    );
   }
 
   async function cancel(): Promise<void> {
-    if (!job) return;
-    try {
-      await cancelAuthLogin(job.id);
-      job = null;
-      opts.onError(null);
-    } catch (error) {
-      await setHostFailure(error);
-    }
+    const current = job;
+    if (!current) return;
+    await runHost(
+      cancelAuthLogin(current.id).pipe(
+        Effect.tap(() => Effect.sync(() => { job = null; opts.onError(null); })),
+        Effect.catchAll(reportFailure),
+      ),
+    );
   }
 
   return {
-    get providers() {
-      return providers;
-    },
-    get loading() {
-      return loading;
-    },
-    get job() {
-      return job;
-    },
-    get input() {
-      return input;
-    },
-    get apiKeyProvider() {
-      return apiKeyProvider;
-    },
-    get apiKeyInput() {
-      return apiKeyInput;
-    },
-    get savingApiKey() {
-      return savingApiKey;
-    },
-    get startingProviderId() {
-      return startingProviderId;
-    },
-    setInput(value: string) {
-      input = value;
-    },
-    setApiKeyInput(value: string) {
-      apiKeyInput = value;
-    },
+    get providers() { return providers; },
+    get loading() { return loading; },
+    get job() { return job; },
+    get input() { return input; },
+    get apiKeyProvider() { return apiKeyProvider; },
+    get apiKeyInput() { return apiKeyInput; },
+    get savingApiKey() { return savingApiKey; },
+    get startingProviderId() { return startingProviderId; },
+    setInput(value: string) { input = value; },
+    setApiKeyInput(value: string) { apiKeyInput = value; },
     selectApiKeyProvider(provider: AuthProvider | null) {
       apiKeyProvider = provider;
       apiKeyInput = "";

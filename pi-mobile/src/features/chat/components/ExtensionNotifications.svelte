@@ -1,23 +1,31 @@
 <script lang="ts">
-  import { X } from "@lucide/svelte";
-  import { Button } from "@/shared/ui/button";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
+
+  const notice = $derived(activeSessionState.extensionNotification);
+  // Mirror pi's TUI: no label for info (just the dimmed message); "Warning:"/"Error:"
+  // prefix + escalating color for the rest.
+  const prefix = $derived(
+    notice?.level === "error" ? "Error: " : notice?.level === "warning" ? "Warning: " : "",
+  );
 </script>
 
-{#if activeSessionState.extensionUiNotifications.length > 0}
-  <div class="pointer-events-none fixed inset-x-3 top-[calc(env(safe-area-inset-top)+72px)] z-40 space-y-2">
-    {#each activeSessionState.extensionUiNotifications as notice (notice.id)}
-      <div class="pointer-events-auto rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface-elevated)] p-3 shadow-lg">
-        <div class="flex items-start gap-2">
-          <div class="min-w-0 flex-1">
-            <div class="type-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">extension {notice.level}</div>
-            <div class="type-copy mt-1 whitespace-pre-wrap text-[color:var(--color-fg)]">{notice.message}</div>
-          </div>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Dismiss" onclick={() => activeSessionState.dismissExtensionNotification(notice.id)}>
-            <X class="size-3.5" />
-          </Button>
-        </div>
-      </div>
-    {/each}
-  </div>
+<!--
+  Transient status line for ctx.ui.notify() — one line, latest message only,
+  auto-clears (see active-session.state). Sits inline above the input so it never
+  overlaps the conversation; tap to dismiss.
+-->
+{#if notice}
+  <button
+    type="button"
+    onpointerdown={(event) => event.preventDefault()}
+    onclick={() => activeSessionState.dismissExtensionNotification()}
+    class="flex w-full items-center border-t border-[color:var(--color-border)] px-3 py-2 text-left active:bg-[color:var(--color-surface)]"
+  >
+    <span
+      class="type-meta min-w-0 flex-1 truncate {notice.level === 'error'
+        ? 'text-[color:var(--color-danger)]'
+        : notice.level === 'warning'
+          ? 'text-[color:var(--color-fg)]'
+          : 'text-[color:var(--color-fg-muted)]'}">{prefix}{notice.message}</span>
+  </button>
 {/if}

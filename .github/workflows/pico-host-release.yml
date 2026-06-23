@@ -52,7 +52,7 @@ jobs:
       - name: Package Pico host artifact
         env:
           PICO_HOST_RELEASE_SIGNING_KEY_PEM: ${{ secrets.PICO_HOST_RELEASE_SIGNING_KEY_PEM }}
-        run: packages/host-runtime/deploy/package-pico-host.sh "$VERSION"
+        run: packages/host/deploy/package-pico-host.sh "$VERSION"
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2

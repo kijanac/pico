@@ -1,8 +1,8 @@
 <script lang="ts">
+  import type { SessionStats } from "@pico/protocol";
   import { getSessionStats } from "@/features/chat/api";
+  import { runHost } from "@/shared/lib/rpc-client";
   import { formatCost, formatTokens } from "@/shared/lib/format";
-
-  type SessionStats = Awaited<ReturnType<typeof getSessionStats>>;
 
   let { sessionId }: { sessionId: string } = $props();
 
@@ -18,7 +18,7 @@
     loading = true;
     error = null;
     try {
-      stats = await getSessionStats(sessionId);
+      stats = await runHost(getSessionStats(sessionId));
     } catch (caught) {
       error = String(caught);
     } finally {

@@ -1,13 +1,13 @@
 <script lang="ts">
   import { Check, ChevronLeft, ChevronRight, Folder, Home } from "@lucide/svelte";
+  import { Effect } from "effect";
+  import type { FsListing } from "@pico/protocol/rpc";
   import { settingsState } from "@/features/settings/settings.state.svelte";
-  import { healthcheckHostUrl, probeHostIdentity } from "@/features/settings/api";
   import { listDirectories } from "@/features/sessions/api";
   import ActionRow from "@/shared/components/ActionRow.svelte";
-  import { classifyHostRequestFailure } from "@/shared/lib/host-issues";
+  import { classifyHostFailure } from "@/shared/lib/host-issues";
+  import { runHost } from "@/shared/lib/rpc-client";
   import { Button } from "@/shared/ui/button";
-
-  type FsListing = Awaited<ReturnType<typeof listDirectories>>;
 
   let { initial, onSelect }: { initial?: string; onSelect: (path: string) => void } = $props();
 
@@ -26,18 +26,28 @@
     const requestId = ++listingRequestId;
     loading = true;
     error = null;
-    try {
-      if (!settingsState.loaded) await settingsState.load();
-      const nextListing = await listDirectories(nextPath);
-      if (requestId !== listingRequestId || nextPath !== path) return;
-      listing = nextListing;
-    } catch (caught) {
-      if (requestId !== listingRequestId || nextPath !== path) return;
-      const issue = await classifyHostRequestFailure(caught, { url: settingsState.hostUrl, healthcheck: healthcheckHostUrl, identityProbe: probeHostIdentity });
-      error = `${issue.title}: ${issue.message}`;
-    } finally {
-      if (requestId === listingRequestId) loading = false;
-    }
+    if (!settingsState.loaded) await settingsState.load();
+    await runHost(
+      listDirectories(nextPath).pipe(
+        Effect.tap((nextListing) =>
+          Effect.sync(() => {
+            if (requestId !== listingRequestId || nextPath !== path) return;
+            listing = nextListing;
+          }),
+        ),
+        Effect.catchAll((caught) =>
+          classifyHostFailure(caught, { url: settingsState.hostUrl }).pipe(
+            Effect.andThen((issue) =>
+              Effect.sync(() => {
+                if (requestId !== listingRequestId || nextPath !== path) return;
+                error = `${issue.title}: ${issue.message}`;
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (requestId === listingRequestId) loading = false;
   }
 
   function drill(name: string): void {

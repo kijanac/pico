@@ -6,13 +6,13 @@
   import { consumeNavKind, currentPath, matchRoute, navigateTo, type RouteMatch } from "@/app/routes";
   import { themeState } from "@/shared/theme/theme.svelte";
 
-  // Chunks load from local disk in Capacitor, so lazy routes cost ~nothing on first visit.
+  // Chunks load from local disk in Capacitor, so lazy routes cost ~nothing.
   function lazy<T>(load: () => Promise<T>): () => Promise<T> {
     let cached: Promise<T> | null = null;
     return () => {
       if (!cached) {
         cached = load();
-        // Don't cache a failed import; the next render retries it.
+        // Don't cache a failed import; let the next render retry.
         cached.catch(() => (cached = null));
       }
       return cached;
@@ -146,8 +146,7 @@
 
 <AppShell>
   <div class="nav-stack">
-    <!-- DOM order controls stacking: a push slides the new screen in over the
-         old one; a pop slides the old screen away revealing the new beneath. -->
+    <!-- DOM order controls stacking: push renders the new screen over the old; pop renders the old over the new. -->
     {#if leaving && leaving.kind === "push"}
       {#key leaving.screen.key}
         <div class="screen-layer nav-exit-push" aria-hidden="true" inert>

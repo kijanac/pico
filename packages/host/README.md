@@ -1,0 +1,132 @@
+# @pico/host
+
+A Node + Effect Pico host runtime between the [Pico](../pi-mobile/) client
+and the [Pi](https://pi.dev) coding agent.
+
+## Stack
+
+| Layer          | Pick                              |
+| -------------- | --------------------------------- |
+| Runtime        | Node 26.1+ (run via `tsx`)        |
+| HTTP           | Hono via `@hono/node-server`      |
+| WebSocket      | `ws` package, upgrade routed via Node `server.on('upgrade')` |
+| Concurrency    | Effect — Stream / PubSub / Fiber  |
+| Validation     | Valibot (shared with mobile)      |
+| Persistence    | `node:sqlite` (built-in, RC as of Node 25) |
+| pi integration | `@earendil-works/pi-coding-agent` (real) + scripted Mock (dev fallback) |
+
+## Run
+
+```bash
+npm install
+npm run dev            # tsx watch
+# or:
+npm start              # one-shot tsx
+```
+
+The Pico host listens on `:7777` (override with `$PORT`).
+
+### Pi modes
+
+| Env                       | Behavior |
+| ------------------------- | -------- |
+| (none)                    | Live pi via `@earendil-works/pi-coding-agent`. Sessions persisted to `~/.pi/agent/sessions/`. Requires LLM provider credentials configured via `pi auth …` or env (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …). |
+| `PI_USE_MOCK=1`           | Scripted in-process flow. No API keys needed. Same wire shape — useful for client UI work. Blocked under `NODE_ENV=production` unless `PI_ALLOW_UNSAFE_TEST_CLIENT=1` is also set. |
+| `PI_EPHEMERAL=1`          | Live pi but in-memory; sessions vanish on restart. |
+
+### Smoke test
+
+```bash
+PI_USE_MOCK=1 npm run dev          # in one terminal
+node --experimental-strip-types smoke.ts   # in another
+```
+
+## Endpoints
+
+| Method | Path             | |
+| ------ | ---------------- | --- |
+| GET    | `/healthz`       | liveness |
+| GET    | `/sessions`      | list active host sessions |
+| POST   | `/sessions`      | create — body `{ cwd, title }`; runs pi directly in `cwd` |
+| GET    | `/sessions/:id`  | metadata |
+| WS     | `/ws?session=:id&cursor=:n` | live event stream + send |
+
+## Architecture
+
+```
+HTTP client ─┐
+             ├──▶ Hono on @hono/node-server ──┐
+mobile WS ──▶ Node http upgrade ──▶ ws ───────┴──▶ SessionManager ──▶ PiClient
+                              │                            │
+                              └─── one Fiber per conn ◀────┴── PubSub + capped log
+                                   • outgoing: Stream<WireEvent> → ws.send
+                                   • incoming: Queue<ClientEvent> → mgr.send / interrupt / approve
+```
+
+## Migrations and protocol boundaries
+
+SQLite schema changes run at startup. Runtime-only host fields stay inside
+host record types; public protocol responses should expose only the mobile
+contract. Upstream pi event/tool payloads are parsed into canonical shared
+protocol shapes at the `src/pi.ts` adapter boundary.
+
+## Wiring real pi
+
+The default is already the real pi. `src/pi.ts` exports two Layers:
+
+- `PiClientLive` — wraps `createAgentSession()`. Pi's `AgentSessionEvent`s
+  are mapped into our `PiEmission` shape in `mapEvent()`. The full set of
+  event types we handle:
+  - `message_update` → `assistant_delta` (when nested type is `text_delta`)
+  - `message_end` → `assistant_end`
+  - `tool_execution_start` → `tool_call`
+  - `tool_execution_end` → `tool_result`
+  - `turn_start` / `turn_end` → `status` updates + `cost` when usage is present
+- `PiClientMock` — the scripted demo flow, no API needed
+
+The active pick is `PiClientFromEnv`: live by default, or scripted mock when `$PI_USE_MOCK=1`.
+
+### Known gaps in v0 live integration
+
+- **Permission gates skipped.** Pi's permission system is an extension, not
+  a core event. Need to register a small extension that forwards pi's
+  permission asks to our wire protocol's `permission` event. Until then,
+  live pi runs with whatever default policy is configured for the agent.
+- **`session.interrupt()` is a no-op.** `AgentSession` doesn't expose a
+  public interrupt at the time of writing; we emit a status change but
+  pi keeps generating until the turn ends.
+- **Tool input/output narrowing uses `@ts-expect-error`.** Pi's tool event
+  shapes (`toolCallId`, `input`, `output`, `error`, `isError`) aren't in
+  the exported union narrowing — we know them by convention. Tighten when
+  pi exports proper discriminators.
+
+## Pico host state vs. pi state
+
+Two layers of persistence:
+
+| State                              | Where                                   | Persists across host restart? |
+| ---------------------------------- | --------------------------------------- | ------------------------------- |
+| Pi conversation log (messages, tool calls) | `~/.pi/agent/sessions/<id>.jsonl` (pi's own store) | yes |
+| Pico host session registry         | SQLite `sessions` table                 | yes |
+| Pico host event log (for cursor replay) | SQLite `events` table               | yes |
+| Live PubSub fan-out + active fibers | in-memory                              | no (re-attach is a future feature) |
+| Push notification device tokens    | not yet — small JSON file when added    | n/a yet |
+
+`GET /sessions` survives restart and lists every session ever created. The
+event log is unbounded — clients can `resume` from any cursor and the Pico host
+will replay from disk. The one thing that does NOT survive restart is the
+live attachment to pi: after restart, calling `WS /ws?session=<old-id>`
+returns `session_not_found` because there's no `AgentSession` running for
+that id in this host process. Re-attaching to a dormant session (via pi's
+`SessionManager.open()` or `continueRecent()`) is the next obvious feature
+and slots into `SessionManager.create()` cleanly.
+
+## Configuration
+
+| Env                | Default            | Purpose |
+| ------------------ | ------------------ | --- |
+| `PORT`             | 7777               | HTTP/WS listen port |
+| `PICO_HOST_DB`        | `data/pico-host.db` | SQLite file path (WAL mode) |
+| `PI_USE_MOCK`      | unset              | `=1` to use the scripted mock pi (no API keys). Disabled in production unless explicitly allowed. |
+| `PI_ALLOW_UNSAFE_TEST_CLIENT` | unset       | `=1` to intentionally allow the mock test client with `NODE_ENV=production`. |
+| `PI_EPHEMERAL`     | unset              | `=1` to use pi's in-memory session manager instead of disk |

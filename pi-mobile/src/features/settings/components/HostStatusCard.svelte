@@ -5,7 +5,7 @@
   import { healthcheckHostUrl } from "@/features/settings/api";
   import { settingsState } from "@/features/settings/settings.state.svelte";
   import HostIssuePanel from "@/shared/components/HostIssuePanel.svelte";
-  import { classifyHostIssue, type HostIssue } from "@/shared/lib/host-issues";
+  import { hostIssueForCode, type HostIssue } from "@/shared/lib/host-issues";
   import { Button } from "@/shared/ui/button";
 
   type Status = "idle" | "checking" | "online" | "offline";
@@ -23,7 +23,7 @@
     issue = null;
     const online = await healthcheckHostUrl(settingsState.hostUrl);
     status = online ? "online" : "offline";
-    if (!online) issue = classifyHostIssue({ hostErrorCode: "host_unreachable" }, { url: settingsState.hostUrl });
+    if (!online) issue = hostIssueForCode("host_unreachable", { url: settingsState.hostUrl });
   }
 </script>
 

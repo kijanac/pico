@@ -8,8 +8,8 @@
 //          mobile clients to update before they can connect).
 //
 // Files touched:
-//   package.json, packages/host-runtime/package.json, packages/host/package.json,
-//   packages/cli/package.json, packages/protocol/package.json, pi-mobile/package.json -> "version"
+//   package.json, packages/host/package.json, packages/cli/package.json,
+//   packages/protocol/package.json, pi-mobile/package.json -> "version"
 //   packages/protocol/src/version.ts -> PRODUCT_VERSION (+ MIN_MOBILE_VERSION with --min)
 //   pi-mobile/ios/App/App.xcodeproj/project.pbxproj -> MARKETING_VERSION
 //     (CI overrides this at build time; synced so local Xcode builds match)
@@ -60,7 +60,6 @@ console.log(`bumping ${current} -> ${next}${bumpMin ? " (incl. MIN_MOBILE_VERSIO
 
 for (const pkg of [
   "package.json",
-  "packages/host-runtime/package.json",
   "packages/host/package.json",
   "packages/cli/package.json",
   "packages/protocol/package.json",

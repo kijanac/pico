@@ -12,7 +12,7 @@ function queueSnapshot(queue: QueueState = emptyQueue): QueueState {
   };
 }
 
-function queueItems(sessionId: string): QueuedMessage[] {
+function queueItems(sessionId: string): readonly QueuedMessage[] {
   return queues[sessionId]?.queued ?? emptyQueue.queued;
 }
 
@@ -23,14 +23,6 @@ export const chatQueueState = {
 
   count(sessionId: string): number {
     return queueItems(sessionId).length;
-  },
-
-  steering(sessionId: string): QueuedMessage[] {
-    return queueItems(sessionId).filter((message) => message.queueKind === "steer");
-  },
-
-  followUp(sessionId: string): QueuedMessage[] {
-    return queueItems(sessionId).filter((message) => message.queueKind === "follow_up");
   },
 
   set(sessionId: string, queue: QueueState): void {

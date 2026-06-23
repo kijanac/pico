@@ -1,7 +1,7 @@
 <script lang="ts">
   import { AlertCircle, AlertTriangle, XCircle } from "@lucide/svelte";
   import type { HostErrorCode } from "@pico/protocol";
-  import { classifyHostIssue } from "@/shared/lib/host-issues";
+  import { hostIssueForCode } from "@/shared/lib/host-issues";
 
   let {
     stopReason,
@@ -13,7 +13,7 @@
     errorCode?: HostErrorCode;
   } = $props();
 
-  const hostIssue = $derived(errorCode ? classifyHostIssue({ hostErrorCode: errorCode }) : null);
+  const hostIssue = $derived(errorCode ? hostIssueForCode(errorCode) : null);
   const providerAuthIssue = $derived(hostIssue?.kind === "provider-auth-missing" ? hostIssue : null);
 
   const toneClass = $derived(

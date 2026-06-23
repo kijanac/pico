@@ -1,4 +1,4 @@
-import * as v from "valibot";
+import { Schema } from "effect";
 import { HostErrorCodeSchema } from "./errors.ts";
 export {
   HostErrorCodeSchema,
@@ -19,670 +19,578 @@ export {
   type HostCloudInitOptions,
 } from "./cloud-init.ts";
 
-export const SessionStatus = v.picklist([
-  "idle",
-  "thinking",
-  "tool",
-  "waiting",
-  "error",
-]);
-export type SessionStatus = v.InferOutput<typeof SessionStatus>;
+export const SessionStatus = Schema.Literal("idle", "thinking", "tool", "waiting", "error");
+export type SessionStatus = typeof SessionStatus.Type;
 
-export const SendMode = v.picklist(["steer", "follow_up"]);
-export type SendMode = v.InferOutput<typeof SendMode>;
-
-export const PermissionChoice = v.picklist([
-  "allow",
-  "deny",
-  "allow_session",
-]);
-export type PermissionChoice = v.InferOutput<typeof PermissionChoice>;
+export const SendMode = Schema.Literal("steer", "follow_up");
+export type SendMode = typeof SendMode.Type;
 
 
 const Base = {
-  id: v.string(),
-  at: v.number(),
-} as const;
+  id: Schema.String,
+  at: Schema.Number,
+};
 
-export const UserMessage = v.object({
-  kind: v.literal("user"),
+export const UserMessage = Schema.Struct({
+  kind: Schema.Literal("user"),
   ...Base,
-  text: v.string(),
-  queued: v.optional(v.boolean()),
-  queueKind: v.optional(SendMode),
-  // Echoed from the client's send event; lets the sender reconcile its
-  // optimistic echo exactly and makes retries idempotent.
-  clientId: v.optional(v.string()),
+  text: Schema.String,
+  queued: Schema.optional(Schema.Boolean),
+  queueKind: Schema.optional(SendMode),
+  // Echoed from the send event so the sender reconciles its optimistic echo and retries stay idempotent.
+  clientId: Schema.optional(Schema.String),
 });
-export type UserMessage = v.InferOutput<typeof UserMessage>;
+export type UserMessage = typeof UserMessage.Type;
 
-export const StopReason = v.picklist([
-  "stop",
-  "length",
-  "toolUse",
-  "error",
-  "aborted",
-]);
-export type StopReason = v.InferOutput<typeof StopReason>;
+export const StopReason = Schema.Literal("stop", "length", "toolUse", "error", "aborted");
+export type StopReason = typeof StopReason.Type;
 
-export const MessageUsage = v.object({
-  input: v.number(),
-  output: v.number(),
-  cacheRead: v.number(),
-  cacheWrite: v.number(),
-  totalTokens: v.number(),
-  cost: v.object({
-    input: v.number(),
-    output: v.number(),
-    cacheRead: v.number(),
-    cacheWrite: v.number(),
-    total: v.number(),
+export const MessageUsage = Schema.Struct({
+  input: Schema.Number,
+  output: Schema.Number,
+  cacheRead: Schema.Number,
+  cacheWrite: Schema.Number,
+  totalTokens: Schema.Number,
+  cost: Schema.Struct({
+    input: Schema.Number,
+    output: Schema.Number,
+    cacheRead: Schema.Number,
+    cacheWrite: Schema.Number,
+    total: Schema.Number,
   }),
 });
-export type MessageUsage = v.InferOutput<typeof MessageUsage>;
+export type MessageUsage = typeof MessageUsage.Type;
 
-export const AssistantMessage = v.object({
-  kind: v.literal("assistant"),
+export const AssistantMessage = Schema.Struct({
+  kind: Schema.Literal("assistant"),
   ...Base,
-  text: v.string(),
-  streaming: v.optional(v.boolean()),
-  stopReason: v.optional(StopReason),
-  errorMessage: v.optional(v.string()),
-  errorCode: v.optional(HostErrorCodeSchema),
-  usage: v.optional(MessageUsage),
+  text: Schema.String,
+  streaming: Schema.optional(Schema.Boolean),
+  stopReason: Schema.optional(StopReason),
+  errorMessage: Schema.optional(Schema.String),
+  errorCode: Schema.optional(HostErrorCodeSchema),
+  usage: Schema.optional(MessageUsage),
 });
-export type AssistantMessage = v.InferOutput<typeof AssistantMessage>;
+export type AssistantMessage = typeof AssistantMessage.Type;
 
 
-export const ReadToolArgs = v.object({
-  path: v.string(),
-  offset: v.optional(v.number()),
-  limit: v.optional(v.number()),
+export const ReadToolArgs = Schema.Struct({
+  path: Schema.String,
+  offset: Schema.optional(Schema.Number),
+  limit: Schema.optional(Schema.Number),
 });
-export type ReadToolArgs = v.InferOutput<typeof ReadToolArgs>;
+export type ReadToolArgs = typeof ReadToolArgs.Type;
 
-export const WriteToolArgs = v.object({
-  path: v.string(),
-  content: v.string(),
+export const WriteToolArgs = Schema.Struct({
+  path: Schema.String,
+  content: Schema.String,
 });
-export type WriteToolArgs = v.InferOutput<typeof WriteToolArgs>;
+export type WriteToolArgs = typeof WriteToolArgs.Type;
 
-const EditReplacements = v.array(
-  v.object({
-    oldText: v.string(),
-    newText: v.string(),
+const EditReplacements = Schema.Array(
+  Schema.Struct({
+    oldText: Schema.String,
+    newText: Schema.String,
   }),
 );
 
-// `edits` is normally an array, but some models (e.g. Opus 4.6, GLM-5.1) emit
-// it as a JSON-encoded string. Accept either and decode the string form, so
-// the parsed output is always the canonical array. The bridge sends that
-// canonical shape over the wire, so re-parsing on the client (or on store
-// replay) just matches the array branch — the transform is a no-op on
-// already-parsed args.
-export const EditToolArgs = v.object({
-  path: v.string(),
-  edits: v.union([
-    EditReplacements,
-    v.pipe(
-      v.string(),
-      v.transform((value) => {
-        try {
-          return JSON.parse(value);
-        } catch {
-          return null;
-        }
-      }),
-      EditReplacements,
-    ),
-  ]),
+// Some models (e.g. Opus 4.6, GLM-5.1) emit `edits` as a JSON-encoded string; decode it to the canonical array. No-op on already-parsed args.
+export const EditToolArgs = Schema.Struct({
+  path: Schema.String,
+  edits: Schema.Union(EditReplacements, Schema.parseJson(EditReplacements)),
 });
-export type EditToolArgs = v.InferOutput<typeof EditToolArgs>;
+export type EditToolArgs = typeof EditToolArgs.Type;
 
-export const BashToolArgs = v.object({
-  command: v.string(),
-  timeout: v.optional(v.number()),
+export const BashToolArgs = Schema.Struct({
+  command: Schema.String,
+  timeout: Schema.optional(Schema.Number),
 });
-export type BashToolArgs = v.InferOutput<typeof BashToolArgs>;
+export type BashToolArgs = typeof BashToolArgs.Type;
 
-export const CustomToolArgs = v.record(v.string(), v.unknown());
-export type CustomToolArgs = v.InferOutput<typeof CustomToolArgs>;
+export const CustomToolArgs = Schema.Record({ key: Schema.String, value: Schema.Unknown });
+export type CustomToolArgs = typeof CustomToolArgs.Type;
 
-const ToolStatus = v.picklist(["pending", "running", "ok", "error"]);
+const ToolStatus = Schema.Literal("pending", "running", "ok", "error");
 
-export const ToolTextContent = v.object({
-  type: v.literal("text"),
-  text: v.string(),
+export const ToolTextContent = Schema.Struct({
+  type: Schema.Literal("text"),
+  text: Schema.String,
 });
-export type ToolTextContent = v.InferOutput<typeof ToolTextContent>;
+export type ToolTextContent = typeof ToolTextContent.Type;
 
-export const ToolImageContent = v.object({
-  type: v.literal("image"),
-  data: v.string(),
-  mimeType: v.string(),
+export const ToolImageContent = Schema.Struct({
+  type: Schema.Literal("image"),
+  data: Schema.String,
+  mimeType: Schema.String,
 });
-export type ToolImageContent = v.InferOutput<typeof ToolImageContent>;
+export type ToolImageContent = typeof ToolImageContent.Type;
 
-export const ToolResultContent = v.variant("type", [ToolTextContent, ToolImageContent]);
-export type ToolResultContent = v.InferOutput<typeof ToolResultContent>;
+export const ToolResultContent = Schema.Union(ToolTextContent, ToolImageContent);
+export type ToolResultContent = typeof ToolResultContent.Type;
 
 const BuiltinToolCallBase = {
-  kind: v.literal("tool_call"),
-  toolKind: v.literal("builtin"),
+  kind: Schema.Literal("tool_call"),
+  toolKind: Schema.Literal("builtin"),
   ...Base,
   status: ToolStatus,
-  result: v.optional(v.string()),
-  resultContent: v.optional(v.array(ToolResultContent)),
-  details: v.optional(v.unknown()),
-  durationMs: v.optional(v.number()),
-} as const;
+  result: Schema.optional(Schema.String),
+  resultContent: Schema.optional(Schema.Array(ToolResultContent)),
+  details: Schema.optional(Schema.Unknown),
+  durationMs: Schema.optional(Schema.Number),
+};
 
-const ReadToolCallMessage = v.object({
+const ReadToolCallMessage = Schema.Struct({
   ...BuiltinToolCallBase,
-  tool: v.literal("read"),
+  tool: Schema.Literal("read"),
   args: ReadToolArgs,
 });
 
-const WriteToolCallMessage = v.object({
+const WriteToolCallMessage = Schema.Struct({
   ...BuiltinToolCallBase,
-  tool: v.literal("write"),
+  tool: Schema.Literal("write"),
   args: WriteToolArgs,
 });
 
-const EditToolCallMessage = v.object({
+const EditToolCallMessage = Schema.Struct({
   ...BuiltinToolCallBase,
-  tool: v.literal("edit"),
+  tool: Schema.Literal("edit"),
   args: EditToolArgs,
 });
 
-const BashToolCallMessage = v.object({
+const BashToolCallMessage = Schema.Struct({
   ...BuiltinToolCallBase,
-  tool: v.literal("bash"),
+  tool: Schema.Literal("bash"),
   args: BashToolArgs,
 });
 
-export const BuiltinToolCallMessage = v.variant("tool", [
+export const BuiltinToolCallMessage = Schema.Union(
   ReadToolCallMessage,
   WriteToolCallMessage,
   EditToolCallMessage,
   BashToolCallMessage,
-]);
-export type BuiltinToolCallMessage = v.InferOutput<typeof BuiltinToolCallMessage>;
+);
+export type BuiltinToolCallMessage = typeof BuiltinToolCallMessage.Type;
 
-export const CustomToolCallMessage = v.object({
-  kind: v.literal("tool_call"),
-  toolKind: v.literal("custom"),
+export const CustomToolCallMessage = Schema.Struct({
+  kind: Schema.Literal("tool_call"),
+  toolKind: Schema.Literal("custom"),
   ...Base,
-  tool: v.string(),
+  tool: Schema.String,
   args: CustomToolArgs,
   status: ToolStatus,
-  result: v.optional(v.string()),
-  resultContent: v.optional(v.array(ToolResultContent)),
-  details: v.optional(v.unknown()),
-  durationMs: v.optional(v.number()),
+  result: Schema.optional(Schema.String),
+  resultContent: Schema.optional(Schema.Array(ToolResultContent)),
+  details: Schema.optional(Schema.Unknown),
+  durationMs: Schema.optional(Schema.Number),
 });
-export type CustomToolCallMessage = v.InferOutput<typeof CustomToolCallMessage>;
+export type CustomToolCallMessage = typeof CustomToolCallMessage.Type;
 
-export const ToolCallMessage = v.variant("toolKind", [
-  BuiltinToolCallMessage,
-  CustomToolCallMessage,
-]);
-export type ToolCallMessage = v.InferOutput<typeof ToolCallMessage>;
+export const ToolCallMessage = Schema.Union(BuiltinToolCallMessage, CustomToolCallMessage);
+export type ToolCallMessage = typeof ToolCallMessage.Type;
 
-const BuiltinPermissionBase = {
-  kind: v.literal("permission"),
-  toolKind: v.literal("builtin"),
-  ...Base,
-  rationale: v.optional(v.string()),
-  resolved: v.optional(PermissionChoice),
-} as const;
+export const CompactionReason = Schema.Literal("manual", "threshold", "overflow");
+export type CompactionReason = typeof CompactionReason.Type;
 
-const ReadPermissionRequest = v.object({
-  ...BuiltinPermissionBase,
-  tool: v.literal("read"),
-  args: ReadToolArgs,
-});
-const WritePermissionRequest = v.object({
-  ...BuiltinPermissionBase,
-  tool: v.literal("write"),
-  args: WriteToolArgs,
-});
-const EditPermissionRequest = v.object({
-  ...BuiltinPermissionBase,
-  tool: v.literal("edit"),
-  args: EditToolArgs,
-});
-const BashPermissionRequest = v.object({
-  ...BuiltinPermissionBase,
-  tool: v.literal("bash"),
-  args: BashToolArgs,
-});
+export const CompactionStatus = Schema.Literal("running", "success", "error", "aborted");
+export type CompactionStatus = typeof CompactionStatus.Type;
 
-export const BuiltinPermissionRequest = v.variant("tool", [
-  ReadPermissionRequest,
-  WritePermissionRequest,
-  EditPermissionRequest,
-  BashPermissionRequest,
-]);
-
-export const CustomPermissionRequest = v.object({
-  kind: v.literal("permission"),
-  toolKind: v.literal("custom"),
-  ...Base,
-  tool: v.string(),
-  args: CustomToolArgs,
-  rationale: v.optional(v.string()),
-  resolved: v.optional(PermissionChoice),
-});
-
-export const PermissionRequest = v.variant("toolKind", [
-  BuiltinPermissionRequest,
-  CustomPermissionRequest,
-]);
-export type PermissionRequest = v.InferOutput<typeof PermissionRequest>;
-
-export const CompactionReason = v.picklist(["manual", "threshold", "overflow"]);
-export type CompactionReason = v.InferOutput<typeof CompactionReason>;
-
-export const CompactionStatus = v.picklist(["running", "success", "error", "aborted"]);
-export type CompactionStatus = v.InferOutput<typeof CompactionStatus>;
-
-export const CompactionEntry = v.object({
-  kind: v.literal("compaction"),
+export const CompactionEntry = Schema.Struct({
+  kind: Schema.Literal("compaction"),
   ...Base,
   status: CompactionStatus,
-  reason: v.optional(CompactionReason),
-  summary: v.optional(v.string()),
-  tokensBefore: v.optional(v.number()),
-  errorMessage: v.optional(v.string()),
-  willRetry: v.optional(v.boolean()),
+  reason: Schema.optional(CompactionReason),
+  summary: Schema.optional(Schema.String),
+  tokensBefore: Schema.optional(Schema.Number),
+  errorMessage: Schema.optional(Schema.String),
+  willRetry: Schema.optional(Schema.Boolean),
 });
-export type CompactionEntry = v.InferOutput<typeof CompactionEntry>;
+export type CompactionEntry = typeof CompactionEntry.Type;
 
-export const LogEntry = v.union([
+export const LogEntry = Schema.Union(
   UserMessage,
   AssistantMessage,
   ToolCallMessage,
-  PermissionRequest,
   CompactionEntry,
-]);
-export type LogEntry = v.InferOutput<typeof LogEntry>;
+);
+export type LogEntry = typeof LogEntry.Type;
 
 
-export const SessionMeta = v.object({
-  id: v.string(),
-  title: v.string(),
-  cwd: v.string(),
+export const SessionMeta = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  cwd: Schema.String,
   status: SessionStatus,
-  updatedAt: v.string(),
-  tokens: v.object({ in: v.number(), out: v.number() }),
-  costUsd: v.number(),
-  archived: v.boolean(),
+  updatedAt: Schema.String,
+  tokens: Schema.Struct({ in: Schema.Number, out: Schema.Number }),
+  costUsd: Schema.Number,
+  archived: Schema.Boolean,
 });
-export type SessionMeta = v.InferOutput<typeof SessionMeta>;
+export type SessionMeta = typeof SessionMeta.Type;
 
-export const SessionControlOption = v.object({
-  value: v.string(),
-  label: v.string(),
-  description: v.optional(v.string()),
-  disabled: v.optional(v.boolean()),
+export const SessionControlOption = Schema.Struct({
+  value: Schema.String,
+  label: Schema.String,
+  description: Schema.optional(Schema.String),
+  disabled: Schema.optional(Schema.Boolean),
 });
-export type SessionControlOption = v.InferOutput<typeof SessionControlOption>;
+export type SessionControlOption = typeof SessionControlOption.Type;
 
-export const SelectSessionControl = v.object({
-  key: v.string(),
-  kind: v.literal("select"),
-  label: v.string(),
-  value: v.string(),
-  description: v.optional(v.string()),
-  options: v.array(SessionControlOption),
+export const SelectSessionControl = Schema.Struct({
+  key: Schema.String,
+  kind: Schema.Literal("select"),
+  label: Schema.String,
+  value: Schema.String,
+  description: Schema.optional(Schema.String),
+  options: Schema.Array(SessionControlOption),
 });
-export type SelectSessionControl = v.InferOutput<typeof SelectSessionControl>;
+export type SelectSessionControl = typeof SelectSessionControl.Type;
 
-export const BooleanSessionControl = v.object({
-  key: v.string(),
-  kind: v.literal("boolean"),
-  label: v.string(),
-  value: v.boolean(),
-  description: v.optional(v.string()),
+export const BooleanSessionControl = Schema.Struct({
+  key: Schema.String,
+  kind: Schema.Literal("boolean"),
+  label: Schema.String,
+  value: Schema.Boolean,
+  description: Schema.optional(Schema.String),
 });
-export type BooleanSessionControl = v.InferOutput<typeof BooleanSessionControl>;
+export type BooleanSessionControl = typeof BooleanSessionControl.Type;
 
-export const SessionControl = v.variant("kind", [SelectSessionControl, BooleanSessionControl]);
-export type SessionControl = v.InferOutput<typeof SessionControl>;
+export const SessionControl = Schema.Union(SelectSessionControl, BooleanSessionControl);
+export type SessionControl = typeof SessionControl.Type;
 
-export const SessionControls = v.object({
-  controls: v.array(SessionControl),
+export const SessionControls = Schema.Struct({
+  controls: Schema.Array(SessionControl),
 });
-export type SessionControls = v.InferOutput<typeof SessionControls>;
+export type SessionControls = typeof SessionControls.Type;
 
-export const SessionControlValueBody = v.object({
-  value: v.union([v.string(), v.boolean()]),
+export const AuthProvider = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  configured: Schema.Boolean,
+  authType: Schema.Literal("oauth", "api_key", "setup"),
+  source: Schema.optional(Schema.String),
+  label: Schema.optional(Schema.String),
 });
-export type SessionControlValueBody = v.InferOutput<typeof SessionControlValueBody>;
+export type AuthProvider = typeof AuthProvider.Type;
 
-export const AuthProvider = v.object({
-  id: v.string(),
-  name: v.string(),
-  configured: v.boolean(),
-  authType: v.picklist(["oauth", "api_key", "setup"]),
-  source: v.optional(v.string()),
-  label: v.optional(v.string()),
+export const AuthProviders = Schema.Struct({ providers: Schema.Array(AuthProvider) });
+export type AuthProviders = typeof AuthProviders.Type;
+
+export const AuthLoginJob = Schema.Struct({
+  id: Schema.String,
+  providerId: Schema.String,
+  status: Schema.Literal("starting", "auth", "device", "prompt", "manual", "progress", "success", "failed", "cancelled"),
+  providerName: Schema.optional(Schema.String),
+  authUrl: Schema.optional(Schema.String),
+  instructions: Schema.optional(Schema.String),
+  userCode: Schema.optional(Schema.String),
+  verificationUri: Schema.optional(Schema.String),
+  promptMessage: Schema.optional(Schema.String),
+  promptPlaceholder: Schema.optional(Schema.String),
+  progress: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.String),
 });
-export type AuthProvider = v.InferOutput<typeof AuthProvider>;
+export type AuthLoginJob = typeof AuthLoginJob.Type;
 
-export const AuthProviders = v.object({ providers: v.array(AuthProvider) });
-export type AuthProviders = v.InferOutput<typeof AuthProviders>;
-
-export const AuthLoginJob = v.object({
-  id: v.string(),
-  providerId: v.string(),
-  status: v.picklist(["starting", "auth", "device", "prompt", "manual", "progress", "success", "failed", "cancelled"]),
-  providerName: v.optional(v.string()),
-  authUrl: v.optional(v.string()),
-  instructions: v.optional(v.string()),
-  userCode: v.optional(v.string()),
-  verificationUri: v.optional(v.string()),
-  promptMessage: v.optional(v.string()),
-  promptPlaceholder: v.optional(v.string()),
-  progress: v.optional(v.string()),
-  error: v.optional(v.string()),
+export const ContextUsage = Schema.Struct({
+  tokens: Schema.NullOr(Schema.Number),
+  contextWindow: Schema.Number,
+  percent: Schema.NullOr(Schema.Number),
 });
-export type AuthLoginJob = v.InferOutput<typeof AuthLoginJob>;
+export type ContextUsage = typeof ContextUsage.Type;
 
-export const ContextUsage = v.object({
-  tokens: v.nullable(v.number()),
-  contextWindow: v.number(),
-  percent: v.nullable(v.number()),
-});
-export type ContextUsage = v.InferOutput<typeof ContextUsage>;
-
-export const SessionStats = v.object({
-  sessionFile: v.optional(v.string()),
-  sessionId: v.string(),
-  cwd: v.string(),
-  userMessages: v.number(),
-  assistantMessages: v.number(),
-  toolCalls: v.number(),
-  toolResults: v.number(),
-  totalMessages: v.number(),
-  tokens: v.object({
-    input: v.number(),
-    output: v.number(),
-    cacheRead: v.number(),
-    cacheWrite: v.number(),
-    total: v.number(),
+export const SessionStats = Schema.Struct({
+  sessionFile: Schema.optional(Schema.String),
+  sessionId: Schema.String,
+  cwd: Schema.String,
+  userMessages: Schema.Number,
+  assistantMessages: Schema.Number,
+  toolCalls: Schema.Number,
+  toolResults: Schema.Number,
+  totalMessages: Schema.Number,
+  tokens: Schema.Struct({
+    input: Schema.Number,
+    output: Schema.Number,
+    cacheRead: Schema.Number,
+    cacheWrite: Schema.Number,
+    total: Schema.Number,
   }),
-  cost: v.number(),
-  contextUsage: v.optional(ContextUsage),
+  cost: Schema.Number,
+  contextUsage: Schema.optional(ContextUsage),
 });
-export type SessionStats = v.InferOutput<typeof SessionStats>;
+export type SessionStats = typeof SessionStats.Type;
 
-export const BuiltinCommandEntry = v.object({
-  kind: v.literal("builtin"),
-  name: v.string(),
-  description: v.string(),
-  takesArgs: v.optional(v.boolean()),
+export const BuiltinCommandEntry = Schema.Struct({
+  kind: Schema.Literal("builtin"),
+  name: Schema.String,
+  description: Schema.String,
+  takesArgs: Schema.optional(Schema.Boolean),
 });
-export type BuiltinCommandEntry = v.InferOutput<typeof BuiltinCommandEntry>;
+export type BuiltinCommandEntry = typeof BuiltinCommandEntry.Type;
 
-export const PromptCommandEntry = v.object({
-  kind: v.literal("prompt"),
-  name: v.string(),
-  description: v.string(),
-  takesArgs: v.optional(v.boolean()),
-  source: v.optional(v.string()),
+export const PromptCommandEntry = Schema.Struct({
+  kind: Schema.Literal("prompt"),
+  name: Schema.String,
+  description: Schema.String,
+  takesArgs: Schema.optional(Schema.Boolean),
+  source: Schema.optional(Schema.String),
 });
-export type PromptCommandEntry = v.InferOutput<typeof PromptCommandEntry>;
+export type PromptCommandEntry = typeof PromptCommandEntry.Type;
 
-export const SkillCommandEntry = v.object({
-  kind: v.literal("skill"),
-  name: v.string(),
-  description: v.string(),
-  takesArgs: v.optional(v.boolean()),
-  source: v.optional(v.string()),
+export const SkillCommandEntry = Schema.Struct({
+  kind: Schema.Literal("skill"),
+  name: Schema.String,
+  description: Schema.String,
+  takesArgs: Schema.optional(Schema.Boolean),
+  source: Schema.optional(Schema.String),
 });
-export type SkillCommandEntry = v.InferOutput<typeof SkillCommandEntry>;
+export type SkillCommandEntry = typeof SkillCommandEntry.Type;
 
-export const CommandEntry = v.variant("kind", [
+// Commands registered by a loaded pi extension (pi.registerCommand). Distinct
+// from prompts/skills (which are .md-backed); these dispatch through the
+// extension's handler.
+export const ExtensionCommandEntry = Schema.Struct({
+  kind: Schema.Literal("extension"),
+  name: Schema.String,
+  description: Schema.String,
+  takesArgs: Schema.optional(Schema.Boolean),
+  source: Schema.optional(Schema.String),
+});
+export type ExtensionCommandEntry = typeof ExtensionCommandEntry.Type;
+
+export const CommandEntry = Schema.Union(
   BuiltinCommandEntry,
   PromptCommandEntry,
   SkillCommandEntry,
-]);
-export type CommandEntry = v.InferOutput<typeof CommandEntry>;
+  ExtensionCommandEntry,
+);
+export type CommandEntry = typeof CommandEntry.Type;
 
-export const Commands = v.object({
-  builtins: v.array(BuiltinCommandEntry),
-  prompts: v.array(PromptCommandEntry),
-  skills: v.array(SkillCommandEntry),
+export const Commands = Schema.Struct({
+  builtins: Schema.Array(BuiltinCommandEntry),
+  prompts: Schema.Array(PromptCommandEntry),
+  skills: Schema.Array(SkillCommandEntry),
+  extensions: Schema.Array(ExtensionCommandEntry),
 });
-export type Commands = v.InferOutput<typeof Commands>;
+export type Commands = typeof Commands.Type;
 
-export const QueuedMessage = v.object({
-  id: v.string(),
-  text: v.string(),
+export const QueuedMessage = Schema.Struct({
+  id: Schema.String,
+  text: Schema.String,
   queueKind: SendMode,
 });
-export type QueuedMessage = v.InferOutput<typeof QueuedMessage>;
+export type QueuedMessage = typeof QueuedMessage.Type;
 
-export const QueueState = v.object({
-  queued: v.array(QueuedMessage),
+export const QueueState = Schema.Struct({
+  queued: Schema.Array(QueuedMessage),
 });
-export type QueueState = v.InferOutput<typeof QueueState>;
+export type QueueState = typeof QueueState.Type;
 
 const ExtensionUiBase = {
-  id: v.string(),
-  title: v.string(),
-  timeoutMs: v.optional(v.number()),
-} as const;
+  id: Schema.String,
+  title: Schema.String,
+  timeoutMs: Schema.optional(Schema.Number),
+};
 
-export const ExtensionUiConfirmRequest = v.object({
-  kind: v.literal("confirm"),
+export const ExtensionUiConfirmRequest = Schema.Struct({
+  kind: Schema.Literal("confirm"),
   ...ExtensionUiBase,
-  message: v.string(),
+  message: Schema.String,
 });
-export const ExtensionUiSelectRequest = v.object({
-  kind: v.literal("select"),
+export const ExtensionUiSelectRequest = Schema.Struct({
+  kind: Schema.Literal("select"),
   ...ExtensionUiBase,
-  options: v.array(v.string()),
+  options: Schema.Array(Schema.String),
 });
-export const ExtensionUiInputRequest = v.object({
-  kind: v.literal("input"),
+export const ExtensionUiInputRequest = Schema.Struct({
+  kind: Schema.Literal("input"),
   ...ExtensionUiBase,
-  placeholder: v.optional(v.string()),
-  initialValue: v.optional(v.string()),
-  multiline: v.optional(v.boolean()),
+  placeholder: Schema.optional(Schema.String),
+  initialValue: Schema.optional(Schema.String),
+  multiline: Schema.optional(Schema.Boolean),
 });
-export const ExtensionUiNotifyRequest = v.object({
-  kind: v.literal("notify"),
-  id: v.string(),
-  message: v.string(),
-  level: v.picklist(["info", "warning", "error"]),
+export const ExtensionUiNotifyRequest = Schema.Struct({
+  kind: Schema.Literal("notify"),
+  id: Schema.String,
+  message: Schema.String,
+  level: Schema.Literal("info", "warning", "error"),
 });
-export const ExtensionUiStatusRequest = v.object({
-  kind: v.literal("status"),
-  id: v.string(),
-  key: v.string(),
-  text: v.nullable(v.string()),
+export const ExtensionUiStatusRequest = Schema.Struct({
+  kind: Schema.Literal("status"),
+  id: Schema.String,
+  key: Schema.String,
+  text: Schema.NullOr(Schema.String),
 });
-export const ExtensionUiRequest = v.variant("kind", [
+export const ExtensionUiRequest = Schema.Union(
   ExtensionUiConfirmRequest,
   ExtensionUiSelectRequest,
   ExtensionUiInputRequest,
   ExtensionUiNotifyRequest,
   ExtensionUiStatusRequest,
-]);
-export type ExtensionUiRequest = v.InferOutput<typeof ExtensionUiRequest>;
+);
+export type ExtensionUiRequest = typeof ExtensionUiRequest.Type;
 
-export const ExtensionUiResponseValue = v.nullable(v.union([v.string(), v.boolean()]));
-export type ExtensionUiResponseValue = v.InferOutput<typeof ExtensionUiResponseValue>;
+export const ExtensionUiResponseValue = Schema.NullOr(Schema.Union(Schema.String, Schema.Boolean));
+export type ExtensionUiResponseValue = typeof ExtensionUiResponseValue.Type;
 
-export const TreeEntry = v.object({
-  id: v.string(),
-  parentId: v.nullable(v.string()),
-  type: v.string(),
-  role: v.optional(v.string()),
-  text: v.string(),
-  timestamp: v.string(),
-  depth: v.number(),
-  current: v.boolean(),
-  onCurrentPath: v.boolean(),
-  label: v.optional(v.string()),
-  childCount: v.number(),
+export const TreeEntry = Schema.Struct({
+  id: Schema.String,
+  parentId: Schema.NullOr(Schema.String),
+  type: Schema.String,
+  role: Schema.optional(Schema.String),
+  text: Schema.String,
+  timestamp: Schema.String,
+  depth: Schema.Number,
+  current: Schema.Boolean,
+  onCurrentPath: Schema.Boolean,
+  label: Schema.optional(Schema.String),
+  childCount: Schema.Number,
 });
-export type TreeEntry = v.InferOutput<typeof TreeEntry>;
+export type TreeEntry = typeof TreeEntry.Type;
 
-export const SessionTree = v.object({
-  currentId: v.nullable(v.string()),
-  entries: v.array(TreeEntry),
+export const SessionTree = Schema.Struct({
+  currentId: Schema.NullOr(Schema.String),
+  entries: Schema.Array(TreeEntry),
 });
-export type SessionTree = v.InferOutput<typeof SessionTree>;
+export type SessionTree = typeof SessionTree.Type;
 
-export const SystemInfo = v.object({
-  hostVersion: v.string(),
-  protocolVersion: v.number(),
-  minMobileVersion: v.string(),
-  recommendedMobileVersion: v.string(),
-  updateChannel: v.string(),
-  autoUpdate: v.boolean(),
+export const SystemInfo = Schema.Struct({
+  hostVersion: Schema.String,
+  protocolVersion: Schema.Number,
+  minMobileVersion: Schema.String,
+  recommendedMobileVersion: Schema.String,
+  updateChannel: Schema.String,
+  autoUpdate: Schema.Boolean,
 });
-export type SystemInfo = v.InferOutput<typeof SystemInfo>;
+export type SystemInfo = typeof SystemInfo.Type;
 
-export const HostUpdateStatus = v.object({
-  currentVersion: v.string(),
-  autoUpdate: v.boolean(),
-  manualUpdate: v.boolean(),
-  lastSeenVersion: v.optional(v.string()),
-  requestedAt: v.optional(v.string()),
-  updatedAt: v.optional(v.string()),
-  failure: v.optional(v.object({
-    version: v.string(),
-    reason: v.string(),
-    at: v.number(),
+export const HostUpdateStatus = Schema.Struct({
+  currentVersion: Schema.String,
+  autoUpdate: Schema.Boolean,
+  manualUpdate: Schema.Boolean,
+  lastSeenVersion: Schema.optional(Schema.String),
+  requestedAt: Schema.optional(Schema.String),
+  updatedAt: Schema.optional(Schema.String),
+  failure: Schema.optional(Schema.Struct({
+    version: Schema.String,
+    reason: Schema.String,
+    at: Schema.Number,
   })),
 });
-export type HostUpdateStatus = v.InferOutput<typeof HostUpdateStatus>;
+export type HostUpdateStatus = typeof HostUpdateStatus.Type;
 
 
-const Seq = { seq: v.number() } as const;
+const Seq = { seq: Schema.Number };
 
-export const WireEvent = v.variant("t", [
-  v.object({
-    t: v.literal("hello"),
+export const WireEvent = Schema.Union(
+  Schema.Struct({
+    t: Schema.Literal("hello"),
     ...Seq,
     session: SessionMeta,
-    cursor: v.number(),
+    cursor: Schema.Number,
   }),
-  v.object({ t: v.literal("user_message"), ...Seq, entry: UserMessage }),
-  v.object({ t: v.literal("log_reset"), ...Seq, entries: v.array(LogEntry) }),
-  v.object({
-    t: v.literal("assistant_delta"),
+  Schema.Struct({ t: Schema.Literal("user_message"), ...Seq, entry: UserMessage }),
+  Schema.Struct({ t: Schema.Literal("log_reset"), ...Seq, entries: Schema.Array(LogEntry) }),
+  Schema.Struct({
+    t: Schema.Literal("assistant_delta"),
     ...Seq,
-    id: v.string(),
-    text: v.string(),
+    id: Schema.String,
+    text: Schema.String,
   }),
-  v.object({
-    t: v.literal("assistant_end"),
+  // Self-contained: carries the finalized text + timestamp so a snapshot can
+  // emit one of these per assistant message and a client that missed deltas
+  // (mid-stream join) still ends holding the complete message.
+  Schema.Struct({
+    t: Schema.Literal("assistant_end"),
     ...Seq,
-    id: v.string(),
-    stopReason: v.optional(StopReason),
-    errorMessage: v.optional(v.string()),
-    errorCode: v.optional(HostErrorCodeSchema),
-    usage: v.optional(MessageUsage),
+    id: Schema.String,
+    at: Schema.Number,
+    text: Schema.String,
+    stopReason: Schema.optional(StopReason),
+    errorMessage: Schema.optional(Schema.String),
+    errorCode: Schema.optional(HostErrorCodeSchema),
+    usage: Schema.optional(MessageUsage),
   }),
-  v.object({ t: v.literal("tool_call"), ...Seq, entry: ToolCallMessage }),
-  v.object({
-    t: v.literal("tool_update"),
+  Schema.Struct({ t: Schema.Literal("tool_call"), ...Seq, entry: ToolCallMessage }),
+  Schema.Struct({
+    t: Schema.Literal("tool_update"),
     ...Seq,
-    id: v.string(),
-    result: v.string(),
-    resultContent: v.optional(v.array(ToolResultContent)),
-    details: v.optional(v.unknown()),
+    id: Schema.String,
+    result: Schema.String,
+    resultContent: Schema.optional(Schema.Array(ToolResultContent)),
+    details: Schema.optional(Schema.Unknown),
   }),
-  v.object({
-    t: v.literal("tool_result"),
+  Schema.Struct({
+    t: Schema.Literal("tool_result"),
     ...Seq,
-    id: v.string(),
-    result: v.string(),
-    resultContent: v.optional(v.array(ToolResultContent)),
-    details: v.optional(v.unknown()),
-    status: v.picklist(["ok", "error"]),
-    durationMs: v.number(),
+    id: Schema.String,
+    result: Schema.String,
+    resultContent: Schema.optional(Schema.Array(ToolResultContent)),
+    details: Schema.optional(Schema.Unknown),
+    status: Schema.Literal("ok", "error"),
+    durationMs: Schema.Number,
   }),
-  v.object({ t: v.literal("permission"), ...Seq, entry: PermissionRequest }),
-  v.object({ t: v.literal("compaction"), ...Seq, entry: CompactionEntry }),
-  v.object({ t: v.literal("status"), ...Seq, status: SessionStatus }),
-  v.object({
-    t: v.literal("queue"),
+  Schema.Struct({ t: Schema.Literal("compaction"), ...Seq, entry: CompactionEntry }),
+  Schema.Struct({ t: Schema.Literal("status"), ...Seq, status: SessionStatus }),
+  Schema.Struct({
+    t: Schema.Literal("queue"),
     ...Seq,
-    queued: v.array(QueuedMessage),
+    queued: Schema.Array(QueuedMessage),
   }),
-  v.object({
-    t: v.literal("cost"),
+  Schema.Struct({
+    t: Schema.Literal("cost"),
     ...Seq,
-    tokensIn: v.number(),
-    tokensOut: v.number(),
-    costUsd: v.number(),
+    tokensIn: Schema.Number,
+    tokensOut: Schema.Number,
+    costUsd: Schema.Number,
   }),
-  v.object({
-    t: v.literal("auto_retry_start"),
+  Schema.Struct({
+    t: Schema.Literal("auto_retry_start"),
     ...Seq,
-    attempt: v.number(),
-    maxAttempts: v.number(),
-    delayMs: v.number(),
-    errorMessage: v.string(),
+    attempt: Schema.Number,
+    maxAttempts: Schema.Number,
+    delayMs: Schema.Number,
+    errorMessage: Schema.String,
   }),
-  v.object({
-    t: v.literal("auto_retry_end"),
+  Schema.Struct({
+    t: Schema.Literal("auto_retry_end"),
     ...Seq,
-    success: v.boolean(),
-    attempt: v.number(),
-    finalError: v.optional(v.string()),
+    success: Schema.Boolean,
+    attempt: Schema.Number,
+    finalError: Schema.optional(Schema.String),
   }),
-  v.object({
-    t: v.literal("extension_ui_request"),
+  Schema.Struct({
+    t: Schema.Literal("extension_ui_request"),
     ...Seq,
     request: ExtensionUiRequest,
   }),
-]);
-export type WireEvent = v.InferOutput<typeof WireEvent>;
+);
+export type WireEvent = typeof WireEvent.Type;
 
 
-export const ImageAttachment = v.object({
-  data: v.string(),
-  mimeType: v.string(),
+export const ImageAttachment = Schema.Struct({
+  data: Schema.String,
+  mimeType: Schema.String,
 });
-export type ImageAttachment = v.InferOutput<typeof ImageAttachment>;
+export type ImageAttachment = typeof ImageAttachment.Type;
 
-export const ClientEvent = v.variant("t", [
-  v.object({
-    t: v.literal("send"),
-    text: v.string(),
-    mode: v.optional(SendMode),
-    images: v.optional(v.array(ImageAttachment)),
-    // Client-generated idempotency key: the Pico host drops repeats and echoes
-    // it back on the user_message event.
-    clientId: v.optional(v.string()),
+export const ClientEvent = Schema.Union(
+  Schema.Struct({
+    t: Schema.Literal("send"),
+    text: Schema.String,
+    mode: Schema.optional(SendMode),
+    images: Schema.optional(Schema.Array(ImageAttachment)),
+    // Idempotency key: the host drops repeats and echoes it back on user_message.
+    clientId: Schema.optional(Schema.String),
   }),
-  v.object({
-    t: v.literal("permission_reply"),
-    id: v.string(),
-    choice: PermissionChoice,
-  }),
-  v.object({ t: v.literal("interrupt") }),
-  v.object({
-    t: v.literal("extension_ui_response"),
-    id: v.string(),
+  Schema.Struct({ t: Schema.Literal("interrupt") }),
+  Schema.Struct({
+    t: Schema.Literal("extension_ui_response"),
+    id: Schema.String,
     value: ExtensionUiResponseValue,
   }),
-]);
-export type ClientEvent = v.InferOutput<typeof ClientEvent>;
+);
+export type ClientEvent = typeof ClientEvent.Type;
 
 
-export const decodeClientEvent = (raw: unknown) =>
-  v.safeParse(ClientEvent, raw);
-
-export const decodeWireEvent = (raw: unknown) => v.safeParse(WireEvent, raw);
-export const parseWireEvent = (raw: unknown): WireEvent => v.parse(WireEvent, raw);
-
-export const encodeWireEvent = (e: WireEvent): string => JSON.stringify(e);
+// Decode wire events read back from the session journal (store/session pump).
+export const parseWireEvent = Schema.decodeUnknownSync(WireEvent);

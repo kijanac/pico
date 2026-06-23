@@ -5,7 +5,6 @@
   import UserMessageView from "@/features/chat/components/UserMessage.svelte";
   import AssistantMessageView from "@/features/chat/components/AssistantMessage.svelte";
   import ToolCallView from "@/features/chat/components/ToolCall.svelte";
-  import PermissionGate from "@/features/chat/components/PermissionGate.svelte";
   import CompactionMessageView from "@/features/chat/components/CompactionMessage.svelte";
   import { Button } from "@/shared/ui/button";
 
@@ -54,8 +53,7 @@
     if (stuck) hasNewActivity = false;
   }
 
-  // Coalesce follow-scrolls into one rAF per frame: scrollTo forces layout,
-  // so doing it per activity bump during streaming costs a reflow per chunk.
+  // scrollTo forces layout; coalesce into one rAF/frame to avoid a reflow per streamed chunk.
   let scrollRaf: number | null = null;
 
   function scheduleScrollSync(): void {
@@ -93,8 +91,6 @@
           <AssistantMessageView msg={entry} {sessionId} />
         {:else if entry.kind === "tool_call"}
           <ToolCallView msg={entry} />
-        {:else if entry.kind === "permission"}
-          <PermissionGate req={entry} />
         {:else if entry.kind === "compaction"}
           <CompactionMessageView msg={entry} />
         {/if}

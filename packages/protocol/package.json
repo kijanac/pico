@@ -9,9 +9,21 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./trpc": {
-      "types": "./dist/trpc.d.ts",
-      "import": "./dist/trpc.js"
+    "./rpc": {
+      "types": "./dist/rpc.d.ts",
+      "import": "./dist/rpc.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./admin": {
+      "types": "./dist/admin.d.ts",
+      "import": "./dist/admin.js"
+    },
+    "./log": {
+      "types": "./dist/log.d.ts",
+      "import": "./dist/log.js"
     }
   },
   "scripts": {
@@ -20,8 +32,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@trpc/server": "^11.17.0",
-    "valibot": "^1.0.0"
+    "@effect/platform": "^0.96.2",
+    "@effect/rpc": "^0.75.1",
+    "effect": "^3.21.4"
   },
   "devDependencies": {
     "typescript": "^5.9.0"

@@ -1,6 +1,7 @@
-import { makePairingDeepLink, preparePairing, type PairingPlan } from "@pico/host";
+import { Effect } from "effect";
+import { makePairingDeepLink } from "../host/pairing.ts";
+import { preparePairing, type PairingPlan } from "../host/setup.ts";
 import { printActionDiagnostics } from "../lib/diagnostics.ts";
-import { waitForStopSignal } from "../lib/signals.ts";
 import { terminalQr } from "../lib/terminal.ts";
 
 export async function printPairingInfo(options: {
@@ -39,23 +40,25 @@ export async function printPairingInfo(options: {
   if (options.foreground) console.log("\nPress Ctrl+C to stop this foreground host.");
 }
 
-export async function pairCommand(): Promise<void> {
-  const plan = await preparePairing({ startHost: true, configureServe: true, inheritTailscaleStdio: true });
-  try {
-    await printPairingPlan(plan, { foreground: plan.foregroundHostStarted });
-    if (plan.foregroundHostStarted) await waitForStopSignal();
-  } finally {
-    await plan.host?.close();
-  }
-}
+export const pairCommand = Effect.gen(function* () {
+  const plan = yield* preparePairing({ startHost: true, configureServe: true, inheritTailscaleStdio: true });
+  const host = plan.host;
+  yield* Effect.addFinalizer(() => (host ? Effect.promise(() => host.close()) : Effect.void));
+  yield* Effect.promise(() => printPairingPlan(plan, { foreground: plan.foregroundHostStarted }));
+  // runMain closes the host via the finalizer on interrupt.
+  if (plan.foregroundHostStarted) yield* Effect.never;
+}).pipe(Effect.scoped);
 
-export async function pairCodeCommand(options: { readonly rotate?: boolean } = {}): Promise<void> {
-  const plan = await preparePairing({ rotate: options.rotate, startHost: false, configureServe: true });
-  await printPairingPlan(plan, { foreground: false });
-  if (plan.rotationUnavailable) {
-    console.log("\nCould not rotate the running host token through local admin. Restart it with the current `pico serve`/`pico pair` first.");
-  }
-}
+export const pairCodeCommand = (options: { readonly rotate?: boolean } = {}) =>
+  Effect.gen(function* () {
+    const plan = yield* preparePairing({ rotate: options.rotate, startHost: false, configureServe: true });
+    yield* Effect.promise(() => printPairingPlan(plan, { foreground: false }));
+    if (plan.rotationUnavailable) {
+      yield* Effect.sync(() =>
+        console.log("\nCould not rotate the running host token through local admin. Restart it with the current `pico serve`/`pico pair` first."),
+      );
+    }
+  });
 
 async function printPairingPlan(plan: PairingPlan, options: { readonly foreground: boolean }): Promise<void> {
   printActionDiagnostics(plan.diagnostics);
