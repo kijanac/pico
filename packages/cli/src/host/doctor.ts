@@ -5,7 +5,7 @@ import { RpcClient } from "@effect/rpc";
 import { Duration, Effect } from "effect";
 import { PicoRpc } from "@pico/protocol/rpc";
 import { picoHttpProtocol } from "@pico/protocol/client";
-import { getBundledPiSdkVersion } from "@pico/host";
+import { bundledPiSdkVersion } from "@pico/host";
 import { commandExists, run, runOutput } from "./exec.ts";
 import type { Diagnostic } from "./errors.ts";
 import { healthcheck, portIsOpen } from "./network.ts";
@@ -96,15 +96,13 @@ const piCliVersionCheck = () =>
 
 const sdkVersionChecks = () =>
   Effect.gen(function* () {
-    const bundledVersion = yield* getBundledPiSdkVersion;
+    const bundledVersion = bundledPiSdkVersion;
     const cliVersion = runOutput(yield* run("pi", ["--version"], { timeoutMs: 5_000 }));
     const checks: Diagnostic[] = [
-      bundledVersion
-        ? { level: "ok", label: "Embedded Pi SDK", detail: bundledVersion }
-        : { level: "warn", label: "Embedded Pi SDK", detail: "version unavailable" },
+      { level: "ok", label: "Embedded Pi SDK", detail: bundledVersion },
     ];
 
-    if (bundledVersion && cliVersion && bundledVersion !== cliVersion) {
+    if (cliVersion && bundledVersion !== cliVersion) {
       checks.push({
         level: "warn",
         label: "Pi version skew",

@@ -1,7 +1,4 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { FileSystem } from "@effect/platform";
-import { Effect } from "effect";
+import { VERSION } from "@earendil-works/pi-coding-agent";
 
 export interface PicoHostHandle {
   readonly host: string;
@@ -19,16 +16,8 @@ export interface StartPicoHostOptions {
   readonly nodeEnv?: string;
 }
 
-export const getBundledPiSdkVersion: Effect.Effect<string | undefined, never, FileSystem.FileSystem> =
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const packageJsonPath = yield* Effect.try(() => {
-      const entry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-      return join(dirname(dirname(entry)), "package.json");
-    });
-    const raw = yield* fs.readFileString(packageJsonPath, "utf8");
-    return yield* Effect.try(() => (JSON.parse(raw) as { version?: string }).version);
-  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+// The Pi SDK version bundled with this host, surfaced by `pico doctor`.
+export const bundledPiSdkVersion: string = VERSION;
 
 /**
  * Host internals read config from process env at module init, so env must be
