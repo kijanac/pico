@@ -80,7 +80,7 @@ export function hostIssueSummary(error: unknown, options: HostIssueOptions = {})
   return `${issue.title}: ${issue.message}`;
 }
 
-function hostIssueForCode(code: HostErrorCode, options: HostIssueOptions = {}): HostIssue {
+export function hostIssueForCode(code: HostErrorCode, options: HostIssueOptions = {}): HostIssue {
   const url = options.url?.trim();
   const tailnetUrl = !!url && url.includes(".ts.net");
 

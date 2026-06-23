@@ -2,6 +2,7 @@
   import type { SessionControls } from "@pico/protocol";
   import type { ActionErrorHandler } from "./types";
   import { getSessionSettings, patchSessionSetting } from "@/features/chat/api";
+  import { hostIssueSummary } from "@/shared/lib/host-issues";
   import { runHost } from "@/shared/lib/rpc-client";
   import { haptics } from "@/shared/mobile/haptics";
   import ActionRow from "@/shared/components/ActionRow.svelte";
@@ -39,7 +40,7 @@
     try {
       settings = await runHost(getSessionSettings(sessionId));
     } catch (error) {
-      onError(String(error));
+      onError(hostIssueSummary(error));
     } finally {
       loading = false;
     }
@@ -55,7 +56,7 @@
       settings = await runHost(patchSessionSetting(sessionId, key, value));
       haptics.success();
     } catch (error) {
-      onError(String(error));
+      onError(hostIssueSummary(error));
       settings = previous;
       await loadSettings();
     } finally {

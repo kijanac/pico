@@ -10,6 +10,7 @@
   import { haptics } from "@/shared/mobile/haptics";
   import { createLongPress } from "@/shared/gestures/long-press";
   import { clearSessionQueue, getSessionQueue } from "@/features/chat/api";
+  import { hostIssueSummary } from "@/shared/lib/host-issues";
   import { runHost } from "@/shared/lib/rpc-client";
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
   import { Button } from "@/shared/ui/button";
@@ -249,7 +250,7 @@
       chatQueueState.set(sessionId, next);
     } catch (error) {
       if (requestId !== queueRequestId || !options.showLoading) return;
-      queueError = String(error);
+      queueError = hostIssueSummary(error);
     } finally {
       if (requestId === queueRequestId && options.showLoading) queueLoading = false;
     }

@@ -3,6 +3,7 @@
   import type { SessionTree } from "@pico/protocol";
   import type { ActionErrorHandler } from "./types";
   import { getSessionTree, navigateSessionTree } from "@/features/chat/api";
+  import { hostIssueSummary } from "@/shared/lib/host-issues";
   import { runHost } from "@/shared/lib/rpc-client";
   import ActionRow from "@/shared/components/ActionRow.svelte";
 
@@ -24,7 +25,7 @@
     try {
       tree = await runHost(getSessionTree(sessionId));
     } catch (error) {
-      onError(String(error));
+      onError(hostIssueSummary(error));
     } finally {
       loading = false;
     }
@@ -38,7 +39,7 @@
       await runHost(navigateSessionTree(sessionId, { entryId: entry.id, summarize }));
       onDone();
     } catch (error) {
-      onError(String(error));
+      onError(hostIssueSummary(error));
       await loadTree();
     } finally {
       jumping = null;

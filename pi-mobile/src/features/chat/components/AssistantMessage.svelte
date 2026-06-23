@@ -9,6 +9,7 @@
   import MessageInfoRow from "@/features/chat/components/MessageInfoRow.svelte";
   import AssistantErrorBanner from "@/features/chat/components/AssistantErrorBanner.svelte";
   import { navigateSessionTree } from "@/features/chat/api";
+  import { hostIssueSummary } from "@/shared/lib/host-issues";
   import { runHost } from "@/shared/lib/rpc-client";
 
   let { msg, sessionId }: { msg: AssistantMessage; sessionId: string } = $props();
@@ -36,7 +37,7 @@
     try {
       await runHost(navigateSessionTree(sessionId, { entryId: msg.id }));
     } catch (error) {
-      branchError = String(error);
+      branchError = hostIssueSummary(error);
     } finally {
       branching = false;
     }

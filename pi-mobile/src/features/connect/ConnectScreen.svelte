@@ -5,7 +5,7 @@
   import { connectAndClaimHost } from "@/features/onboarding/api";
   import { settingsState } from "@/features/settings/settings.state.svelte";
   import HostIssuePanel from "@/shared/components/HostIssuePanel.svelte";
-  import { classifyHostIssue, type HostIssue } from "@/shared/lib/host-issues";
+  import { classifyHostIssue, hostIssueForCode, type HostIssue } from "@/shared/lib/host-issues";
   import { runAt } from "@/shared/lib/rpc-client";
   import { haptics } from "@/shared/mobile/haptics";
   import { Button } from "@/shared/ui/button";
@@ -30,7 +30,7 @@
 
     if (!hostUrl) {
       connectState = "failed";
-      issue = classifyHostIssue({ hostErrorCode: "pairing_link_missing_url" });
+      issue = hostIssueForCode("pairing_link_missing_url");
       message = issue.message;
       return;
     }
