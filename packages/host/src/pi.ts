@@ -10,7 +10,7 @@ import {
 } from "effect";
 import {
   AuthStorage,
-  createAgentSessionFromServices,
+  createAgentSession,
   createAgentSessionServices,
   SessionManager as PiSessionManager,
   type AgentSession,
@@ -958,8 +958,13 @@ const makeLiveSession = (
             ? PiSessionManager.inMemory(opts.cwd)
             : PiSessionManager.create(opts.cwd);
 
-        const { session } = await createAgentSessionFromServices({
-          services,
+        // createAgentSession (not …FromServices) discovers + loads the host's
+        // pi extensions; their tools/commands/ctx.ui then pass through to the
+        // phone. Reuse our cached registry/auth so we don't rebuild them.
+        const { session } = await createAgentSession({
+          cwd: opts.cwd,
+          authStorage,
+          modelRegistry: services.modelRegistry,
           sessionManager,
         });
 
@@ -1001,8 +1006,10 @@ const makeResumedSession = (
 
         const sessionManager = PiSessionManager.open(found.path);
 
-        const { session } = await createAgentSessionFromServices({
-          services,
+        const { session } = await createAgentSession({
+          cwd: storedRecord.cwd,
+          authStorage,
+          modelRegistry: services.modelRegistry,
           sessionManager,
         });
 
