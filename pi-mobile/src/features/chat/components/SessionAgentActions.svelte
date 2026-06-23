@@ -51,15 +51,12 @@
   >
     {#if actions.view === "menu"}
       <MenuView
-        onModels={() => actions.setView("models")}
         onAuth={() => actions.setView("auth")}
         onTree={() => actions.setView("tree")}
         onSettings={() => actions.setView("settings")}
         onInfo={() => actions.setView("info")}
         onExport={exportToHtml}
       />
-    {:else if actions.view === "models"}
-      <SessionSettingsView {sessionId} onError={actions.setError} filterKeys={["model"]} />
     {:else if actions.view === "settings"}
       <SessionSettingsView {sessionId} onError={actions.setError} excludeKeys={["model"]} />
     {:else if actions.view === "tree"}

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from "svelte";
-  import { Archive, ArrowUp, ImagePlus, ListTodo, Mic, MicOff, Plus, Square } from "@lucide/svelte";
-  import type { ImageAttachment } from "@pico/protocol";
+  import { ArrowUp, ImagePlus, ListTodo, Mic, MicOff, Plus, Square } from "@lucide/svelte";
+  import type { ImageAttachment, SessionControls, SessionStats } from "@pico/protocol";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
   import { chatQueueState } from "@/features/chat/model/chat-queue.state.svelte";
@@ -9,14 +9,18 @@
   import { pickImages } from "@/shared/mobile/image-picker";
   import { haptics } from "@/shared/mobile/haptics";
   import { createLongPress } from "@/shared/gestures/long-press";
-  import { clearSessionQueue, getSessionQueue } from "@/features/chat/api";
+  import { clearSessionQueue, getSessionQueue, getSessionSettings } from "@/features/chat/api";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
   import { runHost } from "@/shared/lib/rpc-client";
+  import { formatCost } from "@/shared/lib/format";
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
   import { Button } from "@/shared/ui/button";
+  import * as Sheet from "@/shared/ui/sheet";
+  import SheetHeader from "@/shared/components/SheetHeader.svelte";
   import ImageTray from "@/features/chat/components/ImageTray.svelte";
   import CompactContextSheet from "@/features/chat/components/CompactContextSheet.svelte";
   import QueuedMessagesSheet from "@/features/chat/components/QueuedMessagesSheet.svelte";
+  import SessionSettingsView from "@/features/chat/actions/SessionSettingsView.svelte";
   import SlashCommandSuggestions from "@/features/chat/components/SlashCommandSuggestions.svelte";
   import { createSlashCommandsState, type CommandEntry, type SlashCommandCompletion } from "@/features/chat/components/slash-commands.state.svelte";
 
@@ -24,7 +28,16 @@
   const MAX_IMAGES = 4;
   const DRAFT_SAVE_DELAY_MS = 350;
 
-  let { sessionId }: { sessionId: string } = $props();
+  let {
+    sessionId,
+    contextStats,
+  }: {
+    sessionId: string;
+    contextStats?: { cost: number; usage: NonNullable<SessionStats["contextUsage"]> };
+  } = $props();
+
+  let controls = $state<SessionControls | null>(null);
+  let modelOpen = $state(false);
 
   let textarea = $state<HTMLTextAreaElement | null>(null);
   let value = $state("");
@@ -65,6 +78,31 @@
   const canSend = $derived(activeSessionState.send !== null);
   const queue = $derived(chatQueueState.get(sessionId));
   const queueCount = $derived(chatQueueState.count(sessionId));
+  const contextPercent = $derived(
+    contextStats && contextStats.usage.percent !== null ? Math.round(contextStats.usage.percent) : null,
+  );
+
+  const modelControl = $derived(controls?.controls.find((control) => control.key === "model"));
+  const modelLabel = $derived.by(() => {
+    const mc = modelControl;
+    if (!mc || mc.kind !== "select") return null;
+    return mc.options.find((option) => option.value === mc.value)?.label ?? mc.value;
+  });
+
+  async function loadControls(): Promise<void> {
+    try {
+      controls = await runHost(getSessionSettings(sessionId));
+    } catch {
+      controls = null;
+    }
+  }
+
+  // Refresh the model chip on session change and after the picker sheet closes.
+  $effect(() => {
+    sessionId;
+    if (modelOpen) return;
+    untrack(() => void loadControls());
+  });
 
   $effect(() => {
     if (!stt.listening) return;
@@ -218,10 +256,6 @@
     await action();
   }
 
-  function openCompactSheet(): void {
-    compactOpen = true;
-  }
-
   async function attachImages(): Promise<void> {
     try {
       const remaining = MAX_IMAGES - images.length;
@@ -269,10 +303,9 @@
       clearing = false;
     }
   }
-
 </script>
 
-<div class="hairline-t sticky bottom-0 z-20 bg-[color:var(--color-bg)]/95 backdrop-blur-md" style="padding-bottom: env(safe-area-inset-bottom)">
+<div class="sticky bottom-0 z-20 bg-[color:var(--color-bg)]/95 backdrop-blur-md" style="padding-bottom: env(safe-area-inset-bottom)">
   {#if slashCommands.query !== null}
     <SlashCommandSuggestions
       entries={slashCommands.matches}
@@ -286,87 +319,122 @@
 
   <ImageTray {images} onRemove={removeImage} />
 
-  <div class="flex items-start gap-1.5 px-2 py-2">
-    <div class="relative shrink-0" data-input-actions>
-      {#if actionsOpen}
-        <div class="absolute bottom-[calc(100%+0.75rem)] left-0 z-40 flex flex-col gap-1.5">
-          {@render ActionFab("Compact context", activeSessionState.compacting, () => runAction(openCompactSheet), "compact")}
-          {@render ActionFab("Attach image", images.length >= MAX_IMAGES, () => runAction(attachImages), "image")}
-          {@render ActionFab("Dictate", stt.available === false, () => runAction(toggleMic), "mic")}
-        </div>
-      {/if}
-      <Button type="button" variant="ghost" size="icon-lg" onpointerdown={(event) => event.preventDefault()} onclick={toggleActions} class="relative rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]" aria-label="More input actions" title="More input actions" aria-expanded={actionsOpen}>
+  <!--
+    One composer card (Claude-style): the textarea on top, a control row beneath
+    it inside the same card. Visible controls live in the row rather than hidden
+    in a menu — context budget as a chip, the rest as icon buttons.
+  -->
+  <div class="m-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] focus-within:border-[color:var(--color-border-strong)]">
+    <textarea
+      bind:this={textarea}
+      bind:value
+      use:autosize={value}
+      oninput={(event) => {
+        draftEditVersion += 1;
+        updateCursor(event.currentTarget);
+      }}
+      onclick={(event) => updateCursor(event.currentTarget)}
+      onkeyup={(event) => updateCursor(event.currentTarget)}
+      onselect={(event) => updateCursor(event.currentTarget)}
+      oncompositionstart={() => (composing = true)}
+      oncompositionend={(event) => {
+        composing = false;
+        updateCursor(event.currentTarget);
+      }}
+      onkeydown={(event) => {
+        if (handleCommandKey(event)) return;
+        if (event.key === "Enter" && !event.shiftKey && !composing) {
+          event.preventDefault();
+          submit("steer");
+        }
+      }}
+      rows="1"
+      placeholder="ask, or / for commands"
+      class="type-input w-full resize-none bg-transparent px-3 pt-2 pb-1 text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] focus:outline-none"
+    ></textarea>
+
+    <div class="flex items-center gap-1 px-1.5 pb-1.5">
+      <div class="relative shrink-0" data-input-actions>
         {#if actionsOpen}
-          <span class="absolute h-7 w-7 rotate-45 rounded-[var(--radius-sm)] bg-[color:var(--color-surface)]" aria-hidden="true"></span>
+          <div class="absolute bottom-[calc(100%+0.75rem)] left-0 z-40 flex flex-col gap-1.5">
+            {@render ActionFab("Attach image", images.length >= MAX_IMAGES, () => runAction(attachImages), "image")}
+            {@render ActionFab("Dictate", stt.available === false, () => runAction(toggleMic), "mic")}
+          </div>
         {/if}
-        <Plus class={`relative size-4 transition-transform ${actionsOpen ? "rotate-45" : ""}`} />
-      </Button>
-    </div>
+        <Button type="button" variant="ghost" size="icon" onpointerdown={(event) => event.preventDefault()} onclick={toggleActions} class="relative rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="More input actions" title="More input actions" aria-expanded={actionsOpen}>
+          {#if actionsOpen}
+            <span class="absolute h-7 w-7 rotate-45 rounded-[var(--radius-sm)] bg-[color:var(--color-surface-2)]" aria-hidden="true"></span>
+          {/if}
+          <Plus class={`relative size-4 transition-transform ${actionsOpen ? "rotate-45" : ""}`} />
+        </Button>
+      </div>
 
-    <div class="min-h-9 flex-1 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] focus-within:border-[color:var(--color-border-strong)]">
-      <textarea
-        bind:this={textarea}
-        bind:value
-        use:autosize={value}
-        oninput={(event) => {
-          draftEditVersion += 1;
-          updateCursor(event.currentTarget);
-        }}
-        onclick={(event) => updateCursor(event.currentTarget)}
-        onkeyup={(event) => updateCursor(event.currentTarget)}
-        onselect={(event) => updateCursor(event.currentTarget)}
-        oncompositionstart={() => (composing = true)}
-        oncompositionend={(event) => {
-          composing = false;
-          updateCursor(event.currentTarget);
-        }}
-        onkeydown={(event) => {
-          if (handleCommandKey(event)) return;
-          if (event.key === "Enter" && !event.shiftKey && !composing) {
-            event.preventDefault();
-            submit("steer");
-          }
-        }}
-        rows="1"
-        class="type-input w-full resize-none bg-transparent px-3 py-[7px] text-[color:var(--color-fg)] focus:outline-none"
-      ></textarea>
-    </div>
+      {#if modelLabel}
+        <button
+          type="button"
+          onpointerdown={(event) => event.preventDefault()}
+          onclick={() => (modelOpen = true)}
+          class="type-meta max-w-[12ch] shrink-0 truncate rounded-[var(--radius-sm)] px-2 py-1.5 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]"
+          aria-label="Model — tap to change"
+          title="Change model"
+        >
+          {modelLabel}
+        </button>
+      {/if}
 
-    {#if queueCount > 0}
-      <Button type="button" variant="ghost" size="icon-lg" onclick={() => (queueOpen = true)} class="relative shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]" aria-label="Queued messages" title="Queued messages">
-        <ListTodo class="size-4" />
-        <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-bg)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[0.625rem] font-medium leading-none text-[color:var(--color-bg)]">
-          {queueCount > 99 ? "99+" : queueCount}
-        </span>
-      </Button>
-    {/if}
+      {#if contextStats}
+        <button
+          type="button"
+          onpointerdown={(event) => event.preventDefault()}
+          onclick={() => (compactOpen = true)}
+          class="type-meta shrink-0 rounded-[var(--radius-sm)] px-2 py-1.5 tabular-nums text-[color:var(--color-fg-faint)] active:bg-[color:var(--color-surface-2)]"
+          aria-label="Context usage — tap to compact"
+          title="Compact context"
+        >
+          {contextPercent !== null ? `${contextPercent}%` : "ctx"} · {formatCost(contextStats.cost)}
+        </button>
+      {/if}
 
-    {#if stt.listening}
-      <Button type="button" size="icon" onclick={toggleMic} class="rounded-[var(--radius-sm)] bg-[color:var(--color-danger)] text-[color:var(--color-bg)] pulse-accent active:opacity-80" aria-label="Stop dictation" title="Stop dictation">
-        <MicOff class="size-3.5" />
-      </Button>
-    {:else}
-      {#if busy}
-        <Button type="button" size="icon" onclick={interrupt} aria-label="Stop" title="Stop the current turn" class="bg-[color:var(--color-fg)] text-[color:var(--color-bg)] hover:bg-[color:var(--color-fg)] active:opacity-80">
-          <Square class="size-3" fill="currentColor" />
+      <div class="min-w-0 flex-1"></div>
+
+      {#if queueCount > 0}
+        <Button type="button" variant="ghost" size="icon" onclick={() => (queueOpen = true)} class="relative shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Queued messages" title="Queued messages">
+          <ListTodo class="size-4" />
+          <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-surface)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[0.625rem] font-medium leading-none text-[color:var(--color-bg)]">
+            {queueCount > 99 ? "99+" : queueCount}
+          </span>
         </Button>
       {/if}
-      <Button
-        type="button"
-        size="icon"
-        onclick={handleSendClick}
-        onpointerdown={(event) => sendPress.start(event)}
-        onpointerup={sendPress.end}
-        onpointerleave={sendPress.end}
-        onpointercancel={sendPress.end}
-        disabled={!hasSendable || !canSend}
-        class={`rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)] transition-transform duration-100 hover:bg-[color:var(--color-accent)] active:opacity-80 disabled:bg-[color:var(--color-surface)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-100 ${holding ? "scale-95" : ""}`}
-        aria-label={busy ? "Queue message (hold to follow-up)" : "Send"}
-        title={hasSendable ? (activeSessionState.compacting ? "Queue until compaction finishes" : busy ? "Tap to steer · hold to queue follow-up" : "Send (hold to queue as follow-up)") : "Draft a message to send"}
-      >
-        <ArrowUp class="size-3.5" strokeWidth={2.5} />
-      </Button>
-    {/if}
+
+      {#if stt.listening}
+        <Button type="button" size="icon" onclick={toggleMic} class="rounded-[var(--radius-sm)] bg-[color:var(--color-danger)] text-[color:var(--color-bg)] pulse-accent active:opacity-80" aria-label="Stop dictation" title="Stop dictation">
+          <MicOff class="size-3.5" />
+        </Button>
+      {:else}
+        {#if busy}
+          <Button type="button" variant="outline" size="icon" onclick={interrupt} aria-label="Stop" title="Stop the current turn" class="shrink-0 rounded-[var(--radius-sm)] active:opacity-80">
+            <Square class="size-3" fill="currentColor" />
+          </Button>
+        {/if}
+        {#if hasSendable || !busy}
+          <Button
+            type="button"
+            size="icon"
+            onclick={handleSendClick}
+            onpointerdown={(event) => sendPress.start(event)}
+            onpointerup={sendPress.end}
+            onpointerleave={sendPress.end}
+            onpointercancel={sendPress.end}
+            disabled={!hasSendable || !canSend}
+            class={`shrink-0 rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)] transition-transform duration-100 active:opacity-80 disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-100 ${holding ? "scale-95" : ""}`}
+            aria-label={busy ? "Queue message (hold to follow-up)" : "Send"}
+            title={hasSendable ? (activeSessionState.compacting ? "Queue until compaction finishes" : busy ? "Tap to steer · hold to queue follow-up" : "Send (hold to queue as follow-up)") : "Draft a message to send"}
+          >
+            <ArrowUp class="size-3.5" strokeWidth={2.5} />
+          </Button>
+        {/if}
+      {/if}
+    </div>
   </div>
 
   <CompactContextSheet bind:open={compactOpen} {sessionId} />
@@ -380,10 +448,17 @@
     onLoad={loadQueue}
     onClear={clearQueuedMessages}
   />
+
+  <Sheet.Root bind:open={modelOpen}>
+    <Sheet.BottomContent class="max-h-[82dvh]">
+      <SheetHeader title="model" />
+      <SessionSettingsView {sessionId} onError={() => {}} filterKeys={["model"]} />
+    </Sheet.BottomContent>
+  </Sheet.Root>
 </div>
 
-{#snippet ActionFab(label: string, disabled: boolean, onClick: () => void | Promise<void>, icon: "compact" | "image" | "mic")}
+{#snippet ActionFab(label: string, disabled: boolean, onClick: () => void | Promise<void>, icon: "image" | "mic")}
   <button type="button" onpointerdown={(event) => event.preventDefault()} onclick={() => void onClick()} {disabled} class="flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)] shadow-lg shadow-black/20 backdrop-blur-md active:opacity-85 disabled:border-[color:var(--color-border)] disabled:bg-[color:var(--color-surface)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-60" aria-label={label} title={label}>
-    {#if icon === "compact"}<Archive class="size-4" />{:else if icon === "image"}<ImagePlus class="size-4" />{:else}<Mic class="size-4" />{/if}
+    {#if icon === "image"}<ImagePlus class="size-4" />{:else}<Mic class="size-4" />{/if}
   </button>
 {/snippet}
