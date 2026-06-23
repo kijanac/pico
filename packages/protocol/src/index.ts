@@ -535,10 +535,15 @@ export const WireEvent = Schema.Union(
     id: Schema.String,
     text: Schema.String,
   }),
+  // Self-contained: carries the finalized text + timestamp so a snapshot can
+  // emit one of these per assistant message and a client that missed deltas
+  // (mid-stream join) still ends holding the complete message.
   Schema.Struct({
     t: Schema.Literal("assistant_end"),
     ...Seq,
     id: Schema.String,
+    at: Schema.Number,
+    text: Schema.String,
     stopReason: Schema.optional(StopReason),
     errorMessage: Schema.optional(Schema.String),
     errorCode: Schema.optional(HostErrorCodeSchema),

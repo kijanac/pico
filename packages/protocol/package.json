@@ -20,6 +20,10 @@
     "./admin": {
       "types": "./dist/admin.d.ts",
       "import": "./dist/admin.js"
+    },
+    "./log": {
+      "types": "./dist/log.d.ts",
+      "import": "./dist/log.js"
     }
   },
   "scripts": {

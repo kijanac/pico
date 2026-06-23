@@ -45,7 +45,9 @@ import {
   type SessionTree,
   type ToolCallMessage,
   type TreeEntry,
+  type WireEvent,
 } from "@pico/protocol";
+import { emptyLog, reconcileOrphanedToolCalls, reduceLog } from "@pico/protocol/log";
 import { hostErrorCodeFromUnknown, SessionNotFound } from "./errors.ts";
 import { HOST_DATA_DIR, PI_EPHEMERAL } from "./config.ts";
 import { createMobileExtensionUiChannel } from "./mobile-extension-ui-channel.ts";
@@ -60,6 +62,8 @@ export type PiEmission =
   | {
       t: "assistant_end";
       id: string;
+      at: number;
+      text: string;
       stopReason?:
         | "stop"
         | "length"
@@ -396,9 +400,6 @@ const toolCallBase = (id: string) => ({
   status: "running" as const,
 });
 
-// Tool calls are updated in place once their result streams in.
-type Mutable<T> = T extends unknown ? { -readonly [K in keyof T]: T[K] } : never;
-
 // Degrade an unmodeled shape to a custom tool-call rather than throwing: a
 // throw here would fail the live turn and make the session unreplayable.
 const normalizeToolCall = (
@@ -455,21 +456,21 @@ const sessionStatsWithCwd = (stats: PiSdkSessionStats, cwd: string): SessionStat
   ...(stats.contextUsage ? { contextUsage: stats.contextUsage } : {}),
 });
 
-const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
-  const logEntries: LogEntry[] = [];
-  const byToolCallId = new Map<string, Mutable<ToolCallMessage>>();
+// The finalized SDK branch expressed as the WireEvent sequence that produces it,
+// so the cold-start snapshot folds through the same reducer as the live stream
+// (see reduceLog). Assistants become one self-contained assistant_end; tool
+// calls and their results stay separate events the reducer merges by id.
+const branchToWireEvents = (piSession: AgentSession): WireEvent[] => {
+  const events: WireEvent[] = [];
 
   for (const entry of piSession.sessionManager.getBranch()) {
     const at = new Date(entry.timestamp).getTime();
 
     if (entry.type === "compaction") {
-      logEntries.push({
-        kind: "compaction",
-        id: entry.id,
-        at,
-        status: "success",
-        summary: entry.summary,
-        tokensBefore: entry.tokensBefore,
+      events.push({
+        t: "compaction",
+        seq: 0,
+        entry: { kind: "compaction", id: entry.id, at, status: "success", summary: entry.summary, tokensBefore: entry.tokensBefore },
       });
       continue;
     }
@@ -478,22 +479,17 @@ const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
     const message = entry.message;
 
     if (message.role === "user") {
-      logEntries.push({
-        kind: "user",
-        id: entry.id,
-        at,
-        text: textFromContent(message.content),
-      });
+      events.push({ t: "user_message", seq: 0, entry: { kind: "user", id: entry.id, at, text: textFromContent(message.content) } });
       continue;
     }
 
     if (message.role === "assistant") {
-      logEntries.push({
-        kind: "assistant",
+      events.push({
+        t: "assistant_end",
+        seq: 0,
         id: entry.id,
         at,
         text: assistantText(message.content),
-        streaming: false,
         ...(message.stopReason ? { stopReason: message.stopReason } : {}),
         ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
         ...(message.usage ? { usage: message.usage } : {}),
@@ -501,39 +497,40 @@ const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
 
       for (const part of message.content) {
         if (part.type !== "toolCall") continue;
-        const toolCall = normalizeToolCall(part.id, part.name, part.arguments);
-        byToolCallId.set(part.id, toolCall);
-        logEntries.push(toolCall);
+        events.push({ t: "tool_call", seq: 0, entry: normalizeToolCall(part.id, part.name, part.arguments) });
       }
       continue;
     }
 
     if (message.role === "toolResult") {
-      const toolCall = byToolCallId.get(message.toolCallId);
-      if (!toolCall) continue;
       const resultContent = projectToolResultContent(message.content);
-      toolCall.status = message.isError ? "error" : "ok";
-      toolCall.result = textFromContent(message.content);
-      if (resultContent) toolCall.resultContent = resultContent;
-      if ("details" in message && message.details !== undefined) toolCall.details = message.details;
-      toolCall.durationMs = 0;
+      events.push({
+        t: "tool_result",
+        seq: 0,
+        id: message.toolCallId,
+        result: textFromContent(message.content),
+        ...(resultContent ? { resultContent } : {}),
+        ...("details" in message && message.details !== undefined ? { details: message.details } : {}),
+        status: message.isError ? "error" : "ok",
+        durationMs: 0,
+      });
     }
   }
+
+  return events;
+};
+
+const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
+  const log = emptyLog();
+  for (const event of branchToWireEvents(piSession)) reduceLog(log, event, 0);
 
   // With no turn live (e.g. resumed after the bridge was killed mid-command), a
   // lingering "running" tool is an orphan — mark it interrupted so the log
   // doesn't replay a spinner that never resolves. isStreaming spans the whole
   // turn including tool execution, so this never touches an in-flight tool.
-  if (!piSession.isStreaming) {
-    for (const toolCall of byToolCallId.values()) {
-      if (toolCall.status !== "running") continue;
-      toolCall.status = "error";
-      toolCall.result = "Interrupted — the bridge restarted while this command was running.";
-      toolCall.durationMs = 0;
-    }
-  }
+  if (!piSession.isStreaming) reconcileOrphanedToolCalls(log);
 
-  return logEntries;
+  return log.entries;
 };
 
 const DELTA_COALESCE_MS = 75;
@@ -591,6 +588,8 @@ const wirePiSession = (
       offer({
         t: "assistant_end",
         id: randomUUIDv7(),
+        at: Date.now(),
+        text: "",
         stopReason: "error",
         errorMessage: "No model provider is signed in or configured yet.",
         errorCode: "provider_auth_missing",
@@ -619,14 +618,14 @@ const wirePiSession = (
           if (message.role !== "assistant") return;
 
           const id = assistantId ?? randomUUIDv7();
-          if (!assistantId) {
-            const text = assistantText(message.content);
-            if (text.length > 0) offer({ t: "assistant_delta", id, text });
-          }
+          const text = assistantText(message.content);
+          if (!assistantId && text.length > 0) offer({ t: "assistant_delta", id, text });
 
           offer({
             t: "assistant_end",
             id,
+            at: Date.now(),
+            text,
             ...(message.stopReason ? { stopReason: message.stopReason } : {}),
             ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
             ...(message.usage ? { usage: message.usage } : {}),

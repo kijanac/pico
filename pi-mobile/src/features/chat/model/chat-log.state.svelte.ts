@@ -1,12 +1,6 @@
-import type { AssistantMessage, ClientEvent, CompactionEntry, LogEntry, WireEvent } from "@pico/protocol";
+import type { ClientEvent, LogEntry, WireEvent } from "@pico/protocol";
+import { appendLogEntry, findLogEntry, type Mutable, reconcileOrphanedToolCalls, reduceLog } from "@pico/protocol/log";
 import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
-
-// effect/Schema decodes to readonly; this log mutates owned entries in place.
-type Mutable<T> = T extends ReadonlyArray<infer U>
-  ? Mutable<U>[]
-  : T extends object
-    ? { -readonly [K in keyof T]: Mutable<T[K]> }
-    : T;
 
 type SendEvent = Extract<ClientEvent, { t: "send" }>;
 
@@ -92,7 +86,7 @@ export const chatLogState = {
   appendLocalEcho(sessionId: string, event: SendEvent): void {
     const log = getLog(sessionId);
     const entryId = `local-echo-${++localEchoCounter}`;
-    appendEntry(log, {
+    appendLogEntry(log, {
       kind: "user",
       id: entryId,
       at: Date.now(),
@@ -120,7 +114,7 @@ export const chatLogState = {
 
   resolvePermission(sessionId: string, id: string, choice: "allow" | "deny" | "allow_session"): void {
     const log = getLog(sessionId);
-    const entry = findEntry(log, id);
+    const entry = findLogEntry(log, id);
     if (entry?.kind !== "permission") return;
 
     entry.resolved = choice;
@@ -142,78 +136,6 @@ function bumpActivity(log: SessionLog): void {
   log.activityVersion += 1;
 }
 
-function appendEntry(log: SessionLog, entry: LogEntry): void {
-  log.entries.push(entry as Mutable<LogEntry>);
-  log.indexById.set(entry.id, log.entries.length - 1);
-}
-
-function findEntry(log: SessionLog, id: string): Mutable<LogEntry> | undefined {
-  const index = log.indexById.get(id);
-  if (index !== undefined && log.entries[index]?.id === id) return log.entries[index];
-
-  const fallback = log.entries.findIndex((entry) => entry.id === id);
-  if (fallback >= 0) {
-    log.indexById.set(id, fallback);
-    return log.entries[fallback];
-  }
-
-  return undefined;
-}
-
-type AssistantEndEvent = Extract<WireEvent, { t: "assistant_end" }>;
-
-function applyAssistantEnd(message: Mutable<AssistantMessage>, event: AssistantEndEvent): void {
-  message.streaming = false;
-  if (event.stopReason) message.stopReason = event.stopReason;
-  if (event.errorMessage) message.errorMessage = event.errorMessage;
-  if (event.errorCode) message.errorCode = event.errorCode;
-  if (event.usage) message.usage = event.usage;
-}
-
-function assistantFromEnd(event: AssistantEndEvent): Mutable<AssistantMessage> {
-  const message: Mutable<AssistantMessage> = {
-    kind: "assistant",
-    id: event.id,
-    at: Date.now(),
-    text: "",
-    streaming: false,
-  };
-  applyAssistantEnd(message, event);
-  return message;
-}
-
-function applyCompaction(log: SessionLog, entry: CompactionEntry): void {
-  const existing = findEntry(log, entry.id);
-  if (existing?.kind === "compaction") {
-    existing.at = entry.at;
-    existing.status = entry.status;
-    if (entry.reason) existing.reason = entry.reason;
-    else delete existing.reason;
-    if (entry.summary !== undefined) existing.summary = entry.summary;
-    else delete existing.summary;
-    if (entry.tokensBefore !== undefined) existing.tokensBefore = entry.tokensBefore;
-    else delete existing.tokensBefore;
-    if (entry.errorMessage !== undefined) existing.errorMessage = entry.errorMessage;
-    else delete existing.errorMessage;
-    if (entry.willRetry !== undefined) existing.willRetry = entry.willRetry;
-    else delete existing.willRetry;
-  } else {
-    appendEntry(log, entry);
-  }
-  bumpActivity(log);
-}
-
-function reconcileOrphanedToolCalls(log: SessionLog): void {
-  let changed = false;
-  for (const entry of log.entries) {
-    if (entry.kind !== "tool_call" || entry.status !== "running") continue;
-    entry.status = "error";
-    if (!entry.result) entry.result = "Interrupted — the bridge restarted while this command was running.";
-    changed = true;
-  }
-  if (changed) bumpActivity(log);
-}
-
 function reconcileQueuedMessages(log: SessionLog, event: Extract<WireEvent, { t: "queue" }>): void {
   const queuedIds = new Set(event.queued.map((message) => message.id));
   let changed = false;
@@ -233,9 +155,8 @@ function applyWireEventForSession(sessionId: string, event: WireEvent): void {
 
   if (event.t === "log_reset") {
     log.cursor = event.seq;
-    log.entries = [...event.entries] as Mutable<LogEntry>[];
-    log.indexById = new Map(log.entries.map((entry, i) => [entry.id, i]));
     clearEchoesForSession(sessionId);
+    reduceLog(log, event, Date.now());
     bumpActivity(log);
     return;
   }
@@ -243,120 +164,47 @@ function applyWireEventForSession(sessionId: string, event: WireEvent): void {
   if (event.t !== "hello" && event.seq > 0 && event.seq <= log.cursor) return;
   if (event.seq > log.cursor) log.cursor = event.seq;
 
-  switch (event.t) {
-    case "hello":
-      // When not mid-turn, a still-"running" tool entry is an orphan from a turn
-      // that died with a previous bridge process; its tool_result was never
-      // persisted, so cursor replay alone can't heal it.
-      if (event.session.status === "idle" || event.session.status === "error") {
-        reconcileOrphanedToolCalls(log);
-      }
-      return;
-
-    case "status":
-      if (event.status === "idle" || event.status === "error") {
-        reconcileOrphanedToolCalls(log);
-      }
-      return;
-
-    case "cost":
-    case "auto_retry_start":
-    case "auto_retry_end":
-      return;
-
-    case "queue":
-      reconcileQueuedMessages(log, event);
-      return;
-
-    case "compaction":
-      applyCompaction(log, event.entry);
-      return;
-
-    case "user_message": {
-      const entry = event.entry;
-      // An ack with a clientId may only be absorbed by its own echo; text
-      // matching is the fallback for acks from older hosts.
-      const echoIndex = log.entries.findIndex((e) => {
-        if (e.kind !== "user" || !isLocalEcho(e.id)) return false;
-        if (entry.clientId) return localEchoes.get(e.id)?.event.clientId === entry.clientId;
-        return e.text === entry.text;
-      });
-      if (echoIndex >= 0) {
-        const echoId = log.entries[echoIndex].id;
-        clearEcho(echoId);
-        log.indexById.delete(echoId);
-        log.entries[echoIndex] = entry;
-        log.indexById.set(entry.id, echoIndex);
-      } else {
-        appendEntry(log, entry);
-      }
-      bumpActivity(log);
-      return;
+  // When not mid-turn, a still-"running" tool entry is an orphan from a turn that
+  // died with a previous bridge process; its tool_result was never persisted, so
+  // cursor replay alone can't heal it.
+  if (event.t === "hello") {
+    if (event.session.status === "idle" || event.session.status === "error") {
+      if (reconcileOrphanedToolCalls(log)) bumpActivity(log);
     }
-
-    case "assistant_delta": {
-      const existing = findEntry(log, event.id);
-      if (existing?.kind === "assistant") {
-        existing.text += event.text;
-        existing.streaming = true;
-      } else {
-        appendEntry(log, {
-          kind: "assistant",
-          id: event.id,
-          at: Date.now(),
-          text: event.text,
-          streaming: true,
-        });
-      }
-      bumpActivity(log);
-      return;
-    }
-
-    case "assistant_end": {
-      const entry = findEntry(log, event.id);
-      if (!entry) {
-        appendEntry(log, assistantFromEnd(event));
-      } else if (entry.kind === "assistant") {
-        applyAssistantEnd(entry, event);
-      }
-      bumpActivity(log);
-      return;
-    }
-
-    case "tool_call":
-      appendEntry(log, event.entry);
-      bumpActivity(log);
-      return;
-
-    case "tool_update": {
-      const entry = findEntry(log, event.id);
-      if (entry?.kind === "tool_call") {
-        entry.result = event.result;
-        if (event.resultContent) entry.resultContent = [...event.resultContent];
-        if (event.details !== undefined) entry.details = event.details;
-        bumpActivity(log);
-      }
-      return;
-    }
-
-    case "tool_result": {
-      const entry = findEntry(log, event.id);
-      if (entry?.kind === "tool_call") {
-        entry.status = event.status;
-        entry.result = event.result;
-        if (event.resultContent) entry.resultContent = [...event.resultContent];
-        else delete entry.resultContent;
-        if (event.details !== undefined) entry.details = event.details;
-        else delete entry.details;
-        entry.durationMs = event.durationMs;
-        bumpActivity(log);
-      }
-      return;
-    }
-
-    case "permission":
-      appendEntry(log, event.entry);
-      bumpActivity(log);
-      return;
+    return;
   }
+  if (event.t === "status") {
+    if (event.status === "idle" || event.status === "error") {
+      if (reconcileOrphanedToolCalls(log)) bumpActivity(log);
+    }
+    return;
+  }
+  if (event.t === "cost" || event.t === "auto_retry_start" || event.t === "auto_retry_end") return;
+  if (event.t === "queue") {
+    reconcileQueuedMessages(log, event);
+    return;
+  }
+
+  if (event.t === "user_message") {
+    const entry = event.entry;
+    // An ack with a clientId may only be absorbed by its own echo; text matching
+    // is the fallback for acks from older hosts. Non-echo acks fall through to
+    // the shared fold (plain append).
+    const echoIndex = log.entries.findIndex((e) => {
+      if (e.kind !== "user" || !isLocalEcho(e.id)) return false;
+      if (entry.clientId) return localEchoes.get(e.id)?.event.clientId === entry.clientId;
+      return e.text === entry.text;
+    });
+    if (echoIndex >= 0) {
+      const echoId = log.entries[echoIndex].id;
+      clearEcho(echoId);
+      log.indexById.delete(echoId);
+      log.entries[echoIndex] = entry;
+      log.indexById.set(entry.id, echoIndex);
+      bumpActivity(log);
+      return;
+    }
+  }
+
+  if (reduceLog(log, event, Date.now())) bumpActivity(log);
 }
