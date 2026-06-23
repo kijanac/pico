@@ -117,9 +117,9 @@
     </div>
   {:else}
     <MessageList {sessionId} />
+    <ExtensionNotifications />
     <InputBar {sessionId} />
   {/if}
   <ExtensionUiSheet />
-  <ExtensionNotifications />
 </main>
 </EdgeSwipeBack>

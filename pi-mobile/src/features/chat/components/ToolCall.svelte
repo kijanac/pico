@@ -65,8 +65,19 @@
       <div class="mt-1">
         <EditDiff args={msg.args} />
       </div>
-    {:else if msg.result || msg.resultContent || msg.details !== undefined || (msg.toolKind === "builtin" && msg.tool === "write" && msg.args.content.length > 0)}
-      <ToolResult {msg} />
+    {:else}
+      {#if msg.toolKind === "custom"}
+        <!-- A custom tool's args have no known shape, so render them as formatted JSON. -->
+        <pre
+          class="mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface-2)] px-3 py-2 type-code text-[color:var(--color-fg-muted)]">{JSON.stringify(
+            msg.args,
+            null,
+            2,
+          )}</pre>
+      {/if}
+      {#if msg.result || msg.resultContent || msg.details !== undefined || (msg.toolKind === "builtin" && msg.tool === "write" && msg.args.content.length > 0)}
+        <ToolResult {msg} />
+      {/if}
     {/if}
   {/if}
 </div>
