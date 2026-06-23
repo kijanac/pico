@@ -210,12 +210,14 @@
     }
   }
 
+  // Tap sends/steers; long-press queues a follow-up — pi's alt+enter, as a touch gesture.
   const sendPress = createLongPress({
     delayMs: LONG_PRESS_MS,
     enabled: () => hasSendable && canSend,
     onStart: () => (holding = true),
     onCancel: () => (holding = false),
     onLongPress: () => {
+      holding = false;
       haptics.medium();
       submit("follow_up");
     },
@@ -427,8 +429,8 @@
             onpointercancel={sendPress.end}
             disabled={!hasSendable || !canSend}
             class={`shrink-0 rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)] transition-transform duration-100 active:opacity-80 disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-100 ${holding ? "scale-95" : ""}`}
-            aria-label={busy ? "Queue message (hold to follow-up)" : "Send"}
-            title={hasSendable ? (activeSessionState.compacting ? "Queue until compaction finishes" : busy ? "Tap to steer · hold to queue follow-up" : "Send (hold to queue as follow-up)") : "Draft a message to send"}
+            aria-label={busy ? "Steer (hold to queue a follow-up)" : "Send"}
+            title={hasSendable ? (activeSessionState.compacting ? "Queue until compaction finishes" : busy ? "Tap to steer · hold to queue a follow-up" : "Send · hold to queue a follow-up") : "Draft a message to send"}
           >
             <ArrowUp class="size-3.5" strokeWidth={2.5} />
           </Button>
