@@ -23,6 +23,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history + tags so git-cliff can build release notes
 
       - uses: pnpm/action-setup@v5
         with:
@@ -54,11 +56,15 @@ jobs:
           PICO_HOST_RELEASE_SIGNING_KEY_PEM: ${{ secrets.PICO_HOST_RELEASE_SIGNING_KEY_PEM }}
         run: packages/host/deploy/package-pico-host.sh "$VERSION"
 
+      - name: Generate release notes
+        if: github.ref_type == 'tag'
+        run: npx -y git-cliff@latest --config cliff.toml --latest --strip all -o RELEASE_NOTES.md
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
         with:
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
           files: |
             dist/pico-host-release/pico-host-${{ env.VERSION }}.tar.gz
             dist/pico-host-release/pico-host-release.json

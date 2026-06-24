@@ -28,6 +28,7 @@
     "logs:host": "pnpm run build:cli && node packages/cli/dist/index.js logs",
     "doctor": "pnpm run build:cli && node packages/cli/dist/index.js doctor",
     "release:bump": "node scripts/bump-version.mjs",
+    "changelog": "npx -y git-cliff@latest -o CHANGELOG.md",
     "check": "pnpm typecheck && pnpm --filter pico build"
   },
   "devDependencies": {
