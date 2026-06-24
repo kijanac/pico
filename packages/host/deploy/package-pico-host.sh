@@ -20,11 +20,18 @@ ARTIFACT="pico-host-$VERSION.tar.gz"
 rm -rf "$OUT_DIR/stage"
 mkdir -p "$STAGE" "$OUT_DIR"
 
+# Build everything the release ships: protocol/host/cli dist + the compiled
+# updater. The tarball carries prebuilt dist (the box has no TS toolchain); the
+# box only runs `pnpm install --prod` against the bundled lockfile.
+(cd "$ROOT" && pnpm run build:cli && pnpm --filter @pico/host build:updater)
+
 cp "$ROOT/package.json" "$ROOT/pnpm-lock.yaml" "$ROOT/pnpm-workspace.yaml" "$STAGE/"
 cp -a "$ROOT/packages" "$STAGE/"
+if [[ -d "$ROOT/patches" ]]; then cp -a "$ROOT/patches" "$STAGE/"; fi
 printf '%s\n' "$VERSION" >"$STAGE/VERSION"
 
-find "$STAGE" -type d \( -name node_modules -o -name dist \) -prune -exec rm -rf {} +
+# Strip only regenerable installs; KEEP dist (shipped) and host-update.mjs.
+find "$STAGE" -type d -name node_modules -prune -exec rm -rf {} +
 find "$STAGE" -name '*.tsbuildinfo' -delete
 
 tar -C "$OUT_DIR/stage" -czf "$OUT_DIR/$ARTIFACT" "pico-host-$VERSION"

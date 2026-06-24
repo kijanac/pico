@@ -41,6 +41,9 @@ jobs:
       - name: Check host and protocol
         run: pnpm typecheck
 
+      - name: Run tests
+        run: pnpm test
+
       - name: Resolve version
         run: ./scripts/resolve-version.sh VERSION
 
@@ -65,6 +68,9 @@ jobs:
         if: github.ref_type == 'tag'
         with:
           body_path: RELEASE_NOTES.md
+          # Hyphenated semver tags (e.g. v1.2.1-rc.1) are prereleases, so GitHub's
+          # releases/latest excludes them and the updater never auto-pulls an rc.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             dist/pico-host-release/pico-host-${{ env.VERSION }}.tar.gz
             dist/pico-host-release/pico-host-release.json
