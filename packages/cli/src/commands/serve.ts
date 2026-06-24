@@ -3,7 +3,8 @@ import { prepareServing } from "../host/setup.ts";
 import { printActionDiagnostics } from "../lib/diagnostics.ts";
 
 export const serveCommand = Effect.gen(function* () {
-  const plan = yield* prepareServing({ configureServe: true, inheritTailscaleStdio: true });
+  // tailscale serve is owned by pair/install, not the serve loop.
+  const plan = yield* prepareServing({});
   yield* Effect.addFinalizer(() => Effect.promise(() => plan.host.close()));
   yield* Effect.sync(() => {
     printActionDiagnostics(plan.diagnostics);

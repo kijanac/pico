@@ -27,6 +27,12 @@ const systemUser = Options.text("user").pipe(
 const createSystemUser = Options.boolean("create-user").pipe(
   Options.withDescription("Create the --system service account if it does not exist"),
 );
+const tailscaleServe = Options.boolean("tailscale-serve").pipe(
+  Options.withDescription("Configure `tailscale serve` during install (any mode; `serve` no longer does this itself)"),
+);
+const autoUpdate = Options.boolean("auto-update").pipe(
+  Options.withDescription("Enable the release auto-update timer (--system only; user installs have no release updater)"),
+);
 
 const pair = Command.make("pair", {}, () => pairCommand).pipe(
   Command.withDescription("Run or reuse a Pico host and print a pairing QR/link"),
@@ -54,9 +60,9 @@ const status = Command.make("status", { system: systemMode, user: systemUser }, 
 
 const install = Command.make(
   "install",
-  { system: systemMode, user: systemUser, createUser: createSystemUser },
-  ({ system, user, createUser }) =>
-    resolveServiceOptions({ system, user, createUser }).pipe(Effect.flatMap(installCommand)),
+  { system: systemMode, user: systemUser, createUser: createSystemUser, tailscaleServe, autoUpdate },
+  ({ system, user, createUser, tailscaleServe, autoUpdate }) =>
+    resolveServiceOptions({ system, user, createUser, tailscaleServe, autoUpdate }).pipe(Effect.flatMap(installCommand)),
 ).pipe(
   Command.withDescription(
     "Install and start a service (per-user by default; --system installs a root-managed Linux system service)",
@@ -89,7 +95,6 @@ const envFooter = HelpDoc.sequence(
     [Span.code("PICO_WORKSPACES_DIR"), HelpDoc.p("Directory shown as cwd picker root, default current directory")],
     [Span.code("PICO_PAIRING_TOKEN"), HelpDoc.p("Override generated/stored one-time pairing token")],
     [Span.code("PICO_HOST_URL"), HelpDoc.p("Override printed pairing URL")],
-    [Span.code("PICO_SKIP_TAILSCALE_SERVE"), HelpDoc.p("Set to 1 to skip running tailscale serve")],
     [Span.code("PICO_SERVICE_COMMAND"), HelpDoc.p("Override service command prefix, e.g. /path/to/pico")],
   ]),
 );

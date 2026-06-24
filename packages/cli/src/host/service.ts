@@ -1,13 +1,23 @@
 import { homedir, userInfo } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
 import { commandLine, run, runInherit } from "./exec.ts";
-import { picoHostPathsFromEnv, type PicoHostPaths } from "./paths.ts";
+import { picoHostPathsFromEnv, releasePicoHostPaths, type PicoHostPaths, type PicoHostReleasePaths } from "./paths.ts";
+import { ensureTailscaleServe } from "./tailscale.ts";
 
 const MAC_LABEL = "dev.pico.host";
 const LINUX_UNIT = "pico-host.service";
 const DEFAULT_SYSTEM_USER = "pico-host";
+
+const ENV_FILE_SEED = `# pico-host environment file (/etc/pico-host/env).
+# The systemd unit owns host paths, listener, HOME, and NODE_ENV.
+# Provider auth: run \`pi /login\` as the pico-host user, or set a key below.
+# ANTHROPIC_API_KEY=
+# OPENAI_API_KEY=
+# GEMINI_API_KEY=
+`;
 
 export type ServiceMode = "user" | "system";
 
@@ -22,6 +32,8 @@ export interface ServiceOptions {
   readonly mode?: ServiceMode;
   readonly systemUser?: string;
   readonly createSystemUser?: boolean;
+  readonly tailscaleServe?: boolean;
+  readonly autoUpdate?: boolean;
 }
 
 export interface ServiceControlOptions {
@@ -56,10 +68,26 @@ export const installService = (options: ServiceOptions) =>
     validateServiceCommand(options.command);
     const paths = options.paths ?? picoHostPathsFromEnv();
 
-    if (options.mode === "system") return yield* installLinuxSystemService(options.command, paths, options);
+    const base = yield* (options.mode === "system"
+      ? installLinuxSystemService(options.command, paths, options)
+      : installUserService(options.command, paths));
+
+    if (!options.tailscaleServe || base.some((r) => r.level === "fail")) return base;
+
+    const ts = yield* ensureTailscaleServe(paths.port, { configure: true, inheritStdio: true });
+    return [
+      ...base,
+      ts.serveUrl
+        ? { level: "ok", message: "Tailscale Serve", detail: ts.serveUrl }
+        : { level: "warn", message: "Tailscale Serve not configured", detail: `tailscale serve --bg --https=443 ${ts.serveTarget}` },
+    ] satisfies ServiceResult[];
+  });
+
+const installUserService = (command: ServiceCommand, paths: PicoHostPaths) =>
+  Effect.gen(function* () {
     yield* (yield* FileSystem.FileSystem).makeDirectory(paths.dataDir, { recursive: true });
-    if (process.platform === "darwin") return yield* installMacService(options.command, paths);
-    if (process.platform === "linux") return yield* installLinuxUserService(options.command, paths);
+    if (process.platform === "darwin") return yield* installMacService(command, paths);
+    if (process.platform === "linux") return yield* installLinuxUserService(command, paths);
     return [{ level: "warn", message: `pico install is not implemented for ${process.platform}` }] satisfies ServiceResult[];
   });
 
@@ -71,8 +99,13 @@ export const uninstallService = (options: ServiceControlOptions = {}) =>
       if (process.getuid?.() !== 0) return [{ level: "fail", message: "pico uninstall --system must run as root" }] satisfies ServiceResult[];
       const unit = serviceFilePath({ mode: "system" });
       const results: ServiceResult[] = [yield* runSystemctl(["disable", "--now", LINUX_UNIT], true)];
+      for (const u of ["pico-host-update.timer", "pico-host-update.path", "pico-host-update.service"]) {
+        yield* runSystemctl(["disable", "--now", u], true);
+        yield* fs.remove(`/etc/systemd/system/${u}`, { force: true });
+      }
       yield* fs.remove(unit, { force: true });
-      results.push(yield* runSystemctl(["daemon-reload"], true), { level: "ok", message: "Removed system service", detail: unit });
+      yield* fs.remove(`${dirname(unit)}/pico-host.service.d`, { force: true, recursive: true });
+      results.push(yield* runSystemctl(["daemon-reload"], true), { level: "ok", message: "Removed system service + update units", detail: unit });
       return results;
     }
 
@@ -169,32 +202,75 @@ const installLinuxUserService = (command: ServiceCommand, paths: PicoHostPaths) 
     ] satisfies ServiceResult[];
   });
 
-const installLinuxSystemService = (command: ServiceCommand, paths: PicoHostPaths, options: ServiceOptions) =>
+const SYSTEM_UNITS = ["pico-host.service", "pico-host-update.service", "pico-host-update.timer", "pico-host-update.path"] as const;
+
+const installLinuxSystemService = (_command: ServiceCommand, paths: PicoHostPaths, options: ServiceOptions) =>
   Effect.gen(function* () {
     if (process.platform !== "linux") return [{ level: "fail", message: "system services are only implemented for Linux/systemd" }] satisfies ServiceResult[];
     if (process.getuid?.() !== 0) return [{ level: "fail", message: "pico install --system must run as root" }] satisfies ServiceResult[];
 
     const systemUser = options.systemUser?.trim() || DEFAULT_SYSTEM_USER;
+    const release = releasePicoHostPaths();
+    const templates = deployTemplatesDir();
+    const fs = yield* FileSystem.FileSystem;
+
+    if (!(yield* fs.exists(join(templates, "pico-host.service")))) {
+      return [{ level: "fail", message: "unit templates not found in release", detail: templates }] satisfies ServiceResult[];
+    }
+
     const results: ServiceResult[] = yield* ensureSystemUser(systemUser, paths, Boolean(options.createSystemUser));
     if (results.some((result) => result.level === "fail")) return results;
 
-    const fs = yield* FileSystem.FileSystem;
-    yield* fs.makeDirectory(dirname(serviceFilePath({ mode: "system" })), { recursive: true });
     yield* fs.makeDirectory(paths.dataDir, { recursive: true });
     yield* fs.makeDirectory(paths.workspacesDir, { recursive: true });
-
+    yield* fs.makeDirectory(release.etcDir, { recursive: true });
     const chown = yield* run("chown", ["-R", systemUser, paths.dataDir, paths.workspacesDir], { timeoutMs: 20_000 });
     results.push(chown.exitCode === 0
       ? { level: "ok", message: "Prepared service directories", detail: `${paths.dataDir}, ${paths.workspacesDir}` }
       : { level: "warn", message: "Could not chown service directories", detail: `ensure ${systemUser} can write ${paths.dataDir} and ${paths.workspacesDir}` });
 
-    const unit = serviceFilePath({ mode: "system" });
-    yield* fs.writeFileString(unit, linuxSystemUnit(command, paths, systemUser));
+    // Seed /etc/pico-host/env only when absent — never clobber existing secrets.
+    if (yield* fs.exists(release.envFile)) {
+      results.push({ level: "ok", message: "Env file preserved", detail: release.envFile });
+    } else {
+      yield* fs.writeFileString(release.envFile, ENV_FILE_SEED);
+      yield* run("chown", [`root:${systemUser}`, release.envFile], { timeoutMs: 10_000 });
+      yield* run("chmod", ["0640", release.envFile], { timeoutMs: 10_000 });
+      results.push({ level: "ok", message: "Seeded env file", detail: release.envFile });
+    }
+
+    if (yield* fs.exists(join(templates, "update-public-key.pem"))) {
+      yield* run("install", ["-o", "root", "-g", systemUser, "-m", "0640", join(templates, "update-public-key.pem"), release.updatePublicKey], { timeoutMs: 10_000 });
+    }
+    // The updater binary is a release artifact; absent before Phase 3, in which case auto-update stays inert.
+    if (yield* fs.exists(join(templates, "host-update.mjs"))) {
+      yield* run("install", ["-o", "root", "-g", "root", "-m", "0755", join(templates, "host-update.mjs"), release.updaterPath], { timeoutMs: 10_000 });
+    } else {
+      results.push({ level: "warn", message: "Updater binary not in release; auto-update inert until it ships", detail: release.updaterPath });
+    }
+
+    for (const name of SYSTEM_UNITS) {
+      yield* run("install", ["-o", "root", "-g", "root", "-m", "0644", join(templates, name), `/etc/systemd/system/${name}`], { timeoutMs: 10_000 });
+    }
+    results.push({ level: "ok", message: "Installed systemd units", detail: SYSTEM_UNITS.join(", ") });
+
+    const dropIn = join(dirname(serviceFilePath({ mode: "system" })), "pico-host.service.d", "override.conf");
+    if (needsSystemDropIn(paths, systemUser, release)) {
+      yield* fs.makeDirectory(dirname(dropIn), { recursive: true });
+      yield* fs.writeFileString(dropIn, systemDropIn(paths, systemUser, release));
+      results.push({ level: "ok", message: "Wrote unit drop-in", detail: dropIn });
+    } else {
+      yield* fs.remove(dropIn, { force: true });
+    }
+
     results.push(
-      { level: "ok", message: "Wrote system service", detail: unit },
       yield* runSystemctl(["daemon-reload"], false),
       yield* runSystemctl(["enable", "--now", LINUX_UNIT], false),
+      yield* runSystemctl(["enable", "--now", "pico-host-update.path"], true),
     );
+    if (options.autoUpdate) {
+      results.push(yield* runSystemctl(["enable", "--now", "pico-host-update.timer"], false));
+    }
     return results;
   });
 
@@ -285,30 +361,38 @@ WantedBy=default.target
 `;
 }
 
-function linuxSystemUnit(command: ServiceCommand, paths: PicoHostPaths, systemUser: string): string {
-  return `[Unit]
-Description=Pico host
-After=network-online.target
-Wants=network-online.target
+// ../../../host/deploy resolves correctly from both src/host (tsx) and dist/host (prod).
+function deployTemplatesDir(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), "../../../host/deploy");
+}
 
-[Service]
-Type=simple
+function needsSystemDropIn(paths: PicoHostPaths, systemUser: string, release: PicoHostReleasePaths): boolean {
+  return (
+    systemUser !== DEFAULT_SYSTEM_USER ||
+    paths.dataDir !== "/var/lib/pico-host" ||
+    paths.workspacesDir !== "/var/lib/pico-host/workspaces" ||
+    paths.host !== "127.0.0.1" ||
+    paths.port !== 7777 ||
+    release.installDir !== "/opt/pico-workspace"
+  );
+}
+
+// Empty `ReadWritePaths=`/`ExecStart=` reset the base unit's values before re-setting (systemd drop-in semantics).
+function systemDropIn(paths: PicoHostPaths, systemUser: string, release: PicoHostReleasePaths): string {
+  const cli = `${release.currentLink}/packages/cli/dist/index.js`;
+  return `[Service]
 User=${systemUser}
-WorkingDirectory=${systemdQuote(paths.workspacesDir)}
-ExecStart=${systemdQuote(command.executable)} ${command.args.map(systemdQuote).join(" ")}
-Restart=on-failure
-RestartSec=3
-Environment=NODE_ENV=production
+Group=${systemUser}
+WorkingDirectory=${systemdQuote(release.currentLink)}
+Environment=HOME=${systemdQuote(paths.dataDir)}
 Environment=PICO_HOST_DATA_DIR=${systemdQuote(paths.dataDir)}
 Environment=PICO_WORKSPACES_DIR=${systemdQuote(paths.workspacesDir)}
 Environment=PICO_HOST_BIND=${systemdQuote(paths.host)}
 Environment=PICO_HOST_PORT=${paths.port}
-Environment=PICO_SKIP_TAILSCALE_SERVE=1
-NoNewPrivileges=true
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
+ReadWritePaths=
+ReadWritePaths=${systemdQuote(paths.dataDir)}
+ExecStart=
+ExecStart=/usr/bin/node --max-old-space-size=512 ${systemdQuote(cli)} serve
 `;
 }
 

@@ -12,22 +12,26 @@ StartLimitBurst=5
 Type=simple
 User=pico-host
 Group=pico-host
-WorkingDirectory=/opt/pico-workspace/current/packages/host
+WorkingDirectory=/opt/pico-workspace/current
 
 # Secrets and runtime config live in /etc/pico-host/env (chmod 600).
 # See deploy/env.example for the keys.
 EnvironmentFile=/etc/pico-host/env
 
-# Pico host listener is hard-coded to 127.0.0.1:7777 so the only public surface
-# is via `tailscale serve`.
-Environment=PICO_HOST_DB=/var/lib/pico-host/pico-host.db
+# Binds 127.0.0.1; the only public surface is `tailscale serve`, provisioned by
+# `pico install --tailscale-serve` / `pico pair` — not by this service.
+# `pico serve` derives PICO_HOST_DB + workspaces from PICO_HOST_DATA_DIR.
+Environment=PICO_HOST_DATA_DIR=/var/lib/pico-host
 Environment=HOME=/var/lib/pico-host
 Environment=PICO_WORKSPACES_DIR=/var/lib/pico-host/workspaces
+Environment=PICO_HOST_BIND=127.0.0.1
+Environment=PICO_HOST_PORT=7777
 Environment=NODE_ENV=production
 
-# Heap cap: GC pressure + a catchable OOM beat a silent kernel OOM-kill
-# (which hit this box at 1.5G on 2026-05-30).
-ExecStart=/usr/bin/node --max-old-space-size=512 --import tsx --no-warnings src/main.ts
+# Runs the COMPILED CLI from the `current` symlink (never tsx-on-source), so an
+# atomic release swap re-points everything. Heap cap: a catchable OOM beats a
+# silent kernel OOM-kill (which hit this box at 1.5G on 2026-05-30).
+ExecStart=/usr/bin/node --max-old-space-size=512 /opt/pico-workspace/current/packages/cli/dist/index.js serve
 
 Restart=on-failure
 RestartSec=2s
