@@ -19,6 +19,8 @@ env:
 jobs:
   ios:
     name: Build and upload iOS
+    # Skip prerelease tags (e.g. v1.3.0-rc.1) — rc's don't go to TestFlight.
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: macos-26
 
     steps:
@@ -192,6 +194,7 @@ jobs:
     if: |
       always()
       && startsWith(github.ref, 'refs/tags/v')
+      && !contains(github.ref_name, '-')
       && !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     steps:

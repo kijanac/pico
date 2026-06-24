@@ -13,6 +13,14 @@ describe("compareVersions", () => {
     expect(compareVersions("1.3.0", "1.2.0")).toBeGreaterThan(0);
     expect(compareVersions("1.2.0", "1.10.0")).toBeLessThan(0); // numeric, not lexical
   });
+
+  it("ranks a prerelease below its release but above the prior version", () => {
+    expect(compareVersions("1.3.0-rc.1", "1.3.0")).toBeLessThan(0);
+    expect(compareVersions("1.3.0", "1.3.0-rc.1")).toBeGreaterThan(0);
+    expect(compareVersions("1.3.0-rc.1", "1.2.0")).toBeGreaterThan(0);
+    expect(compareVersions("1.3.0-rc.2", "1.3.0-rc.1")).toBeGreaterThan(0);
+    expect(compareVersions("1.3.0-rc.1", "1.3.0-rc.1")).toBe(0);
+  });
 });
 
 describe("resolveRelease", () => {

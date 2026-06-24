@@ -50,11 +50,35 @@ export type ReleaseResolution =
   | { readonly status: "no_update"; readonly version: string }
   | { readonly status: "update"; readonly version: string; readonly manifestUrl: string; readonly sigUrl: string };
 
+// SemVer-lite precedence: numeric core, then prerelease (`-rc.1`) ranks BELOW
+// its release so a box on `1.3.0-rc.1` still upgrades to `1.3.0`.
+function parseVersion(version: string): { core: number[]; pre: string[] } {
+  const v = version.replace(/^v/, "");
+  const dash = v.indexOf("-");
+  const core = (dash === -1 ? v : v.slice(0, dash)).split(".").map((n) => Number(n) || 0);
+  const pre = dash === -1 ? [] : v.slice(dash + 1).split(".");
+  return { core, pre };
+}
+
 export function compareVersions(a: string, b: string): number {
-  const pa = a.replace(/^v/, "").split(".").map(Number);
-  const pb = b.replace(/^v/, "").split(".").map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
-    const diff = (Number.isFinite(pa[i]) ? pa[i] : 0) - (Number.isFinite(pb[i]) ? pb[i] : 0);
+  const va = parseVersion(a);
+  const vb = parseVersion(b);
+  for (let i = 0; i < Math.max(va.core.length, vb.core.length); i += 1) {
+    const diff = (va.core[i] ?? 0) - (vb.core[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  if (va.pre.length === 0 && vb.pre.length === 0) return 0;
+  if (va.pre.length === 0) return 1; // a is the release, b a prerelease of it
+  if (vb.pre.length === 0) return -1;
+  for (let i = 0; i < Math.max(va.pre.length, vb.pre.length); i += 1) {
+    const x = va.pre[i];
+    const y = vb.pre[i];
+    if (x === undefined) return -1; // fewer prerelease fields ranks lower
+    if (y === undefined) return 1;
+    const nx = Number(x);
+    const ny = Number(y);
+    const bothNumeric = String(nx) === x && String(ny) === y;
+    const diff = bothNumeric ? nx - ny : x < y ? -1 : x > y ? 1 : 0;
     if (diff !== 0) return diff;
   }
   return 0;
