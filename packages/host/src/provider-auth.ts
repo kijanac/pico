@@ -93,9 +93,11 @@ export const ProviderAuthLive = Layer.effect(
             if (!provider) throw new PiError({ message: `auth provider not found: ${providerId}` });
             const id = randomUUIDv7();
             const abort = new AbortController();
+            // Never spread the prior job onto this; each status carries only its own fields.
+            const base = { id, providerId, providerName: provider.name };
             const state: AuthJobState = {
               abort,
-              job: { id, providerId, providerName: provider.name, status: "starting" },
+              job: { ...base, status: "starting" },
             };
             authJobs.set(id, state);
             setTimeout(() => {
@@ -107,32 +109,35 @@ export const ProviderAuthLive = Layer.effect(
             void services.modelRegistry.authStorage.login(providerId, {
               signal: abort.signal,
               onAuth: (info) => {
-                state.job = { ...state.job, status: "auth", authUrl: info.url, instructions: info.instructions };
+                state.job = { ...base, status: "auth", authUrl: info.url, instructions: info.instructions };
               },
               onDeviceCode: (info) => {
-                state.job = { ...state.job, status: "device", userCode: info.userCode, verificationUri: info.verificationUri };
+                state.job = { ...base, status: "device", userCode: info.userCode, verificationUri: info.verificationUri };
               },
               onProgress: (progress) => {
-                state.job = { ...state.job, status: "progress", progress };
+                state.job = { ...base, status: "progress", progress };
               },
               onSelect: async (prompt) => {
-                state.job = { ...state.job, status: "select", selectMessage: prompt.message, selectOptions: [...prompt.options] };
+                state.job = { ...base, status: "select", selectMessage: prompt.message, selectOptions: [...prompt.options] };
                 return await new Promise<string | undefined>((resolve) => { state.resolveInput = (value) => resolve(value); });
               },
               onPrompt: async (prompt) => {
-                state.job = { ...state.job, status: "prompt", promptMessage: prompt.message, promptPlaceholder: prompt.placeholder };
+                state.job = { ...base, status: "prompt", promptMessage: prompt.message, promptPlaceholder: prompt.placeholder };
                 return await new Promise<string>((resolve) => { state.resolveInput = resolve; });
               },
               onManualCodeInput: async () => {
-                state.job = { ...state.job, status: "manual", promptMessage: "Paste the authorization code or final redirect URL" };
+                state.job = { ...base, status: "manual", promptMessage: "Paste the authorization code or final redirect URL" };
                 return await new Promise<string>((resolve) => { state.resolveInput = resolve; });
               },
             }).then(() => {
               reloadAgentAuth();
-              state.job = { ...state.job, status: "success" };
+              state.job = { ...base, status: "success" };
               removeIfTerminalLater(id);
             }).catch((e) => {
-              state.job = { ...state.job, status: abort.signal.aborted ? "cancelled" : "failed", error: String(e) };
+              const message = String(e);
+              state.job = abort.signal.aborted
+                ? { ...base, status: "cancelled", error: message }
+                : { ...base, status: "failed", error: message };
               removeIfTerminalLater(id);
             });
             return state.job;
@@ -171,7 +176,8 @@ export const ProviderAuthLive = Layer.effect(
             if (!state) throw new PiError({ message: `auth job not found: ${jobId}` });
             state.resolveInput?.(value);
             state.resolveInput = undefined;
-            state.job = { ...state.job, status: "progress", progress: "Submitted authentication input…" };
+            const { id, providerId, providerName } = state.job;
+            state.job = { id, providerId, providerName, status: "progress", progress: "Submitted authentication input…" };
             return state.job;
           },
           catch: asPiError,
@@ -183,7 +189,8 @@ export const ProviderAuthLive = Layer.effect(
             if (!state) throw new PiError({ message: `auth job not found: ${jobId}` });
             state.abort.abort();
             state.resolveInput?.("");
-            state.job = { ...state.job, status: "cancelled" };
+            const { id, providerId, providerName } = state.job;
+            state.job = { id, providerId, providerName, status: "cancelled" };
             removeIfTerminalLater(jobId);
           },
           catch: asPiError,

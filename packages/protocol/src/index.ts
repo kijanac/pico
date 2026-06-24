@@ -317,22 +317,44 @@ export const AuthSelectOption = Schema.Struct({
 });
 export type AuthSelectOption = typeof AuthSelectOption.Type;
 
-export const AuthLoginJob = Schema.Struct({
+const AuthLoginJobBase = {
   id: Schema.String,
   providerId: Schema.String,
-  status: Schema.Literal("starting", "auth", "device", "select", "prompt", "manual", "progress", "success", "failed", "cancelled"),
-  providerName: Schema.optional(Schema.String),
-  authUrl: Schema.optional(Schema.String),
-  instructions: Schema.optional(Schema.String),
-  userCode: Schema.optional(Schema.String),
-  verificationUri: Schema.optional(Schema.String),
-  selectMessage: Schema.optional(Schema.String),
-  selectOptions: Schema.optional(Schema.Array(AuthSelectOption)),
-  promptMessage: Schema.optional(Schema.String),
-  promptPlaceholder: Schema.optional(Schema.String),
-  progress: Schema.optional(Schema.String),
-  error: Schema.optional(Schema.String),
-});
+  providerName: Schema.String,
+};
+
+export const AuthLoginJob = Schema.Union(
+  Schema.Struct({ ...AuthLoginJobBase, status: Schema.Literal("starting") }),
+  Schema.Struct({
+    ...AuthLoginJobBase,
+    status: Schema.Literal("auth"),
+    authUrl: Schema.String,
+    instructions: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    ...AuthLoginJobBase,
+    status: Schema.Literal("device"),
+    userCode: Schema.String,
+    verificationUri: Schema.String,
+  }),
+  Schema.Struct({ ...AuthLoginJobBase, status: Schema.Literal("progress"), progress: Schema.String }),
+  Schema.Struct({
+    ...AuthLoginJobBase,
+    status: Schema.Literal("select"),
+    selectMessage: Schema.String,
+    selectOptions: Schema.Array(AuthSelectOption),
+  }),
+  Schema.Struct({
+    ...AuthLoginJobBase,
+    status: Schema.Literal("prompt"),
+    promptMessage: Schema.String,
+    promptPlaceholder: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({ ...AuthLoginJobBase, status: Schema.Literal("manual"), promptMessage: Schema.String }),
+  Schema.Struct({ ...AuthLoginJobBase, status: Schema.Literal("success") }),
+  Schema.Struct({ ...AuthLoginJobBase, status: Schema.Literal("failed"), error: Schema.String }),
+  Schema.Struct({ ...AuthLoginJobBase, status: Schema.Literal("cancelled"), error: Schema.optional(Schema.String) }),
+);
 export type AuthLoginJob = typeof AuthLoginJob.Type;
 
 export const ContextUsage = Schema.Struct({

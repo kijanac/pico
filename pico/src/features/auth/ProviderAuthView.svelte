@@ -95,33 +95,29 @@
       <Button type="button" variant="outline" class="w-full text-[color:var(--color-fg-muted)]" onclick={() => auth.selectApiKeyProvider(null)}>cancel</Button>
     </div>
   {:else if auth.job}
+    {@const job = auth.job}
     <div class="space-y-3 type-copy">
-      {@render InfoRow("provider", auth.job.providerName ?? auth.job.providerId)}
-      {@render InfoRow("status", auth.job.status)}
+      {@render InfoRow("provider", job.providerName)}
+      {@render InfoRow("status", job.status)}
 
-      {#if auth.job.authUrl}
-        <a class="block rounded-[var(--radius-md)] bg-[color:var(--color-accent)] px-3 py-3 text-center font-medium text-[color:var(--color-bg)]" href={auth.job.authUrl} target="_blank" rel="noreferrer">open sign-in page</a>
-      {/if}
-      {#if auth.job.verificationUri}
-        <a class="block rounded-[var(--radius-md)] bg-[color:var(--color-accent)] px-3 py-3 text-center font-medium text-[color:var(--color-bg)]" href={auth.job.verificationUri} target="_blank" rel="noreferrer">open verification page</a>
-      {/if}
-      {#if auth.job.userCode}
-        {@render InfoRow("device code", auth.job.userCode)}
-      {/if}
-      {#if auth.job.instructions}
-        <p class="type-copy text-[color:var(--color-fg-muted)]">{auth.job.instructions}</p>
-      {/if}
-      {#if auth.job.progress}
-        <p class="type-meta text-[color:var(--color-fg-muted)]">{auth.job.progress}</p>
-      {/if}
-      {#if auth.job.error}
-        <p class="type-meta text-[color:var(--color-danger)]">{auth.job.error}</p>
+      {#if job.status === "auth"}
+        <a class="block rounded-[var(--radius-md)] bg-[color:var(--color-accent)] px-3 py-3 text-center font-medium text-[color:var(--color-bg)]" href={job.authUrl} target="_blank" rel="noreferrer">open sign-in page</a>
+        {#if job.instructions}
+          <p class="type-copy text-[color:var(--color-fg-muted)]">{job.instructions}</p>
+        {/if}
+      {:else if job.status === "device"}
+        <a class="block rounded-[var(--radius-md)] bg-[color:var(--color-accent)] px-3 py-3 text-center font-medium text-[color:var(--color-bg)]" href={job.verificationUri} target="_blank" rel="noreferrer">open verification page</a>
+        {@render InfoRow("device code", job.userCode)}
+      {:else if job.status === "progress"}
+        <p class="type-meta text-[color:var(--color-fg-muted)]">{job.progress}</p>
+      {:else if (job.status === "failed" || job.status === "cancelled") && job.error}
+        <p class="type-meta text-[color:var(--color-danger)]">{job.error}</p>
       {/if}
 
-      {#if auth.job.status === "select" && auth.job.selectOptions}
+      {#if job.status === "select"}
         <div class="space-y-2">
-          <p class="type-copy text-[color:var(--color-fg-muted)]">{auth.job.selectMessage ?? "choose an option"}</p>
-          {#each auth.job.selectOptions as option (option.id)}
+          <p class="type-copy text-[color:var(--color-fg-muted)]">{job.selectMessage}</p>
+          {#each job.selectOptions as option (option.id)}
             <ActionRow variant="card" class="hairline-b" onclick={() => auth.submit(option.id)}>
               <span class="type-copy font-medium text-[color:var(--color-fg)]">{option.label}</span>
             </ActionRow>
@@ -129,15 +125,15 @@
         </div>
       {/if}
 
-      {#if auth.job.status === "prompt" || auth.job.status === "manual"}
+      {#if job.status === "prompt" || job.status === "manual"}
         <div>
-          <label class="label mb-1.5 block" for="auth_input">{auth.job.promptMessage ?? "input"}</label>
+          <label class="label mb-1.5 block" for="auth_input">{job.promptMessage}</label>
           <Textarea
             id="auth_input"
             rows={3}
             value={auth.input}
             oninput={(event) => auth.setInput(event.currentTarget.value)}
-            placeholder={auth.job.promptPlaceholder ?? "paste code or redirect URL"}
+            placeholder={job.status === "prompt" && job.promptPlaceholder ? job.promptPlaceholder : "paste code or redirect URL"}
             class="min-h-0 type-copy"
           />
         </div>
