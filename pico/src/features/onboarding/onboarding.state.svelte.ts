@@ -1,92 +1,45 @@
-import { renderHostCloudInit } from "@pico/protocol";
-import { Effect } from "effect";
 import type { CarouselAPI } from "@/shared/ui/carousel/context";
-import { settingsState } from "@/features/settings/settings.state.svelte";
-import { connectAndClaimHost, healthcheckHostUrl } from "@/features/onboarding/api";
-import { classifyHostFailure, hostIssueSummary } from "@/shared/lib/host-issues";
+import { connectAndClaimHost } from "@/features/onboarding/api";
+import { classifyHostIssue, type HostIssue } from "@/shared/lib/host-issues";
 import { runAt } from "@/shared/lib/rpc-client";
 import { haptics } from "@/shared/mobile/haptics";
 
-export const onboardingSteps = ["tailscale", "keys", "cloud-init", "connect", "providers", "done"] as const;
+export const onboardingSteps = ["host", "connect", "providers", "done"] as const;
 export type OnboardingStep = (typeof onboardingSteps)[number];
-export type ConnectState = "idle" | "polling" | "reachable" | "claimed" | "failed";
+
+const CONNECT_INDEX = 1;
+const PROVIDERS_INDEX = 2;
 
 export interface OnboardingState {
-  readonly loaded: boolean;
   readonly currentIndex: number;
-  readonly carouselApi: CarouselAPI | undefined;
-  readonly tsAuthKey: string;
-  readonly tailnet: string;
-  readonly hostName: string;
-  readonly showAdvanced: boolean;
-  readonly copied: string | null;
-  readonly connectState: ConnectState;
-  readonly connectMessage: string;
+  readonly connected: boolean;
+  readonly connecting: boolean;
+  readonly connectIssue: HostIssue | null;
   readonly authError: string | null;
   readonly providerConfigured: boolean;
-  readonly tailnetDns: string;
-  readonly hostUrl: string;
-  readonly cloudInit: string;
-  readonly hasSetupInputs: boolean;
   readonly maxAllowedIndex: number;
   setCarouselApi(api: CarouselAPI | undefined): void;
-  setTsAuthKey(value: string): void;
-  setTailnet(value: string): void;
-  setHostName(value: string): void;
-  setShowAdvanced(value: boolean): void;
   setAuthError(message: string | null): void;
   markProviderConfigured(): void;
-  load(): Promise<void>;
-  persistDraft(): Promise<void>;
   syncCarouselToIndex(): void;
   bindCarouselSelection(): (() => void) | undefined;
   go(index: number): void;
   back(): void;
   next(): void;
-  copy(text: string, label: string): Promise<void>;
-  waitForHost(): Promise<void>;
+  connect(url: string, token?: string): Promise<void>;
 }
 
 export function createOnboardingState(): OnboardingState {
-  let loaded = $state(false);
   let currentIndex = $state(0);
   let carouselApi = $state<CarouselAPI | undefined>();
-  let tsAuthKey = $state("");
-  let tailnet = $state("");
-  let hostName = $state(randomHostName());
-  let showAdvanced = $state(false);
-  let copied = $state<string | null>(null);
-  let connectState = $state<ConnectState>("idle");
-  let connectMessage = $state("Paste the cloud-init into your provider, boot the box, then start waiting here.");
+  let connected = $state(false);
+  let connecting = $state(false);
+  let connectIssue = $state<HostIssue | null>(null);
   let authError = $state<string | null>(null);
   let providerConfigured = $state(false);
 
-  const tailnetDns = $derived(normalizeTailnet(tailnet));
-  const hostUrl = $derived.by(() => {
-    const host = hostName.trim().toLowerCase();
-    return host && tailnetDns ? `https://${host}.${tailnetDns}` : "";
-  });
-  const cloudInit = $derived(renderHostCloudInit({ tsAuthKey, hostName }));
-  const hasSetupInputs = $derived(tsAuthKey.trim().startsWith("tskey-auth-") && tailnetDns.endsWith(".ts.net"));
-  const maxAllowedIndex = $derived.by(() => {
-    if (providerConfigured) return 5;
-    if (connectState === "claimed") return 4;
-    if (hasSetupInputs) return 3;
-    return 1;
-  });
-
-  async function load(): Promise<void> {
-    await settingsState.load();
-    // tsAuthKey is never persisted, so cannot be restored.
-    tailnet = settingsState.onboardingDraft.tailnet ?? "";
-    hostName = settingsState.onboardingDraft.hostName ?? hostName;
-    loaded = true;
-  }
-
-  function persistDraft(): Promise<void> {
-    if (!loaded) return Promise.resolve();
-    return settingsState.setOnboardingDraft({ tailnet, hostName });
-  }
+  // The connect step is always reachable; everything past it needs a claimed host.
+  const maxAllowedIndex = $derived(connected ? onboardingSteps.length - 1 : CONNECT_INDEX);
 
   function syncCarouselToIndex(): void {
     carouselApi?.scrollTo(currentIndex);
@@ -95,7 +48,6 @@ export function createOnboardingState(): OnboardingState {
   function bindCarouselSelection(): (() => void) | undefined {
     const api = carouselApi;
     if (!api) return undefined;
-
     const onSelect = () => {
       const selected = api.selectedScrollSnap();
       if (selected > maxAllowedIndex) {
@@ -104,13 +56,12 @@ export function createOnboardingState(): OnboardingState {
       }
       currentIndex = selected;
     };
-
     api.on("select", onSelect);
     return () => api.off("select", onSelect);
   }
 
   function go(index: number): void {
-    currentIndex = Math.min(index, maxAllowedIndex);
+    currentIndex = Math.min(Math.max(0, index), maxAllowedIndex);
   }
 
   function back(): void {
@@ -121,97 +72,38 @@ export function createOnboardingState(): OnboardingState {
     currentIndex = Math.min(maxAllowedIndex, currentIndex + 1);
   }
 
-  async function copy(text: string, label: string): Promise<void> {
-    await navigator.clipboard?.writeText(text);
-    copied = label;
-    window.setTimeout(() => {
-      copied = null;
-    }, 1200);
-  }
-
-  async function waitForHost(): Promise<void> {
-    if (!hostUrl || connectState === "polling") return;
-
-    connectState = "polling";
-    connectMessage = "Waiting for the Pico host HTTPS endpoint to come online. This can take a few minutes on first boot…";
-
-    for (let attempt = 1; attempt <= 60; attempt += 1) {
-      if (await healthcheckHostUrl(hostUrl)) {
-        connectState = "reachable";
-        connectMessage = "Pico host is reachable. Saving URL and claiming it with your Tailscale identity…";
-        await runAt(
-          hostUrl,
-          connectAndClaimHost(hostUrl).pipe(
-            Effect.tap(() => Effect.sync(() => {
-              connectState = "claimed";
-              connectMessage = "Pico host connected and claimed. You’re ready to continue.";
-              haptics.success();
-              currentIndex = 4;
-            })),
-            Effect.tap(() => Effect.promise(() => settingsState.clearOnboardingDraft())),
-            Effect.catchAll((error) =>
-              classifyHostFailure(error, { url: hostUrl }).pipe(
-                Effect.andThen((issue) => Effect.sync(() => {
-                  connectState = "failed";
-                  connectMessage = `${issue.title}: ${issue.message}`;
-                })),
-              ),
-            ),
-          ),
-        );
-        return;
-      }
-      connectMessage = `Still waiting for ${hostUrl}… (${attempt}/60)`;
-      await new Promise((resolve) => window.setTimeout(resolve, 5000));
+  async function connect(url: string, token?: string): Promise<void> {
+    if (connecting) return;
+    connecting = true;
+    connectIssue = null;
+    try {
+      await runAt(url, connectAndClaimHost(url, token));
+      connected = true;
+      haptics.success();
+      currentIndex = PROVIDERS_INDEX; // advance within the flow, not out to sessions
+    } catch (caught) {
+      connectIssue = classifyHostIssue(caught, { url });
+    } finally {
+      connecting = false;
     }
-
-    connectState = "failed";
-    connectMessage = hostIssueSummary({ hostErrorCode: "host_unreachable" }, { url: hostUrl });
   }
 
   return {
-    get loaded() { return loaded; },
     get currentIndex() { return currentIndex; },
-    get carouselApi() { return carouselApi; },
-    get tsAuthKey() { return tsAuthKey; },
-    get tailnet() { return tailnet; },
-    get hostName() { return hostName; },
-    get showAdvanced() { return showAdvanced; },
-    get copied() { return copied; },
-    get connectState() { return connectState; },
-    get connectMessage() { return connectMessage; },
+    get connected() { return connected; },
+    get connecting() { return connecting; },
+    get connectIssue() { return connectIssue; },
     get authError() { return authError; },
     get providerConfigured() { return providerConfigured; },
-    get tailnetDns() { return tailnetDns; },
-    get hostUrl() { return hostUrl; },
-    get cloudInit() { return cloudInit; },
-    get hasSetupInputs() { return hasSetupInputs; },
     get maxAllowedIndex() { return maxAllowedIndex; },
     setCarouselApi(api: CarouselAPI | undefined) { carouselApi = api; },
-    setTsAuthKey(value: string) { tsAuthKey = value; },
-    setTailnet(value: string) { tailnet = value; },
-    setHostName(value: string) { hostName = value; },
-    setShowAdvanced(value: boolean) { showAdvanced = value; },
     setAuthError(message: string | null) { authError = message; },
     markProviderConfigured() { providerConfigured = true; },
-    load,
-    persistDraft,
     syncCarouselToIndex,
     bindCarouselSelection,
     go,
     back,
     next,
-    copy,
-    waitForHost,
+    connect,
   };
-}
-
-function normalizeTailnet(value: string): string {
-  return value.trim().replace(/^https?:\/\//, "").replace(/^\.+/, "").replace(/\/+$/, "").toLowerCase();
-}
-
-function randomHostName(): string {
-  const bytes = new Uint8Array(3);
-  crypto.getRandomValues(bytes);
-  return `pico-host-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }

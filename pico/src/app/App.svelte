@@ -22,7 +22,6 @@
   const loadSessions = lazy(() => import("@/routes/sessions/SessionsPage.svelte"));
   const loadSession = lazy(() => import("@/routes/session/SessionPage.svelte"));
   const loadSettings = lazy(() => import("@/routes/settings/SettingsPage.svelte"));
-  const loadOnboarding = lazy(() => import("@/routes/onboarding/OnboardingPage.svelte"));
   const loadConnect = lazy(() => import("@/routes/connect/ConnectPage.svelte"));
   const loadWelcome = lazy(() => import("@/routes/welcome/WelcomePage.svelte"));
 
@@ -107,10 +106,6 @@
   {:else if route.id === "settings"}
     {#await loadSettings() then { default: SettingsPage }}
       <SettingsPage />
-    {/await}
-  {:else if route.id === "onboarding"}
-    {#await loadOnboarding() then { default: OnboardingPage }}
-      <OnboardingPage />
     {/await}
   {:else if route.id === "connect"}
     {#await loadConnect() then { default: ConnectPage }}

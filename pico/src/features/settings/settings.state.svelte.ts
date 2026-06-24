@@ -1,31 +1,15 @@
-import {
-  getJsonPreference,
-  getPreference,
-  removePreference,
-  setJsonPreference,
-  setPreference,
-} from "@/shared/mobile/preferences";
+import { getPreference, setPreference } from "@/shared/mobile/preferences";
 
 export const DEFAULT_HOST_URL = "http://localhost:7777";
 
 const HOST_URL_KEY = "host_url";
 const LEGACY_HOST_URL_KEY = "bridge_url";
-const ONBOARDING_DRAFT_KEY = "onboarding_draft";
 const WELCOME_SKIPPED_KEY = "welcome_skipped";
-
-// Tailscale auth key deliberately absent: it can add nodes to your tailnet, and
-// Capacitor Preferences is plaintext UserDefaults (not Keychain), so it stays in
-// memory during setup and never touches disk.
-export interface OnboardingDraft {
-  readonly tailnet: string;
-  readonly hostName: string;
-}
 
 let loaded = $state(false);
 let hostUrl = $state(DEFAULT_HOST_URL);
 let hostUrlConfigured = $state(false);
 let welcomeSkipped = $state(false);
-let onboardingDraft = $state<Partial<OnboardingDraft>>({});
 let saving = $state(false);
 let error = $state<string | null>(null);
 
@@ -46,10 +30,6 @@ export const settingsState = {
     return welcomeSkipped;
   },
 
-  get onboardingDraft() {
-    return onboardingDraft;
-  },
-
   get saving() {
     return saving;
   },
@@ -64,7 +44,6 @@ export const settingsState = {
       hostUrlConfigured = Boolean(savedHostUrl?.trim());
       hostUrl = normalizeHostUrl(savedHostUrl);
       welcomeSkipped = (await getPreference(WELCOME_SKIPPED_KEY)) === "true";
-      onboardingDraft = await getJsonPreference<Partial<OnboardingDraft>>(ONBOARDING_DRAFT_KEY, {});
       error = null;
     } catch (caught) {
       error = String(caught);
@@ -91,34 +70,6 @@ export const settingsState = {
   async skipWelcome(): Promise<void> {
     welcomeSkipped = true;
     await setPreference(WELCOME_SKIPPED_KEY, "true").catch(() => {});
-  },
-
-  async setOnboardingDraft(draft: OnboardingDraft): Promise<void> {
-    saving = true;
-    try {
-      onboardingDraft = draft;
-      await setJsonPreference(ONBOARDING_DRAFT_KEY, draft);
-      error = null;
-    } catch (caught) {
-      error = String(caught);
-      throw caught;
-    } finally {
-      saving = false;
-    }
-  },
-
-  async clearOnboardingDraft(): Promise<void> {
-    saving = true;
-    try {
-      onboardingDraft = {};
-      await removePreference(ONBOARDING_DRAFT_KEY);
-      error = null;
-    } catch (caught) {
-      error = String(caught);
-      throw caught;
-    } finally {
-      saving = false;
-    }
   },
 };
 

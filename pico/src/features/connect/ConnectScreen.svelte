@@ -76,7 +76,7 @@
 
     {#if connectState === "failed"}
       <div class="mt-4 flex gap-2">
-        <Button type="button" variant="outline" class="h-10 flex-1" onclick={() => navigateTo(routePaths.onboarding, "replace")}>setup</Button>
+        <Button type="button" variant="outline" class="h-10 flex-1" onclick={() => navigateTo(routePaths.welcome, "replace")}>setup</Button>
         <Button type="button" class="h-10 flex-1" onclick={connectFromQuery}>retry</Button>
       </div>
     {/if}

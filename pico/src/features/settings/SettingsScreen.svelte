@@ -4,7 +4,6 @@
   import { settingsState } from "@/features/settings/settings.state.svelte";
   import AppearanceCard from "@/features/settings/components/AppearanceCard.svelte";
   import HostStatusCard from "@/features/settings/components/HostStatusCard.svelte";
-  import GuidedOnboardingCard from "@/features/settings/components/GuidedOnboardingCard.svelte";
   import ManualHostConnectCard from "@/features/settings/components/ManualHostConnectCard.svelte";
   import { Button } from "@/shared/ui/button";
   import EdgeSwipeBack from "@/shared/components/EdgeSwipeBack.svelte";
@@ -41,10 +40,8 @@
 
       {#if settingsState.hostUrlConfigured}
         <HostStatusCard />
-        <GuidedOnboardingCard />
         <ManualHostConnectCard />
       {:else}
-        <GuidedOnboardingCard />
         <ManualHostConnectCard />
         <HostStatusCard />
       {/if}

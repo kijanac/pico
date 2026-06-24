@@ -30,23 +30,18 @@ providing the HTTPS endpoint the mobile app talks to.
 - SSH key auth set up (the install + deploy scripts assume `ssh` Just
   Works for the target host).
 
-## Self-service cloud-init install
+## Cloud-init (optional)
 
-The mobile app can generate a cloud-init payload under Settings →
-"create cloud host". Paste in a **single-use,
-preauthorized** Tailscale auth key, choose a host name, then paste
-the generated cloud-init into your cloud provider's user-data field.
+For a hands-free boot, point your VPS's cloud-init / user-data at `install.sh`:
+clone this repo and run `packages/host/deploy/install.sh` with `TS_AUTHKEY`,
+`PICO_HOSTNAME`, `TAILSCALE_SERVE=1`, `PICO_HOST_AUTO_DEPLOY=1`, and
+`PICO_HOST_AUTO_UPDATE=1`. Use a single-use, preauthorized Tailscale auth key
+(tagged `tag:pico-host` if your tailnet ACL requires it); on first boot it joins
+your tailnet, installs pico-host, starts the systemd service, and runs
+`tailscale serve`. The auth key can surface in cloud-init logs, so keep it
+single-use and short-lived.
 
-On first boot it will:
-
-1. Clone this repo.
-2. Run `packages/host/deploy/install.sh` with `TS_AUTHKEY`, `PICO_HOSTNAME`,
-   `TAILSCALE_SERVE=1`, and `PICO_HOST_AUTO_DEPLOY=1`.
-3. Join the VPS to your tailnet, install pico-host, install production
-   dependencies, start the systemd service, and run `tailscale serve`.
-
-Use a tagged auth key for `tag:pico-host` if your tailnet ACL requires it.
-The auth key may appear in cloud-init logs, so keep it single-use and short-lived.
+Prefer to do it by hand? SSH into the VPS and run `install.sh` directly.
 
 In production, pico-host defaults to `PI_AUTH_MODE=tailscale`: every REST route
 except `/healthz` and every WebSocket upgrade must arrive through Tailscale Serve

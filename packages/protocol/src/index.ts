@@ -12,12 +12,6 @@ export {
   MIN_MOBILE_VERSION,
   RECOMMENDED_MOBILE_VERSION,
 } from "./version.ts";
-export {
-  PICO_REPO_URL,
-  TAILSCALE_TAG,
-  renderHostCloudInit,
-  type HostCloudInitOptions,
-} from "./cloud-init.ts";
 
 export const SessionStatus = Schema.Literal("idle", "thinking", "tool", "waiting", "error");
 export type SessionStatus = typeof SessionStatus.Type;

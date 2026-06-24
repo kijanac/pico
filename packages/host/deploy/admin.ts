@@ -6,7 +6,6 @@ import {
   PROTOCOL_VERSION,
   RECOMMENDED_MOBILE_VERSION,
 } from "../../protocol/src/version.ts";
-import { renderHostCloudInit } from "../../protocol/src/cloud-init.ts";
 
 const Asset = Schema.Struct({
   name: Schema.String,
@@ -113,14 +112,6 @@ function packageRelease(args: string[]): void {
   );
 }
 
-function renderCloudInit(args: string[]): void {
-  const [tsAuthKey, hostName] = args;
-  if (!tsAuthKey || !hostName) {
-    throw new Error("usage: admin.ts render-cloud-init <ts-auth-key> <host-name>");
-  }
-  process.stdout.write(renderHostCloudInit({ tsAuthKey, hostName }));
-}
-
 function updateRelease(args: string[]): void {
   const [releasePath, currentVersion, lastSeenVersion] = args;
   if (!releasePath || !currentVersion || !lastSeenVersion) {
@@ -204,12 +195,11 @@ function updateManifest(args: string[]): void {
 try {
   const [command, ...args] = process.argv.slice(2);
   if (command === "package-release") packageRelease(args);
-  else if (command === "render-cloud-init") renderCloudInit(args);
   else if (command === "update-release") updateRelease(args);
   else if (command === "update-manifest") updateManifest(args);
   else if (command === "state-last-seen") stateLastSeen(args);
   else if (command === "state-set") stateSet(args);
-  else throw new Error("usage: admin.ts <package-release|render-cloud-init|update-release|update-manifest|state-last-seen|state-set> ...");
+  else throw new Error("usage: admin.ts <package-release|update-release|update-manifest|state-last-seen|state-set> ...");
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
