@@ -8,6 +8,9 @@ After=network-online.target
 Type=oneshot
 EnvironmentFile=/etc/pico-host/env
 Environment=HOME=/var/lib/pico-host
+# Self-contained PATH: the updater shells out to pnpm/tar/systemctl by name, so
+# don't depend on the host's systemd manager environment.
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/bin/node /opt/pico-workspace/host-update.mjs
 
 # Needs to write /opt releases/current, restart pico-host, and update state.
