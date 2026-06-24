@@ -65,7 +65,7 @@ ssh root@YOURBOX 'bash /tmp/pico-host-deploy/install.sh'
 `install.sh` is idempotent — re-running it is safe (won't clobber
 `/etc/pico-host/env`). It:
 
-1. Creates the `pico-host` system user, `/opt/pi-mobile-workspace` source dir,
+1. Creates the `pico-host` system user, `/opt/pico-workspace` source dir,
    `/var/lib/pico-host` data dir, and `/var/lib/pico-host/workspaces` for git repos.
 2. Installs node 26.1+ (NodeSource), pnpm 10.5.2 (via corepack), git,
    and tailscale (via the official install script) if any are missing.
@@ -79,7 +79,7 @@ then run:
 
 ```sh
 ssh root@YOURBOX
-cd /opt/pi-mobile-workspace/current/packages/host
+cd /opt/pico-workspace/current/packages/host
 sudo -u pico-host HOME=/var/lib/pico-host pnpm exec pi
 # inside pi: /login, choose Claude / OpenAI Codex / GitHub Copilot,
 # complete the browser or device-code flow, then /quit
@@ -106,7 +106,7 @@ ssh root@YOURBOX 'systemctl restart pico-host'
 ```
 
 This rsyncs the workspace pieces the Pico host needs — root pnpm metadata,
-`packages/host/`, and `packages/` — to `/opt/pi-mobile-workspace`, runs a filtered
+`packages/host/`, and `packages/` — to `/opt/pico-workspace`, runs a filtered
 production install for `pico-host` and its workspace dependencies, restarts the
 service, and hits `/healthz` to confirm the boot succeeded.
 
@@ -121,8 +121,8 @@ use the release updater described below.
 Professional self-service installs use versioned Pico host releases:
 
 ```text
-/opt/pi-mobile-workspace/releases/<version>
-/opt/pi-mobile-workspace/current -> releases/<version>
+/opt/pico-workspace/releases/<version>
+/opt/pico-workspace/current -> releases/<version>
 ```
 
 `pico-host.service` runs from `current/packages/host`. The updater downloads the
@@ -173,7 +173,7 @@ server command after publishing a release, run:
 ```sh
 systemctl start pico-host-update.service && \
   systemctl stop pico-host && \
-  node /opt/pi-mobile-workspace/current/packages/host/deploy/migrate-message-usage-shape.mjs /var/lib/pico-host/pico-host.db && \
+  node /opt/pico-workspace/current/packages/host/deploy/migrate-message-usage-shape.mjs /var/lib/pico-host/pico-host.db && \
   systemctl start pico-host && \
   curl -fsS http://127.0.0.1:7777/healthz
 ```
@@ -282,7 +282,7 @@ systemctl stop pico-host
 
 # fully remove (irreversible — drops the DB and session JSONLs)
 systemctl disable --now pico-host
-rm -rf /opt/pi-mobile-workspace /var/lib/pico-host /etc/pico-host /etc/systemd/system/pico-host.service
+rm -rf /opt/pico-workspace /var/lib/pico-host /etc/pico-host /etc/systemd/system/pico-host.service
 systemctl daemon-reload
 userdel pico-host
 ```
@@ -308,7 +308,7 @@ userdel pico-host
 `/etc/pico-host/env` for API-key mode. For subscription auth, re-run:
 
 ```sh
-cd /opt/pi-mobile-workspace/current/packages/host
+cd /opt/pico-workspace/current/packages/host
 sudo -u pico-host HOME=/var/lib/pico-host pnpm exec pi
 ```
 

@@ -1,6 +1,6 @@
 # @pico/host
 
-A Node + Effect Pico host runtime between the [Pico](../pi-mobile/) client
+A Node + Effect Pico host runtime between the [Pico](../pico/) client
 and the [Pi](https://pi.dev) coding agent.
 
 ## Stack

@@ -8,7 +8,7 @@ Pico is an independent, unofficial mobile companion for the Pi coding agent.
 | --- | --- |
 | [`packages/host/`](./packages/host) | Node/TypeScript Pico host server (`@pico/host`): HTTP/RPC/WebSocket server, sessions, storage, Pi SDK integration. |
 | [`packages/cli/`](./packages/cli) | The `pico` host CLI (`pair`, `doctor`, `install`, `status`) plus the host control logic it drives (pairing, service install, diagnostics, local admin client). |
-| [`pi-mobile/`](./pi-mobile) | Pico Svelte + Capacitor mobile client. |
+| [`pico/`](./pico) | Pico Svelte + Capacitor mobile client. |
 | [`packages/protocol/`](./packages/protocol) | Shared Effect Schema definitions and TypeScript types for the RPC/WS protocol. |
 
 ## Requirements
@@ -59,7 +59,7 @@ This typechecks the protocol, host runtime/helper packages, CLI, and builds the 
 ├── packages/host/      # Pico host server (@pico/host)
 ├── packages/cli/       # pico host CLI + host control logic
 ├── packages/protocol/  # shared protocol schemas/types
-├── pi-mobile/          # Pico Svelte + Capacitor client
+├── pico/          # Pico Svelte + Capacitor client
 ├── package.json         # root workspace scripts
 ├── pnpm-workspace.yaml  # workspace package list
 └── README.md            # this file

@@ -9,9 +9,9 @@
 //
 // Files touched:
 //   package.json, packages/host/package.json, packages/cli/package.json,
-//   packages/protocol/package.json, pi-mobile/package.json -> "version"
+//   packages/protocol/package.json, pico/package.json -> "version"
 //   packages/protocol/src/version.ts -> PRODUCT_VERSION (+ MIN_MOBILE_VERSION with --min)
-//   pi-mobile/ios/App/App.xcodeproj/project.pbxproj -> MARKETING_VERSION
+//   pico/ios/App/App.xcodeproj/project.pbxproj -> MARKETING_VERSION
 //     (CI overrides this at build time; synced so local Xcode builds match)
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -63,7 +63,7 @@ for (const pkg of [
   "packages/host/package.json",
   "packages/cli/package.json",
   "packages/protocol/package.json",
-  "pi-mobile/package.json",
+  "pico/package.json",
 ]) {
   rewrite(pkg, (s) => s.replace(/("version":\s*")[^"]+(")/, `$1${next}$2`));
 }
@@ -74,7 +74,7 @@ rewrite("packages/protocol/src/version.ts", (s) => {
   return out;
 });
 
-rewrite("pi-mobile/ios/App/App.xcodeproj/project.pbxproj", (s) =>
+rewrite("pico/ios/App/App.xcodeproj/project.pbxproj", (s) =>
   s.replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${next};`),
 );
 

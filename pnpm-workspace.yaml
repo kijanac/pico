@@ -1,5 +1,5 @@
 packages:
-  - pi-mobile
+  - pico
   - packages/*
 
 onlyBuiltDependencies:

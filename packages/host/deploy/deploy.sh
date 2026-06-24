@@ -20,7 +20,7 @@ fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # deploy.sh lives in packages/host/deploy; the source root is the workspace root.
 ROOT="$(cd "$HERE/../../.." && pwd)"
-REMOTE=/opt/pi-mobile-workspace
+REMOTE=/opt/pico-workspace
 VERSION="$(node -p "require('$ROOT/package.json').version")"
 REMOTE_RELEASE="$REMOTE/releases/$VERSION"
 

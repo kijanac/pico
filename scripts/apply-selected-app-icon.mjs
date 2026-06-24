@@ -4,9 +4,9 @@ import { dirname, join } from "node:path";
 import { inflateSync, deflateSync } from "node:zlib";
 
 const root = join(dirname(new URL(import.meta.url).pathname), "..");
-const source = join(root, "pi-mobile/assets/app-icon.png");
-const iosIcon = join(root, "pi-mobile/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png");
-const androidRes = join(root, "pi-mobile/android/app/src/main/res");
+const source = join(root, "pico/assets/app-icon.png");
+const iosIcon = join(root, "pico/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png");
+const androidRes = join(root, "pico/android/app/src/main/res");
 
 function crcTable() {
   const table = new Uint32Array(256);

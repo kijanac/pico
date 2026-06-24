@@ -30,12 +30,12 @@ data/
 *.db-*
 
 # Capacitor/native generated build artifacts
-pi-mobile/android/.gradle/
-pi-mobile/android/app/build/
-pi-mobile/android/build/
-pi-mobile/ios/App/build/
-pi-mobile/ios/App/Pods/
-pi-mobile/ios/App/DerivedData/
+pico/android/.gradle/
+pico/android/app/build/
+pico/android/build/
+pico/ios/App/build/
+pico/ios/App/Pods/
+pico/ios/App/DerivedData/
 
 # Tarball snapshots/import artifacts
 *.tar
@@ -47,7 +47,7 @@ pi-mobile/ios/App/DerivedData/
 *.txz
 
 # Logo exploration generated artifacts
-# Canonical source icon lives at pi-mobile/assets/app-icon.png.
+# Canonical source icon lives at pico/assets/app-icon.png.
 design/logo-exploration*/
 
 # Agent/local scratch

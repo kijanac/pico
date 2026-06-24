@@ -3,7 +3,7 @@ export interface HostCloudInitOptions {
   readonly hostName: string;
 }
 
-export const PICO_REPO_URL = "https://github.com/kijanac/pi-mobile.git";
+export const PICO_REPO_URL = "https://github.com/kijanac/pico.git";
 export const TAILSCALE_TAG = "tag:pico-host";
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;

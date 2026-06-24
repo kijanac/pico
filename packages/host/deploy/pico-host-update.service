@@ -1,6 +1,6 @@
 [Unit]
 Description=pico-host release updater
-Documentation=https://github.com/kijanac/pi-mobile
+Documentation=https://github.com/kijanac/pico
 Wants=network-online.target
 After=network-online.target
 
@@ -8,7 +8,7 @@ After=network-online.target
 Type=oneshot
 EnvironmentFile=/etc/pico-host/env
 Environment=HOME=/var/lib/pico-host
-ExecStart=/opt/pi-mobile-workspace/update.sh
+ExecStart=/opt/pico-workspace/update.sh
 
 # Needs to write /opt releases/current, restart pico-host, and update state.
 User=root
@@ -18,7 +18,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
-ReadWritePaths=/opt/pi-mobile-workspace /var/lib/pico-host /etc/systemd/system /etc/pico-host
+ReadWritePaths=/opt/pico-workspace /var/lib/pico-host /etc/systemd/system /etc/pico-host
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native
 

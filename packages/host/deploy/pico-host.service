@@ -12,7 +12,7 @@ StartLimitBurst=5
 Type=simple
 User=pico-host
 Group=pico-host
-WorkingDirectory=/opt/pi-mobile-workspace/current/packages/host
+WorkingDirectory=/opt/pico-workspace/current/packages/host
 
 # Secrets and runtime config live in /etc/pico-host/env (chmod 600).
 # See deploy/env.example for the keys.

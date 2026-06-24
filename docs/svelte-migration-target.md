@@ -20,7 +20,7 @@ Do not preserve Solid compatibility patterns. Treat the migration as a clean Sve
 ## Proposed directory layout
 
 ```txt
-pi-mobile/
+pico/
   src/
     app/
       App.svelte

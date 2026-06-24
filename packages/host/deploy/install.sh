@@ -24,7 +24,8 @@ fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER_NAME=pico-host
 OLD_USER_NAME=pi-bridge
-INSTALL_DIR=/opt/pi-mobile-workspace
+INSTALL_DIR=/opt/pico-workspace
+OLD_INSTALL_DIR=/opt/pi-mobile-workspace
 DATA_DIR=/var/lib/pico-host
 OLD_DATA_DIR=/var/lib/pi-bridge
 WORKSPACES_DIR=/var/lib/pico-host/workspaces
@@ -73,6 +74,16 @@ fi
 if [[ -f "$OLD_DB_PATH" && ! -f "$DB_PATH" ]]; then
   mv "$OLD_DB_PATH" "$DB_PATH"
   echo "  moved $OLD_DB_PATH → $DB_PATH"
+fi
+if [[ -d "$OLD_INSTALL_DIR" && ! -e "$INSTALL_DIR" ]]; then
+  mv "$OLD_INSTALL_DIR" "$INSTALL_DIR"
+  echo "  moved $OLD_INSTALL_DIR → $INSTALL_DIR"
+  # `current` is an absolute symlink into the old path; re-point it at the new dir.
+  link="$INSTALL_DIR/current"
+  if [[ -L "$link" ]]; then
+    ln -sfn "$(readlink "$link" | sed "s#^$OLD_INSTALL_DIR#$INSTALL_DIR#")" "$link"
+    echo "  re-pointed $link"
+  fi
 fi
 
 step "system user"
@@ -233,7 +244,7 @@ else
 Next steps:
   1. From your laptop, run packages/host/deploy/deploy.sh to push the workspace
   2. Authenticate pi on the server:
-       cd /opt/pi-mobile-workspace/current/packages/host
+       cd /opt/pico-workspace/current/packages/host
        sudo -u pico-host HOME=/var/lib/pico-host pnpm exec pi
        # inside pi: /login, choose provider, complete browser/device flow, /quit
      Or edit /etc/pico-host/env for API-key mode.

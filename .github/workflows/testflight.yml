@@ -40,15 +40,15 @@ jobs:
         run: pnpm --filter @pico/protocol build
 
       - name: Build mobile web assets
-        working-directory: pi-mobile
+        working-directory: pico
         run: pnpm build
 
       - name: Strip sourcemaps from app payload
-        working-directory: pi-mobile
+        working-directory: pico
         run: find dist -name '*.map' -delete
 
       - name: Sync Capacitor iOS project
-        working-directory: pi-mobile
+        working-directory: pico
         run: pnpm exec cap sync ios
 
       - name: Resolve marketing version
@@ -108,7 +108,7 @@ jobs:
           import re
           from pathlib import Path
 
-          path = Path("pi-mobile/ios/App/App.xcodeproj/project.pbxproj")
+          path = Path("pico/ios/App/App.xcodeproj/project.pbxproj")
           text = path.read_text()
 
           text = text.replace("DEVELOPMENT_TEAM = 489S8NPVP6;", f"DEVELOPMENT_TEAM = {os.environ['APPLE_TEAM_ID']};")
@@ -123,13 +123,13 @@ jobs:
           PY
 
       - name: Build xcarchive
-        working-directory: pi-mobile/ios/App
+        working-directory: pico/ios/App
         run: |
           xcodebuild archive \
             -project App.xcodeproj \
             -scheme App \
             -destination "generic/platform=iOS" \
-            -archivePath "$RUNNER_TEMP/PiMobile.xcarchive" \
+            -archivePath "$RUNNER_TEMP/Pico.xcarchive" \
             -configuration Release \
             MARKETING_VERSION="$MARKETING_VERSION" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
@@ -153,7 +153,7 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Add :uploadSymbols bool true' "$EXPORT_PLIST"
 
           xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/PiMobile.xcarchive" \
+            -archivePath "$RUNNER_TEMP/Pico.xcarchive" \
             -exportOptionsPlist "$EXPORT_PLIST" \
             -exportPath "$RUNNER_TEMP/export"
 

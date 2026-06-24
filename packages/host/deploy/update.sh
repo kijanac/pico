@@ -3,12 +3,12 @@
 
 set -euo pipefail
 
-APP_DIR="/opt/pi-mobile-workspace"
+APP_DIR="/opt/pico-workspace"
 DATA_DIR="/var/lib/pico-host"
 RELEASES_DIR="$APP_DIR/releases"
 CURRENT_LINK="$APP_DIR/current"
 STATE_FILE="$DATA_DIR/update-state.json"
-REPO="kijanac/pi-mobile"
+REPO="kijanac/pico"
 CHANNEL="stable"
 PUBLIC_KEY="/etc/pico-host/update-public-key.pem"
 HEALTH_URL="http://127.0.0.1:7777/healthz"

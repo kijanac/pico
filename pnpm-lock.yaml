@@ -127,7 +127,7 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
-  pi-mobile:
+  pico:
     dependencies:
       '@capacitor-community/speech-recognition':
         specifier: ^7.0.1
