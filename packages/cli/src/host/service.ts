@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
 import { commandLine, run, runInherit } from "./exec.ts";
+import { PicoSetupError } from "./errors.ts";
 import { picoHostPathsFromEnv, releasePicoHostPaths, type PicoHostPaths, type PicoHostReleasePaths } from "./paths.ts";
 import { ensureTailscaleServe } from "./tailscale.ts";
 
@@ -50,11 +51,16 @@ export function defaultServiceCommand(nodePath: string, picoScriptPath: string):
   return { executable: nodePath, args: [picoScriptPath, "serve"] };
 }
 
-export function validateServiceCommand(command: ServiceCommand): void {
+export function validateServiceCommand(command: ServiceCommand): Effect.Effect<void, PicoSetupError> {
   const script = command.args[0];
   if (script?.endsWith(".ts")) {
-    throw new Error("pico install requires the built/npm CLI, not a tsx source entrypoint. Run the packaged `pico` binary or set PICO_SERVICE_COMMAND.");
+    return Effect.fail(new PicoSetupError({
+      code: "invalid_service_command",
+      message: "pico install requires the built/npm CLI, not a tsx source entrypoint.",
+      fix: "Run the packaged `pico` binary or set PICO_SERVICE_COMMAND.",
+    }));
   }
+  return Effect.void;
 }
 
 export function serviceFilePath(options: ServiceControlOptions = {}): string {
@@ -65,7 +71,7 @@ export function serviceFilePath(options: ServiceControlOptions = {}): string {
 
 export const installService = (options: ServiceOptions) =>
   Effect.gen(function* () {
-    validateServiceCommand(options.command);
+    yield* validateServiceCommand(options.command);
     const paths = options.paths ?? picoHostPathsFromEnv();
 
     const base = yield* (options.mode === "system"
