@@ -61,7 +61,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
-	<string>Pico can attach photos to messages when you choose to take a picture.</string>
+	<string>Pico uses the camera to scan pairing QR codes and to attach photos to messages.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Pico can attach images from your photo library when you choose one.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ArrowRight, Loader2 } from "@lucide/svelte";
-  import { navigateTo, routePaths } from "@/app/routes";
+  import { ArrowRight, Loader2, ScanLine } from "@lucide/svelte";
+  import { navigateTo, openAppUrl, routePaths } from "@/app/routes";
   import { connectAndClaimHost } from "@/features/onboarding/api";
   import SettingsField from "@/features/settings/components/SettingsField.svelte";
   import { settingsState } from "@/features/settings/settings.state.svelte";
   import HostIssuePanel from "@/shared/components/HostIssuePanel.svelte";
   import { classifyHostIssue, type HostIssue } from "@/shared/lib/host-issues";
   import { runAt } from "@/shared/lib/rpc-client";
+  import { scanQrCode } from "@/shared/mobile/barcode";
   import { haptics } from "@/shared/mobile/haptics";
   import { Button } from "@/shared/ui/button";
 
@@ -15,6 +16,10 @@
   let url = $state("");
   let connecting = $state(false);
   let connectIssue = $state<HostIssue | null>(null);
+
+  // The in-app scanner reads the pico:// pairing QR on-device (no internet, no
+  // reliance on the system Camera app handling custom schemes).
+  let scanError = $state(false);
 
   onMount(() => {
     if (!settingsState.loaded) void settingsState.load();
@@ -40,6 +45,14 @@
     } finally {
       connecting = false;
     }
+  }
+
+  async function scanToPair(): Promise<void> {
+    scanError = false;
+    const scanned = await scanQrCode();
+    if (!scanned) return; // cancelled
+    // Route the scanned link through the same handler as a pico:// deep link.
+    if (!openAppUrl(scanned)) scanError = true;
   }
 
   async function skip(): Promise<void> {
@@ -74,8 +87,15 @@
       <p class="type-label uppercase tracking-[0.08em] text-[color:var(--color-accent)]">recommended</p>
       <p class="type-copy mt-1 text-[color:var(--color-fg)]">On your machine, run:</p>
       <code class="mt-2 block rounded-[var(--radius-md)] bg-[color:var(--color-bg)] px-3 py-2 font-mono text-[13px] text-[color:var(--color-fg)]">pico doctor && pico pair</code>
-      <p class="type-meta mt-2 text-[color:var(--color-fg-muted)]">Then scan the QR with your phone camera or open the pico:// link.</p>
+      <p class="type-meta mt-2 text-[color:var(--color-fg-muted)]">Then scan the QR it shows, or open the pico:// link.</p>
     </div>
+
+    <Button type="button" class="h-11 w-full" onclick={() => void scanToPair()}>
+      <ScanLine class="size-4" /> scan QR code
+    </Button>
+    {#if scanError}
+      <p class="type-meta text-center text-[color:var(--color-danger)]">That QR isn’t a Pico pairing code.</p>
+    {/if}
 
     {#if showConnect}
       <div class="space-y-2 rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
@@ -94,7 +114,7 @@
         </Button>
       </div>
     {:else}
-      <Button type="button" class="h-11 w-full" onclick={() => (showConnect = true)}>
+      <Button type="button" variant="outline" class="h-11 w-full" onclick={() => (showConnect = true)}>
         enter host URL manually
         <ArrowRight class="size-3.5" />
       </Button>

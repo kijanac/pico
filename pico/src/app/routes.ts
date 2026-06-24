@@ -58,3 +58,25 @@ export function navigateTo(path: string, kind: NavKind = "push"): void {
   window.history.pushState({}, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
+
+/** Map an incoming app URL — a `pico://connect` deep link or an in-app `/connect`
+ *  path — to an internal route, or null if it isn't one we handle. */
+export function pathFromAppUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "pico:" && parsed.hostname === "connect") return `/connect${parsed.search}`;
+    if (parsed.pathname === "/connect") return `/connect${parsed.search}`;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Route an incoming app URL into the app — a deep link or a scanned pairing QR.
+ *  Returns false if the URL isn't a recognized Pico link. */
+export function openAppUrl(url: string): boolean {
+  const path = pathFromAppUrl(url);
+  if (!path) return false;
+  navigateTo(path, "push");
+  return true;
+}

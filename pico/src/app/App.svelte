@@ -3,7 +3,7 @@
   import { App as CapacitorApp } from "@capacitor/app";
   import { Capacitor } from "@capacitor/core";
   import AppShell from "@/app/shell/AppShell.svelte";
-  import { consumeNavKind, currentPath, matchRoute, navigateTo, type RouteMatch } from "@/app/routes";
+  import { consumeNavKind, currentPath, matchRoute, openAppUrl, type RouteMatch } from "@/app/routes";
   import { themeState } from "@/shared/theme/theme.svelte";
 
   // Chunks load from local disk in Capacitor, so lazy routes cost ~nothing.
@@ -67,22 +67,6 @@
       enterKind = kind;
       settleTimer = setTimeout(settle, NAV_TRANSITION_MS + 30);
     }
-  }
-
-  function pathFromAppUrl(url: string): string | null {
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === "pico:" && parsed.hostname === "connect") return `/connect${parsed.search}`;
-      if (parsed.pathname === "/connect") return `/connect${parsed.search}`;
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  function openAppUrl(url: string): void {
-    const path = pathFromAppUrl(url);
-    if (path) navigateTo(path, "push");
   }
 
   onMount(() => {
