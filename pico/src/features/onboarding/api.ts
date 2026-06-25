@@ -1,9 +1,7 @@
 import { Effect } from "effect";
 import { settingsState } from "@/features/settings/settings.state.svelte";
-import { healthcheckHostUrl } from "@/shared/lib/host-http";
+import { healthcheckHost, HostNotReady } from "@/shared/lib/host-http";
 import { rpc } from "@/shared/lib/rpc-client";
-
-export { healthcheckHostUrl };
 
 const claimReachableHost = (token?: string) =>
   rpc((c) => c.system.identity()).pipe(
@@ -18,8 +16,8 @@ const claimReachableHost = (token?: string) =>
 // runAt(url, connectAndClaimHost(url, token)).
 export const connectAndClaimHost = (url: string, token?: string) =>
   Effect.gen(function* () {
-    const reachable = yield* Effect.promise(() => healthcheckHostUrl(url));
-    if (!reachable) return yield* Effect.fail({ hostErrorCode: "host_unreachable" as const });
+    const reachability = yield* healthcheckHost(url);
+    if (reachability !== "healthy") return yield* new HostNotReady({ reachability });
     yield* claimReachableHost(token);
     yield* Effect.promise(() => settingsState.setHostUrl(url));
   });

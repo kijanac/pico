@@ -1,11 +1,12 @@
 import { Effect, Either } from "effect";
 import { isHostErrorCode, type HostErrorCode } from "@pico/protocol";
 import { HostError } from "@pico/protocol/rpc";
-import { healthcheckHostUrl } from "@/features/settings/api";
+import { healthcheckHost, HostNotReady } from "@/shared/lib/host-http";
 import { PicoClient, rpc } from "@/shared/lib/rpc-client";
 
 export type HostIssueKind =
   | "host-unreachable"
+  | "host-starting"
   | "tailscale-not-connected"
   | "pairing-token-invalid"
   | "host-claimed"
@@ -46,7 +47,27 @@ function genericIssue(error: unknown): HostIssue {
   };
 }
 
+function hostStartingIssue(): HostIssue {
+  return {
+    kind: "host-starting",
+    title: "host isn't ready yet",
+    message: "The host isn't responding promptly — it may be starting up, or a fresh tailnet connection is still warming up.",
+    steps: [
+      "Wait a few seconds and try again; a cold tailnet path can take a moment to connect.",
+      "If it persists, run `pico status` on the host to confirm it is healthy.",
+    ],
+  };
+}
+
+// Map a non-healthy reachability to an issue. "unreachable" is a genuine transport
+// failure (so the Tailscale/host-unreachable copy is warranted); "starting" is a
+// slow/booting host that we must NOT mislabel as "Tailscale not connected".
+export function reachabilityIssue(reachability: "starting" | "unreachable", options: HostIssueOptions = {}): HostIssue {
+  return reachability === "unreachable" ? hostIssueForCode("host_unreachable", options) : hostStartingIssue();
+}
+
 export function classifyHostIssue(error: unknown, options: HostIssueOptions = {}): HostIssue {
+  if (error instanceof HostNotReady) return reachabilityIssue(error.reachability, options);
   const code = hostErrorCodeOf(error);
   return code ? hostIssueForCode(code, options) : genericIssue(error);
 }
@@ -60,8 +81,8 @@ export function classifyHostFailure(
   const url = options.url;
   if (!url) return Effect.succeed(genericIssue(error));
   return Effect.gen(function* () {
-    const reachable = yield* Effect.promise(() => healthcheckHostUrl(url).catch(() => false));
-    if (!reachable) return hostIssueForCode("host_unreachable", options);
+    const reachability = yield* healthcheckHost(url);
+    if (reachability !== "healthy") return reachabilityIssue(reachability, options);
     const probe = yield* Effect.either(rpc((c) => c.system.identity()));
     if (Either.isLeft(probe)) {
       const probeCode = hostErrorCodeOf(probe.left);

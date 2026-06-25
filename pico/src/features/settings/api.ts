@@ -1,1 +1,1 @@
-export { healthcheckHostUrl } from "@/shared/lib/host-http";
+export { healthcheckHost } from "@/shared/lib/host-http";

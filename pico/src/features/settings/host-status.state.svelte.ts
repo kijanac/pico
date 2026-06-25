@@ -1,6 +1,7 @@
-import { healthcheckHostUrl } from "@/features/settings/api";
+import { Effect } from "effect";
+import { healthcheckHost } from "@/features/settings/api";
 import { settingsState } from "@/features/settings/settings.state.svelte";
-import { hostIssueForCode, type HostIssue } from "@/shared/lib/host-issues";
+import { reachabilityIssue, type HostIssue } from "@/shared/lib/host-issues";
 
 export type HostStatus = "idle" | "checking" | "online" | "offline";
 
@@ -46,12 +47,12 @@ export const hostStatusState = {
     const mine = ++token;
     if (opts.showProgress || status === "idle") status = "checking";
 
-    const online = await healthcheckHostUrl(url);
+    const reachability = await Effect.runPromise(healthcheckHost(url));
     if (mine !== token) return; // a newer check superseded this one
 
     checkedUrl = url;
     lastCheckedAt = Date.now();
-    status = online ? "online" : "offline";
-    issue = online ? null : hostIssueForCode("host_unreachable", { url });
+    status = reachability === "healthy" ? "online" : "offline";
+    issue = reachability === "healthy" ? null : reachabilityIssue(reachability, { url });
   },
 };

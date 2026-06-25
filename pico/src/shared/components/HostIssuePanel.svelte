@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { AlertTriangle, KeyRound, PlugZap, ShieldAlert, WifiOff } from "@lucide/svelte";
+  import { AlertTriangle, Hourglass, KeyRound, PlugZap, ShieldAlert, WifiOff } from "@lucide/svelte";
   import type { HostIssue } from "@/shared/lib/host-issues";
 
   let {
@@ -16,7 +16,7 @@
   } = $props();
 
   const toneClass = $derived(
-    issue.kind === "provider-auth-missing"
+    issue.kind === "provider-auth-missing" || issue.kind === "host-starting"
       ? "border-[color:var(--color-warning,#d97706)]/35 bg-[color:var(--color-warning,#d97706)]/8"
       : "border-[color:var(--color-danger)]/35 bg-[color:var(--color-danger)]/8",
   );
@@ -27,6 +27,8 @@
     <span class="mt-0.5 shrink-0 text-[color:var(--color-fg-muted)]">
       {#if issue.kind === "host-unreachable"}
         <PlugZap class="size-4" />
+      {:else if issue.kind === "host-starting"}
+        <Hourglass class="size-4" />
       {:else if issue.kind === "tailscale-not-connected"}
         <WifiOff class="size-4" />
       {:else if issue.kind === "pairing-token-invalid"}
