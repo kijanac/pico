@@ -17,20 +17,33 @@ export interface ServiceCliOptions {
   readonly mode: ServiceMode;
   readonly systemUser?: string;
   readonly createSystemUser: boolean;
+  readonly tailscaleServe: boolean;
+  readonly autoUpdate: boolean;
 }
 
-// Flags are parsed by @effect/cli; this only enforces the cross-flag rule.
+// Flags are parsed by @effect/cli; this only enforces the cross-flag rules.
 export const resolveServiceOptions = (input: {
   readonly system: boolean;
   readonly user: Option.Option<string>;
   readonly createUser: boolean;
+  readonly tailscaleServe?: boolean;
+  readonly autoUpdate?: boolean;
 }): Effect.Effect<ServiceCliOptions, Error> => {
   const mode: ServiceMode = input.system ? "system" : "user";
   const systemUser = Option.getOrUndefined(input.user);
   if (mode === "user" && (systemUser !== undefined || input.createUser)) {
     return Effect.fail(new Error("--user and --create-user require --system"));
   }
-  return Effect.succeed({ mode, systemUser, createSystemUser: input.createUser });
+  if (mode === "user" && input.autoUpdate) {
+    return Effect.fail(new Error("--auto-update requires --system (user installs have no release updater)"));
+  }
+  return Effect.succeed({
+    mode,
+    systemUser,
+    createSystemUser: input.createUser,
+    tailscaleServe: Boolean(input.tailscaleServe),
+    autoUpdate: Boolean(input.autoUpdate),
+  });
 };
 
 function currentServiceCommand() {
@@ -50,6 +63,8 @@ export const installCommand = (options: ServiceCliOptions) =>
       mode: options.mode,
       systemUser: options.systemUser,
       createSystemUser: options.createSystemUser,
+      tailscaleServe: options.tailscaleServe,
+      autoUpdate: options.autoUpdate,
     });
     yield* Effect.sync(() => {
       if (printServiceResults(results)) return;

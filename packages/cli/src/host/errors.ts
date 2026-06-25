@@ -17,7 +17,8 @@ export type DiagnosticCode =
   | "local_admin_unavailable"
   | "path_missing"
   | "path_not_writable"
-  | "provider_auth_missing";
+  | "provider_auth_missing"
+  | "invalid_service_command";
 
 export interface Diagnostic {
   readonly level: DiagnosticLevel;

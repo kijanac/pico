@@ -31,6 +31,33 @@ export function systemPicoHostPathsFromEnv(systemUser = "pico-host", env: NodeJS
   return picoHostPaths({ dataDir, workspacesDir, env });
 }
 
+// Production deployment layout: versioned releases under a stable install dir,
+// an atomic `current` symlink the service runs from, and config under /etc. The
+// updater lives OUTSIDE `current` so it survives the symlink swap it performs.
+export interface PicoHostReleasePaths {
+  readonly installDir: string;
+  readonly releasesDir: string;
+  readonly currentLink: string;
+  readonly updaterPath: string;
+  readonly etcDir: string;
+  readonly envFile: string;
+  readonly updatePublicKey: string;
+}
+
+export function releasePicoHostPaths(env: NodeJS.ProcessEnv = process.env): PicoHostReleasePaths {
+  const installDir = resolve(env.PICO_INSTALL_DIR || "/opt/pico-workspace");
+  const etcDir = resolve(env.PICO_ETC_DIR || "/etc/pico-host");
+  return {
+    installDir,
+    releasesDir: join(installDir, "releases"),
+    currentLink: join(installDir, "current"),
+    updaterPath: join(installDir, "host-update.mjs"),
+    etcDir,
+    envFile: join(etcDir, "env"),
+    updatePublicKey: join(etcDir, "update-public-key.pem"),
+  };
+}
+
 function picoHostPaths(options: { readonly dataDir: string; readonly workspacesDir: string; readonly env: NodeJS.ProcessEnv }): PicoHostPaths {
   const port = Number(options.env.PICO_HOST_PORT || DEFAULT_PICO_HOST_PORT);
   const host = options.env.PICO_HOST_BIND || DEFAULT_PICO_HOST_BIND;

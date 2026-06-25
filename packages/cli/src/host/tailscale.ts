@@ -132,13 +132,7 @@ export const ensureTailscaleServe = (
 ) =>
   Effect.gen(function* () {
     const initial = yield* inspectTailscale(port);
-    if (
-      initial.serveUrl ||
-      !initial.installed ||
-      !initial.running ||
-      !options.configure ||
-      process.env.PICO_SKIP_TAILSCALE_SERVE === "1"
-    ) {
+    if (initial.serveUrl || !initial.installed || !initial.running || !options.configure) {
       return initial;
     }
 

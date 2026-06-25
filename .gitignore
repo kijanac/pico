@@ -10,6 +10,11 @@ build/
 .cache/
 coverage/
 *.tsbuildinfo
+# Compiled updater (built from deploy/host-update.mts by `pnpm --filter @pico/host build:updater`)
+packages/host/deploy/host-update.mjs
+# Stray tsc emit beside TS sources (package src trees are TypeScript-only)
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
 
 # Logs
 *.log
