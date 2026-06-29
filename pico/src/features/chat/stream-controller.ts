@@ -5,6 +5,7 @@ import { activeSessionState, type ConnectionStatus } from "@/features/chat/model
 import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
 import { chatQueueState } from "@/features/chat/model/chat-queue.state.svelte";
 import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
+import { markSessionOpen } from "@/shared/lib/session-open-timing";
 
 export interface SessionStreamControllerOptions {
   sessionId: string;
@@ -100,6 +101,7 @@ export class SessionStreamController {
           const client = yield* PicoSessionClient;
           self.#client = client;
           self.#everConnected = true;
+          markSessionOpen(sessionId, "ws-connected");
           self.#setConnectionStatus("connected");
           delay = RECONNECT_MIN_MS;
           yield* client.session
@@ -131,6 +133,7 @@ export class SessionStreamController {
 
   #handleWireEvent(event: WireEvent): void {
     if (event.t === "hello") {
+      markSessionOpen(this.sessionId, "hello");
       this.#replayBoundary = event.cursor;
       sessionListState.upsert(event.session);
       activeSessionState.setStatus(event.session.status);

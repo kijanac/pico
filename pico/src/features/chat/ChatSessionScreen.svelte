@@ -22,6 +22,7 @@
   import EdgeSwipeBack from "@/shared/components/EdgeSwipeBack.svelte";
   import HomePreview from "@/features/sessions/components/HomePreview.svelte";
   import { warmHighlighter } from "@/shared/lib/highlighter";
+  import { markSessionOpen } from "@/shared/lib/session-open-timing";
 
   let { sessionId }: { sessionId: string } = $props();
 
@@ -43,6 +44,7 @@
   });
 
   onMount(() => {
+    markSessionOpen(sessionId, "route-mounted");
     const session = createChatSessionState(sessionId);
     void session.start();
     warmHighlighter();

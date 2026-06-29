@@ -5,6 +5,7 @@ import { retryState } from "@/features/chat/model/retry-state.svelte";
 import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
 import { SessionStreamController } from "@/features/chat/stream-controller";
 import { appLifecycle } from "@/shared/mobile/lifecycle.svelte";
+import { markSessionOpen } from "@/shared/lib/session-open-timing";
 
 export interface ChatSessionState {
   readonly sessionId: string;
@@ -29,6 +30,7 @@ export function createChatSessionState(sessionId: string): ChatSessionState {
 
   async function start(): Promise<void> {
     if (controller) return;
+    markSessionOpen(sessionId, "state-start");
     if (!settingsState.loaded) await settingsState.load();
 
     chatLogState.activate(sessionId);
@@ -44,6 +46,7 @@ export function createChatSessionState(sessionId: string): ChatSessionState {
         sessionListState.removeLocal(sessionId);
       },
     });
+    markSessionOpen(sessionId, "stream-start");
     controller.start();
   }
 

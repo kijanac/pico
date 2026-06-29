@@ -8,6 +8,7 @@
   import CompactionMessageView from "@/features/chat/components/CompactionMessage.svelte";
   import AgentThinkingIndicator from "@/features/chat/components/AgentThinkingIndicator.svelte";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
+  import { markSessionOpen } from "@/shared/lib/session-open-timing";
   import { Button } from "@/shared/ui/button";
 
   let { sessionId }: { sessionId: string } = $props();
@@ -20,6 +21,7 @@
   let hasNewActivity = $state(false);
   let lastActivityVersion = $state(chatLogState.activityVersion);
   let lastThinkingIndicatorVisible = false;
+  let firstRenderMarked = false;
 
   const latestEntry = $derived.by(() => chatLogState.entries[chatLogState.entries.length - 1]);
   const showThinkingIndicator = $derived.by(() => {
@@ -110,6 +112,13 @@
       if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
       if (settleRaf !== null) cancelAnimationFrame(settleRaf);
     };
+  });
+
+  $effect(() => {
+    if (chatLogState.entries.length > 0 && !firstRenderMarked) {
+      firstRenderMarked = true;
+      void tick().then(() => requestAnimationFrame(() => markSessionOpen(sessionId, "first-render")));
+    }
   });
 
   $effect(() => {

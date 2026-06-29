@@ -16,6 +16,7 @@ export interface EdgeSwipeOptions {
   preview: HTMLElement;
   shade: HTMLElement;
   onComplete: () => void;
+  onPreviewNeeded?: () => void;
 }
 
 export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
@@ -83,6 +84,8 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
 
     const touch = event.touches[0];
     if (!touch || touch.clientX > EDGE_WIDTH) return;
+
+    options.onPreviewNeeded?.();
 
     startX = touch.clientX;
     startY = touch.clientY;

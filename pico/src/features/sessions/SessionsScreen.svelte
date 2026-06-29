@@ -8,6 +8,7 @@
   import RenameSheet from "@/features/sessions/components/RenameSheet.svelte";
   import SessionsView from "@/features/sessions/components/SessionsView.svelte";
   import { haptics } from "@/shared/mobile/haptics";
+  import { markSessionOpen } from "@/shared/lib/session-open-timing";
   import { Button } from "@/shared/ui/button";
   import * as Dialog from "@/shared/ui/dialog";
 
@@ -61,6 +62,11 @@
     openSwipeSessionId = null;
     deleteTarget = session;
   }
+
+  function openSession(session: SessionMeta): void {
+    markSessionOpen(session.id, "tap");
+    navigateTo(routePaths.session(session.id));
+  }
 </script>
 
 <SessionsView
@@ -77,7 +83,7 @@
   onToggleArchived={() => sessionListState.switchArchivedView(!sessionListState.archivedView)}
   onSettings={() => navigateTo(routePaths.settings)}
   onNewSession={() => (newSessionOpen = true)}
-  onOpenSession={(session) => navigateTo(routePaths.session(session.id))}
+  onOpenSession={openSession}
   onRename={requestRename}
   onToggleArchive={toggleArchive}
   onDelete={requestDelete}
