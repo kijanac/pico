@@ -1,7 +1,6 @@
 const routes = [
   { id: "sessions", path: "/" },
   { id: "session", path: "/h/:hostId/s/:id" },
-  { id: "legacy-session", path: "/s/:id" },
   { id: "settings", path: "/settings" },
   { id: "connect", path: "/connect" },
   { id: "welcome", path: "/welcome" },
@@ -101,7 +100,7 @@ function pathnameOf(path: string): string {
   return pathname.startsWith("/") ? pathname : `/${pathname}`;
 }
 
-export function matchRoute(path: string): RouteMatch {
+export function resolveRoute(path: string): RouteMatch {
   const pathname = pathnameOf(path);
   const pathSegments = splitPath(pathname);
 

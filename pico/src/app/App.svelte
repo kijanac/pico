@@ -3,7 +3,7 @@
   import { App as CapacitorApp } from "@capacitor/app";
   import { Capacitor } from "@capacitor/core";
   import AppShell from "@/app/shell/AppShell.svelte";
-  import { consumeNavKind, currentPath, matchRoute, openAppUrl, type RouteMatch } from "@/app/routes";
+  import { consumeNavKind, currentPath, resolveRoute, openAppUrl, type RouteMatch } from "@/app/routes";
   import { themeState } from "@/shared/theme/theme.svelte";
 
   // Chunks load from local disk in Capacitor, so lazy routes cost ~nothing.
@@ -21,7 +21,6 @@
 
   const loadSessions = lazy(() => import("@/routes/sessions/SessionsPage.svelte"));
   const loadSession = lazy(() => import("@/routes/session/SessionPage.svelte"));
-  const loadLegacySession = lazy(() => import("@/routes/session/LegacySessionRedirect.svelte"));
   const loadSettings = lazy(() => import("@/routes/settings/SettingsPage.svelte"));
   const loadConnect = lazy(() => import("@/routes/connect/ConnectPage.svelte"));
   const loadWelcome = lazy(() => import("@/routes/welcome/WelcomePage.svelte"));
@@ -35,7 +34,7 @@
   }
 
   let screenKey = 0;
-  let current = $state<Screen>({ key: screenKey, path: currentPath(), route: matchRoute(currentPath()) });
+  let current = $state<Screen>({ key: screenKey, path: currentPath(), route: resolveRoute(currentPath()) });
   let leaving = $state<{ screen: Screen; kind: "push" | "pop" } | null>(null);
   let enterKind = $state<"push" | "pop" | null>(null);
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -60,7 +59,7 @@
 
     settle();
     const outgoing = current;
-    current = { key: ++screenKey, path, route: matchRoute(path) };
+    current = { key: ++screenKey, path, route: resolveRoute(path) };
 
     if (animate) {
       leaving = { screen: outgoing, kind };
@@ -103,10 +102,6 @@
   {:else if route.id === "session"}
     {#await loadSession() then { default: SessionPage }}
       <SessionPage hostId={route.params.hostId} id={route.params.id} />
-    {/await}
-  {:else if route.id === "legacy-session"}
-    {#await loadLegacySession() then { default: LegacySessionRedirect }}
-      <LegacySessionRedirect id={route.params.id} />
     {/await}
   {:else if route.id === "settings"}
     {#await loadSettings() then { default: SettingsPage }}

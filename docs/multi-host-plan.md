@@ -16,13 +16,7 @@ The invariant is that every session reference is host-qualified: `hostId` travel
 /welcome                  onboarding
 ```
 
-Legacy `/s/:sessionId` is handled only as a one-time route migration to the migrated default host:
-
-```text
-/s/:sessionId -> replaceState(/h/:defaultHostId/s/:sessionId)
-```
-
-There is no resolver, no query-all-hosts fallback, and no global host switch required to open a session.
+Bare `/s/:sessionId` routes are not part of the multi-host app. Existing session links must be host-qualified so there is no resolver, query-all-hosts fallback, or global host switch required to open a session.
 
 ## Persisted host registry
 
@@ -161,7 +155,7 @@ active session    { hostId, sessionId }
 
 1. Add host registry state and migrate `host_url`.
 2. Add host-aware RPC helpers.
-3. Change routes to `/h/:hostId/s/:sessionId` with tiny legacy route migration.
+3. Change routes to `/h/:hostId/s/:sessionId`.
 4. Thread `hostId` alongside `sessionId` through chat state and stream controller.
 5. Namespace chat log, queue, drafts, queued-message actions, retry/active state.
 6. Convert session list state and UI to merged host/session rows.
