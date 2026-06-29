@@ -1,4 +1,4 @@
-import type { AssistantMessage, CompactionEntry, LogEntry, ToolCallMessage, ToolResultContent, WireEvent } from "./index.ts";
+import { hasToolDetails, type AssistantMessage, type CompactionEntry, type LogEntry, type ToolCallMessage, type ToolResultContent, type WireEvent } from "./index.ts";
 
 // effect/Schema decodes to readonly; a live log mutates the entries it owns in place.
 export type Mutable<T> = T extends ReadonlyArray<infer U>
@@ -83,7 +83,7 @@ function applyToolResult(entry: Mutable<ToolCallMessage>, data: ToolResultLike):
   entry.result = data.result;
   if (data.resultContent) entry.resultContent = [...data.resultContent];
   else delete entry.resultContent;
-  if (data.details !== undefined) entry.details = data.details;
+  if (hasToolDetails(data.details)) entry.details = data.details;
   else delete entry.details;
   entry.durationMs = data.durationMs;
 }
@@ -161,7 +161,8 @@ export function reduceLog(acc: LogAccumulator, event: WireEvent, now: number): b
       if (entry?.kind !== "tool_call") return false;
       entry.result = event.result;
       if (event.resultContent) entry.resultContent = [...event.resultContent];
-      if (event.details !== undefined) entry.details = event.details;
+      if (hasToolDetails(event.details)) entry.details = event.details;
+      else delete entry.details;
       return true;
     }
 

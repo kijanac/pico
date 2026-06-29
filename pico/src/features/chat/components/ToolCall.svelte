@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Check, FileText, Loader2, Pencil, PlusSquare, Terminal, X } from "@lucide/svelte";
-  import type { ToolCallMessage } from "@pico/protocol";
+  import { hasToolDetails, type ToolCallMessage } from "@pico/protocol";
   import { shortPath } from "@/shared/lib/format";
   import EditDiff from "@/features/chat/components/EditDiff.svelte";
   import ToolResult from "@/features/chat/components/ToolResult.svelte";
@@ -10,7 +10,7 @@
   let open = $state(msg.toolKind === "builtin" && msg.tool === "edit");
 
   $effect(() => {
-    if (msg.status === "running" && (msg.result || msg.resultContent || msg.details !== undefined)) open = true;
+    if (msg.status === "running" && (msg.result || msg.resultContent || hasToolDetails(msg.details))) open = true;
   });
 
   const label = $derived(msg.toolKind === "builtin" ? msg.tool : msg.tool);
@@ -33,7 +33,7 @@
     onclick={() => (open = !open)}
     class="group flex w-full items-center gap-2 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2.5 py-1.5 text-left active:bg-[color:var(--color-surface-2)]"
   >
-    <span class="flex h-4 w-4 items-center justify-center text-[color:var(--color-fg-muted)]">
+    <span class="flex h-4 w-4 shrink-0 items-center justify-center text-[color:var(--color-fg-muted)]">
       {#if msg.toolKind === "builtin" && msg.tool === "read"}
         <FileText class="size-3" />
       {:else if msg.toolKind === "builtin" && msg.tool === "write"}
@@ -45,19 +45,23 @@
       {/if}
     </span>
 
-    <span class="type-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">{label}</span>
-    <span class="type-meta min-w-0 flex-1 truncate text-[color:var(--color-fg)]">{summary}</span>
+    <span class="type-label shrink-0 uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">{label}</span>
+    <span class="type-meta min-w-0 flex-1 overflow-hidden pr-1 text-[color:var(--color-fg)]">
+      <span class="block truncate">{summary}</span>
+    </span>
 
-    {#if msg.status === "running"}
-      <Loader2 class="size-3 animate-spin text-[color:var(--color-accent)]" />
-    {:else if msg.status === "ok"}
-      <Check class="size-3 text-[color:var(--color-fg-faint)]" />
-      {#if msg.durationMs !== undefined}
-        <span class="type-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)] tabular-nums">{msg.durationMs}ms</span>
+    <span class="ml-auto flex shrink-0 items-center gap-1">
+      {#if msg.status === "running"}
+        <Loader2 class="size-3 animate-spin text-[color:var(--color-accent)]" />
+      {:else if msg.status === "ok"}
+        <Check class="size-3 text-[color:var(--color-fg-faint)]" />
+        {#if msg.durationMs !== undefined}
+          <span class="type-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)] tabular-nums">{msg.durationMs}ms</span>
+        {/if}
+      {:else if msg.status === "error"}
+        <X class="size-3 text-[color:var(--color-danger)]" />
       {/if}
-    {:else if msg.status === "error"}
-      <X class="size-3 text-[color:var(--color-danger)]" />
-    {/if}
+    </span>
   </button>
 
   {#if open}
@@ -75,7 +79,7 @@
             2,
           )}</pre>
       {/if}
-      {#if msg.result || msg.resultContent || msg.details !== undefined || (msg.toolKind === "builtin" && msg.tool === "write" && msg.args.content.length > 0)}
+      {#if msg.result || msg.resultContent || hasToolDetails(msg.details) || (msg.toolKind === "builtin" && msg.tool === "write" && msg.args.content.length > 0)}
         <ToolResult {msg} />
       {/if}
     {/if}

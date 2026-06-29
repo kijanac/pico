@@ -1,6 +1,6 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ImageContent, TextContent, ThinkingContent, ToolCall } from "@earendil-works/pi-ai";
-import type { ToolResultContent } from "@pico/protocol";
+import { hasToolDetails, type ToolResultContent } from "@pico/protocol";
 
 type ToolResultContentBlock = TextContent | ImageContent;
 type DisplayContentBlock = ToolResultContentBlock | ThinkingContent | ToolCall;
@@ -48,6 +48,6 @@ export const projectToolResult = (result: AgentToolResult<unknown>): ProjectedTo
   return {
     text: textFromContent(result.content),
     ...(content ? { content } : {}),
-    ...(result.details !== undefined ? { details: result.details } : {}),
+    ...(hasToolDetails(result.details) ? { details: result.details } : {}),
   };
 };

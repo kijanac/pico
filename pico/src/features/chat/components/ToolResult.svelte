@@ -1,6 +1,6 @@
 <script lang="ts">
   import Anser from "anser";
-  import type { ToolCallMessage } from "@pico/protocol";
+  import { hasToolDetails, type ToolCallMessage } from "@pico/protocol";
   import { highlightToHtml, inferLangFromPath } from "@/shared/lib/highlighter";
 
   const BASH_CLASS =
@@ -68,7 +68,7 @@
   });
 
   function formatDetails(details: unknown): string {
-    if (details === undefined) return "";
+    if (!hasToolDetails(details)) return "";
     try {
       return JSON.stringify(details, null, 2) ?? "";
     } catch {
