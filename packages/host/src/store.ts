@@ -78,11 +78,6 @@ const SCHEMA = `
 const EVENTS_RETAIN_PER_SESSION = 5000;
 const PRUNE_EVERY = 256;
 
-const MIGRATIONS = [
-  `ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
-];
-
-
 const SessionRow = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
@@ -127,12 +122,6 @@ const make = (dbPath: string) =>
       d.exec("PRAGMA wal_autocheckpoint = 500");
 
       d.exec(SCHEMA);
-      for (const sql of MIGRATIONS) {
-        try {
-          d.exec(sql);
-        } catch {
-        }
-      }
 
       // Non-terminal status from a prior (possibly crashed) run is stale at
       // boot; without this reset a session caught mid-turn shows a perpetual

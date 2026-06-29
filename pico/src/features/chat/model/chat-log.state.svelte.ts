@@ -174,7 +174,7 @@ function applyWireEventForSession(sessionId: string, event: WireEvent): void {
   if (event.seq > log.cursor) log.cursor = event.seq;
 
   // When not mid-turn, a still-"running" tool entry is an orphan from a turn that
-  // died with a previous bridge process; its tool_result was never persisted, so
+  // died with a previous host process; its tool_result was never persisted, so
   // cursor replay alone can't heal it.
   if (event.t === "hello") {
     if (event.session.status === "idle" || event.session.status === "error") {

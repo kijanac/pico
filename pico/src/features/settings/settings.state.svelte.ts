@@ -3,7 +3,6 @@ import { getPreference, setPreference } from "@/shared/mobile/preferences";
 export const DEFAULT_HOST_URL = "http://localhost:7777";
 
 const HOST_URL_KEY = "host_url";
-const LEGACY_HOST_URL_KEY = "bridge_url";
 const WELCOME_SKIPPED_KEY = "welcome_skipped";
 
 let loaded = $state(false);
@@ -40,7 +39,7 @@ export const settingsState = {
 
   async load(): Promise<void> {
     try {
-      const savedHostUrl = await getPreference(HOST_URL_KEY) ?? await getPreference(LEGACY_HOST_URL_KEY);
+      const savedHostUrl = await getPreference(HOST_URL_KEY);
       hostUrlConfigured = Boolean(savedHostUrl?.trim());
       hostUrl = normalizeHostUrl(savedHostUrl);
       welcomeSkipped = (await getPreference(WELCOME_SKIPPED_KEY)) === "true";

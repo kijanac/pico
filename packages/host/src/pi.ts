@@ -513,7 +513,7 @@ const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
   const log = emptyLog();
   for (const event of branchToWireEvents(piSession)) reduceLog(log, event, 0);
 
-  // With no turn live (e.g. resumed after the bridge was killed mid-command), a
+  // With no turn live (e.g. resumed after the host was killed mid-command), a
   // lingering "running" tool is an orphan — mark it interrupted so the log
   // doesn't replay a spinner that never resolves. isStreaming spans the whole
   // turn including tool execution, so this never touches an in-flight tool.

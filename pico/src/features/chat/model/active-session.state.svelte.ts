@@ -121,7 +121,7 @@ export const activeSessionState = {
     if (activeSessionId !== sessionId) return;
 
     // hello is an authoritative snapshot on (re)connect; adopt its status so a
-    // turn killed by a bridge restart (whose turn-ending status event died with
+    // turn killed by a host restart (whose turn-ending status event died with
     // the old process) doesn't leave the spinner stuck.
     if (event.t === "hello") {
       activeStatus = event.session.status;

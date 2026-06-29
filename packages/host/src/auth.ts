@@ -48,13 +48,6 @@ function getOwnerDb(): OwnerDb {
       claimed_at INTEGER NOT NULL
     ) STRICT;
   `);
-  const legacyOwnersTable = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'bridge_owners'").get();
-  if (legacyOwnersTable) {
-    db.exec(`
-      INSERT OR IGNORE INTO pico_host_owners (login, claimed_at)
-      SELECT login, claimed_at FROM bridge_owners;
-    `);
-  }
   ownerDb = {
     db,
     insertFirstOwner: db.prepare(`

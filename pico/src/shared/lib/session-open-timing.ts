@@ -33,6 +33,12 @@ interface TimingRecord {
 
 const records = new Map<string, TimingRecord>();
 
+function timingEnabled(): boolean {
+  if ((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV) return true;
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem("pico_debug_timing") === "1";
+}
+
 function reports(): SessionOpenReport[] | null {
   if (typeof window === "undefined") return null;
   const target = window as Window & { __picoSessionOpenTimings?: SessionOpenReport[] };
@@ -75,6 +81,8 @@ function publish(record: TimingRecord, complete: boolean): SessionOpenReport {
 }
 
 export function markSessionOpen(sessionId: string, phase: SessionOpenPhase): void {
+  if (!timingEnabled()) return;
+
   const now = performance.now();
   let record = records.get(sessionId);
   if (!record || phase === "tap" || (phase === "route-mounted" && record.complete)) {
