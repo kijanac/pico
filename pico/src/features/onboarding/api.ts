@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { settingsState } from "@/features/settings/settings.state.svelte";
+import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 import { healthcheckHost, HostNotReady } from "@/shared/lib/host-http";
 import { rpc } from "@/shared/lib/rpc-client";
 
@@ -19,5 +19,6 @@ export const connectAndClaimHost = (url: string, token?: string) =>
     const reachability = yield* healthcheckHost(url);
     if (reachability !== "healthy") return yield* new HostNotReady({ reachability });
     yield* claimReachableHost(token);
-    yield* Effect.promise(() => settingsState.setHostUrl(url));
+    const info = yield* rpc((c) => c.system.info());
+    yield* Effect.promise(() => hostRegistryState.addOrUpdateHost(url, info));
   });

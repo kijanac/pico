@@ -10,9 +10,9 @@
   import AssistantErrorBanner from "@/features/chat/components/AssistantErrorBanner.svelte";
   import { navigateSessionTree } from "@/features/chat/api";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
-  import { runHost } from "@/shared/lib/rpc-client";
+  import { runOnHost } from "@/shared/lib/rpc-client";
 
-  let { msg, sessionId }: { msg: AssistantMessage; sessionId: string } = $props();
+  let { msg, hostId, sessionId }: { msg: AssistantMessage; hostId: string; sessionId: string } = $props();
 
   let copied = $state(false);
   let detailsOpen = $state(false);
@@ -35,7 +35,7 @@
     branching = true;
     branchError = null;
     try {
-      await runHost(navigateSessionTree(sessionId, { entryId: msg.id }));
+      await runOnHost(hostId, navigateSessionTree(sessionId, { entryId: msg.id }));
     } catch (error) {
       branchError = hostIssueSummary(error);
     } finally {

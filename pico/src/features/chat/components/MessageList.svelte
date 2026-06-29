@@ -11,10 +11,11 @@
   import { getSessionLogBefore } from "@/features/chat/api";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { markSessionOpen } from "@/shared/lib/session-open-timing";
-  import { runHost } from "@/shared/lib/rpc-client";
+  import { runOnHost } from "@/shared/lib/rpc-client";
   import { Button } from "@/shared/ui/button";
 
-  let { sessionId }: { sessionId: string } = $props();
+  let { hostId, sessionId }: { hostId: string; sessionId: string } = $props();
+  const timingId = $derived(`${hostId}:${sessionId}`);
 
   const STICK_THRESHOLD_PX = 64;
   const INITIAL_VISIBLE_ENTRIES = 120;
@@ -139,8 +140,8 @@
       } else {
         const beforeId = visibleEntries[0]?.id;
         if (!beforeId) return;
-        const page = await runHost(getSessionLogBefore(sessionId, beforeId, REVEAL_ENTRIES));
-        chatLogState.prependEarlierEntries(sessionId, page);
+        const page = await runOnHost(hostId, getSessionLogBefore(sessionId, beforeId, REVEAL_ENTRIES));
+        chatLogState.prependEarlierEntries(hostId, sessionId, page);
         visibleCount += page.entries.length;
       }
 
@@ -229,7 +230,7 @@
   $effect(() => {
     if (chatLogState.entries.length > 0 && !firstRenderMarked) {
       firstRenderMarked = true;
-      void tick().then(() => requestAnimationFrame(() => markSessionOpen(sessionId, "first-render")));
+      void tick().then(() => requestAnimationFrame(() => markSessionOpen(timingId, "first-render")));
     }
   });
 
@@ -256,9 +257,9 @@
         {#if row.kind === "thinking"}
           <AgentThinkingIndicator />
         {:else if row.entry.kind === "user"}
-          <UserMessageView msg={row.entry} {sessionId} />
+          <UserMessageView msg={row.entry} {hostId} {sessionId} />
         {:else if row.entry.kind === "assistant"}
-          <AssistantMessageView msg={row.entry} {sessionId} />
+          <AssistantMessageView msg={row.entry} {hostId} {sessionId} />
         {:else if row.entry.kind === "tool_call"}
           <ToolCallView msg={row.entry} />
         {:else if row.entry.kind === "compaction"}

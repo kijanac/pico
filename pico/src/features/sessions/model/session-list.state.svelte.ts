@@ -1,6 +1,6 @@
 import type { SessionMeta } from "@pico/protocol";
 import { Effect } from "effect";
-import { settingsState } from "@/features/settings/settings.state.svelte";
+import { hostRegistryState, type HostProfile } from "@/features/hosts/host-registry.state.svelte";
 import {
   createSession as createSessionRequest,
   deleteSession as deleteSessionRequest,
@@ -10,43 +10,111 @@ import {
   type CreateSessionInput,
 } from "@/features/sessions/api";
 import { clearChatDraft } from "@/features/chat/model/chat-draft";
-import { type PicoClient, runHost } from "@/shared/lib/rpc-client";
-import { classifyHostFailure, type HostIssue } from "@/shared/lib/host-issues";
+import { type PicoClient, runOnHost } from "@/shared/lib/rpc-client";
+import { classifyHostFailure, classifyHostIssue, type HostIssue } from "@/shared/lib/host-issues";
 
-let sessions = $state<SessionMeta[]>([]);
+export interface HostSessionMeta {
+  hostId: string;
+  hostName: string;
+  session: SessionMeta;
+}
+
+export interface HostSessionIssue {
+  hostId: string;
+  hostName: string;
+  issue: HostIssue;
+}
+
+let sessionsByHost = $state<Record<string, SessionMeta[] | undefined>>({});
+let errorsByHost = $state<Record<string, HostIssue | undefined>>({});
 let archivedView = $state(false);
 let refreshing = $state(false);
 let creating = $state(false);
-let mutatingSessionId = $state<string | null>(null);
-let error = $state<HostIssue | null>(null);
+let mutatingSessionKey = $state<string | null>(null);
+
+const sessions = $derived.by(() => {
+  const rows: HostSessionMeta[] = [];
+  for (const host of hostRegistryState.hosts) {
+    for (const session of sessionsByHost[host.id] ?? []) {
+      rows.push({ hostId: host.id, hostName: host.name, session });
+    }
+  }
+  return rows.sort((a, b) => Date.parse(b.session.updatedAt) - Date.parse(a.session.updatedAt));
+});
+
+const hostIssues = $derived.by(() => {
+  const issues: HostSessionIssue[] = [];
+  for (const host of hostRegistryState.hosts) {
+    const issue = errorsByHost[host.id];
+    if (issue) issues.push({ hostId: host.id, hostName: host.name, issue });
+  }
+  return issues;
+});
 
 const visibleCount = $derived(sessions.length);
 
-const recordError = (caught: unknown) =>
-  classifyHostFailure(caught, { url: settingsState.hostUrl }).pipe(
-    Effect.andThen((issue) => Effect.sync(() => { error = issue; })),
+const recordError = (host: HostProfile, caught: unknown) =>
+  classifyHostFailure(caught, { url: host.url }).pipe(
+    Effect.andThen((issue) => Effect.sync(() => { errorsByHost = { ...errorsByHost, [host.id]: issue }; })),
   );
 
-function removeLocal(sessionId: string): void {
-  sessions = sessions.filter((session) => session.id !== sessionId);
+async function recordHostError(host: HostProfile, caught: unknown): Promise<void> {
+  try {
+    await runOnHost(host.id, recordError(host, caught));
+  } catch {
+    errorsByHost = { ...errorsByHost, [host.id]: classifyHostIssue(caught, { url: host.url }) };
+  }
 }
 
-function replaceSession(session: SessionMeta): void {
-  const index = sessions.findIndex((candidate) => candidate.id === session.id);
-  sessions = index === -1
-    ? [session, ...sessions]
-    : sessions.map((candidate) => (candidate.id === session.id ? session : candidate));
+function hostOrThrow(hostId: string): HostProfile {
+  const host = hostRegistryState.getHost(hostId);
+  if (!host) throw new Error(`Pico host not found: ${hostId}`);
+  return host;
 }
 
-function mutate<A, E>(sessionId: string, effect: Effect.Effect<A, E, PicoClient>): Promise<A> {
-  if (mutatingSessionId) throw new Error("session mutation already in progress");
-  mutatingSessionId = sessionId;
-  return runHost(
-    effect.pipe(
-      Effect.tap(() => Effect.sync(() => { error = null; })),
-      Effect.tapError(recordError),
-    ),
-  ).finally(() => { mutatingSessionId = null; });
+function removeLocal(hostId: string, sessionId: string): void {
+  sessionsByHost = {
+    ...sessionsByHost,
+    [hostId]: (sessionsByHost[hostId] ?? []).filter((session) => session.id !== sessionId),
+  };
+}
+
+function replaceSession(hostId: string, session: SessionMeta): void {
+  const current = sessionsByHost[hostId] ?? [];
+  const index = current.findIndex((candidate) => candidate.id === session.id);
+  sessionsByHost = {
+    ...sessionsByHost,
+    [hostId]: index === -1
+      ? [session, ...current]
+      : current.map((candidate) => (candidate.id === session.id ? session : candidate)),
+  };
+}
+
+async function refreshHost(host: HostProfile): Promise<void> {
+  try {
+    const list = await runOnHost(host.id, loadSessionList({ archived: archivedView }));
+    sessionsByHost = { ...sessionsByHost, [host.id]: [...list] };
+    errorsByHost = { ...errorsByHost, [host.id]: undefined };
+  } catch (caught) {
+    sessionsByHost = { ...sessionsByHost, [host.id]: [] };
+    await recordHostError(host, caught);
+  }
+}
+
+async function mutate<A, E>(hostId: string, sessionId: string, effect: Effect.Effect<A, E, PicoClient>): Promise<A> {
+  if (mutatingSessionKey) throw new Error("session mutation already in progress");
+  const host = hostOrThrow(hostId);
+  mutatingSessionKey = `${hostId}:${sessionId}`;
+  try {
+    const result = await runOnHost(hostId, effect);
+    errorsByHost = { ...errorsByHost, [hostId]: undefined };
+    return result;
+  } catch (caught) {
+    await recordHostError(host, caught);
+    throw caught;
+  } finally {
+    mutatingSessionKey = null;
+  }
 }
 
 export const sessionListState = {
@@ -54,29 +122,34 @@ export const sessionListState = {
   get archivedView() { return archivedView; },
   get refreshing() { return refreshing; },
   get creating() { return creating; },
-  get mutatingSessionId() { return mutatingSessionId; },
+  get mutatingSessionKey() { return mutatingSessionKey; },
   get visibleCount() { return visibleCount; },
-  get error() { return error; },
+  get hostIssues() { return hostIssues; },
+  get error() { return hostIssues[0]?.issue ?? null; },
 
-  clearError(): void { error = null; },
-  upsert(session: SessionMeta): void { replaceSession(session); },
-  patchLocal(sessionId: string, patch: Partial<SessionMeta>): void {
-    sessions = sessions.map((session) => (session.id === sessionId ? { ...session, ...patch } : session));
+  clearError(): void { errorsByHost = {}; },
+  clearHostError(hostId: string): void { errorsByHost = { ...errorsByHost, [hostId]: undefined }; },
+  upsert(hostId: string, session: SessionMeta): void { replaceSession(hostId, session); },
+  patchLocal(hostId: string, sessionId: string, patch: Partial<SessionMeta>): void {
+    sessionsByHost = {
+      ...sessionsByHost,
+      [hostId]: (sessionsByHost[hostId] ?? []).map((session) => (session.id === sessionId ? { ...session, ...patch } : session)),
+    };
   },
   removeLocal,
 
   async refresh(): Promise<void> {
+    if (!hostRegistryState.loaded) await hostRegistryState.load();
     refreshing = true;
     try {
-      await runHost(
-        loadSessionList({ archived: archivedView }).pipe(
-          Effect.tap((list) => Effect.sync(() => { sessions = [...list]; error = null; })),
-          Effect.tapError(recordError),
-        ),
-      );
+      await Promise.all(hostRegistryState.hosts.map((host) => refreshHost(host)));
     } finally {
       refreshing = false;
     }
+  },
+
+  async refreshHost(hostId: string): Promise<void> {
+    await refreshHost(hostOrThrow(hostId));
   },
 
   async switchArchivedView(next: boolean): Promise<void> {
@@ -85,46 +158,54 @@ export const sessionListState = {
     await this.refresh();
   },
 
-  async create(input: CreateSessionInput): Promise<SessionMeta> {
+  async create(input: CreateSessionInput & { hostId: string }): Promise<HostSessionMeta> {
     if (creating) throw new Error("session creation already in progress");
+    const host = hostOrThrow(input.hostId);
     creating = true;
     try {
-      return await runHost(
+      const result = await runOnHost(
+        input.hostId,
         Effect.gen(function* () {
-          const session = yield* createSessionRequest(input);
+          const session = yield* createSessionRequest({ cwd: input.cwd, title: input.title });
           const list = yield* loadSessionList({ archived: false });
           return { session, list };
-        }).pipe(
-          Effect.tap(({ list }) => Effect.sync(() => { archivedView = false; sessions = [...list]; error = null; })),
-          Effect.tapError(recordError),
-          Effect.map(({ session }) => session),
-        ),
+        }),
       );
+      archivedView = false;
+      sessionsByHost = { ...sessionsByHost, [input.hostId]: [...result.list] };
+      errorsByHost = { ...errorsByHost, [input.hostId]: undefined };
+      return { hostId: host.id, hostName: host.name, session: result.session };
+    } catch (caught) {
+      await recordHostError(host, caught);
+      throw caught;
     } finally {
       creating = false;
     }
   },
 
-  rename(sessionId: string, title: string): Promise<SessionMeta> {
+  rename(hostId: string, sessionId: string, title: string): Promise<SessionMeta> {
     return mutate(
+      hostId,
       sessionId,
-      renameSessionRequest(sessionId, title).pipe(Effect.tap((session) => Effect.sync(() => replaceSession(session)))),
+      renameSessionRequest(sessionId, title).pipe(Effect.tap((session) => Effect.sync(() => replaceSession(hostId, session)))),
     );
   },
 
-  setArchived(sessionId: string, archived: boolean): Promise<SessionMeta> {
+  setArchived(hostId: string, sessionId: string, archived: boolean): Promise<SessionMeta> {
     return mutate(
+      hostId,
       sessionId,
-      setSessionArchived(sessionId, archived).pipe(Effect.tap(() => Effect.sync(() => removeLocal(sessionId)))),
+      setSessionArchived(sessionId, archived).pipe(Effect.tap(() => Effect.sync(() => removeLocal(hostId, sessionId)))),
     );
   },
 
-  delete(sessionId: string): Promise<void> {
+  delete(hostId: string, sessionId: string): Promise<void> {
     return mutate(
+      hostId,
       sessionId,
       deleteSessionRequest(sessionId).pipe(
-        Effect.tap(() => Effect.promise(() => clearChatDraft(sessionId).catch(() => undefined))),
-        Effect.tap(() => Effect.sync(() => removeLocal(sessionId))),
+        Effect.tap(() => Effect.promise(() => clearChatDraft(hostId, sessionId).catch(() => undefined))),
+        Effect.tap(() => Effect.sync(() => removeLocal(hostId, sessionId))),
         Effect.asVoid,
       ),
     );

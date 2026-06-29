@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { navigateTo, routePaths } from "@/app/routes";
+  import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
   import { settingsState } from "@/features/settings/settings.state.svelte";
   import AppearanceCard from "@/features/settings/components/AppearanceCard.svelte";
   import HostStatusCard from "@/features/settings/components/HostStatusCard.svelte";
@@ -38,13 +39,22 @@
     {#if settingsState.loaded}
       <AppearanceCard />
 
-      {#if settingsState.hostUrlConfigured}
-        <HostStatusCard />
-        <ManualHostConnectCard />
-      {:else}
-        <ManualHostConnectCard />
-        <HostStatusCard />
-      {/if}
+      <section class="space-y-3">
+        <div>
+          <h2 class="type-title font-medium text-[color:var(--color-fg)]">hosts</h2>
+          <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">Add every machine you want Pico to control.</p>
+        </div>
+
+        {#each hostRegistryState.hosts as host (host.id)}
+          <HostStatusCard {host} />
+        {:else}
+          <div class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
+            <p class="type-copy text-[color:var(--color-fg-muted)]">no Pico host connected yet.</p>
+          </div>
+        {/each}
+      </section>
+
+      <ManualHostConnectCard />
 
       <section class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
         <div class="mb-2">

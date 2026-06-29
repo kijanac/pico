@@ -1,7 +1,7 @@
 import { untrack } from "svelte";
 import type { Commands, CommandEntry } from "@pico/protocol";
 import { listSessionCommands } from "@/features/chat/api";
-import { runHost } from "@/shared/lib/rpc-client";
+import { runOnHost } from "@/shared/lib/rpc-client";
 
 export type { CommandEntry };
 
@@ -22,6 +22,7 @@ export interface SlashCommandsState {
 }
 
 export function createSlashCommandsState(
+  hostId: () => string,
   sessionId: () => string,
   text: () => string,
   cursor: () => number,
@@ -37,7 +38,8 @@ export function createSlashCommandsState(
   const matches = $derived(matchCommands(commands, query ?? ""));
 
   $effect(() => {
-    if (query === null || loading || attemptedFor === sessionId()) return;
+    const currentKey = `${hostId()}:${sessionId()}`;
+    if (query === null || loading || attemptedFor === currentKey) return;
     untrack(() => void load());
   });
 
@@ -48,13 +50,15 @@ export function createSlashCommandsState(
   });
 
   async function load(): Promise<void> {
+    const currentHost = hostId();
     const currentSession = sessionId();
+    const currentKey = `${currentHost}:${currentSession}`;
     const currentRequest = ++requestId;
     loading = true;
     error = null;
 
     try {
-      const next = await runHost(listSessionCommands(currentSession));
+      const next = await runOnHost(currentHost, listSessionCommands(currentSession));
       if (currentRequest !== requestId) return;
       commands = next;
     } catch (caught) {
@@ -62,7 +66,7 @@ export function createSlashCommandsState(
       error = String(caught);
     } finally {
       if (currentRequest === requestId) {
-        attemptedFor = currentSession;
+        attemptedFor = currentKey;
         loading = false;
       }
     }

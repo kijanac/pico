@@ -1,16 +1,17 @@
 export const routePaths = {
   sessions: "/",
-  session: (id: string) => `/s/${encodeURIComponent(id)}`,
+  session: (hostId: string, id: string) => `/h/${encodeURIComponent(hostId)}/s/${encodeURIComponent(id)}`,
   settings: "/settings",
   connect: "/connect",
   welcome: "/welcome",
 } as const;
 
-export type RouteId = "sessions" | "session" | "settings" | "connect" | "welcome" | "not-found";
+export type RouteId = "sessions" | "session" | "legacy-session" | "settings" | "connect" | "welcome" | "not-found";
 
 export type RouteMatch =
   | { id: "sessions"; params: Record<string, never> }
-  | { id: "session"; params: { id: string } }
+  | { id: "session"; params: { hostId: string; id: string } }
+  | { id: "legacy-session"; params: { id: string } }
   | { id: "settings"; params: Record<string, never> }
   | { id: "connect"; params: Record<string, never> }
   | { id: "welcome"; params: Record<string, never> }
@@ -26,10 +27,21 @@ export function matchRoute(path: string): RouteMatch {
   if (path === "/connect") return { id: "connect", params: {} };
   if (path === "/welcome") return { id: "welcome", params: {} };
 
+  const hostSessionMatch = /^\/h\/([^/]+)\/s\/([^/]+)$/.exec(path);
+  if (hostSessionMatch) {
+    return {
+      id: "session",
+      params: {
+        hostId: decodeURIComponent(hostSessionMatch[1] ?? ""),
+        id: decodeURIComponent(hostSessionMatch[2] ?? ""),
+      },
+    };
+  }
+
   const sessionMatch = /^\/s\/([^/]+)$/.exec(path);
   if (sessionMatch) {
     return {
-      id: "session",
+      id: "legacy-session",
       params: { id: decodeURIComponent(sessionMatch[1] ?? "") },
     };
   }
@@ -52,7 +64,8 @@ export function consumeNavKind(): NavKind {
 export function navigateTo(path: string, kind: NavKind = "push"): void {
   if (window.location.pathname === path) return;
   pendingNavKind = kind;
-  window.history.pushState({}, "", path);
+  if (kind === "replace") window.history.replaceState({}, "", path);
+  else window.history.pushState({}, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 

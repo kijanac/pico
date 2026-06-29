@@ -4,12 +4,12 @@
   import type { ActionErrorHandler } from "./types";
   import { getSessionTree, navigateSessionTree } from "@/features/chat/api";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
-  import { runHost } from "@/shared/lib/rpc-client";
+  import { runOnHost } from "@/shared/lib/rpc-client";
   import ActionRow from "@/shared/components/ActionRow.svelte";
 
   type TreeEntry = SessionTree["entries"][number];
 
-  let { sessionId, onDone, onError }: { sessionId: string; onDone: () => void; onError: ActionErrorHandler } = $props();
+  let { hostId, sessionId, onDone, onError }: { hostId: string; sessionId: string; onDone: () => void; onError: ActionErrorHandler } = $props();
 
   let jumping = $state<string | null>(null);
   let summarize = $state(false);
@@ -23,7 +23,7 @@
   async function loadTree(): Promise<void> {
     loading = true;
     try {
-      tree = await runHost(getSessionTree(sessionId));
+      tree = await runOnHost(hostId, getSessionTree(sessionId));
     } catch (error) {
       onError(hostIssueSummary(error));
     } finally {
@@ -36,7 +36,7 @@
     jumping = entry.id;
     onError(null);
     try {
-      await runHost(navigateSessionTree(sessionId, { entryId: entry.id, summarize }));
+      await runOnHost(hostId, navigateSessionTree(sessionId, { entryId: entry.id, summarize }));
       onDone();
     } catch (error) {
       onError(hostIssueSummary(error));

@@ -7,9 +7,9 @@
   import { queuedMessageActionsState } from "@/features/chat/model/queued-message-actions.state.svelte";
   import { haptics } from "@/shared/mobile/haptics";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
-  import { runHost } from "@/shared/lib/rpc-client";
+  import { runOnHost } from "@/shared/lib/rpc-client";
 
-  let { msg, sessionId }: { msg: UserMessage; sessionId: string } = $props();
+  let { msg, hostId, sessionId }: { msg: UserMessage; hostId: string; sessionId: string } = $props();
 
   let queueActionBusy = $state<"recall" | "remove" | null>(null);
   let queueActionError = $state<string | null>(null);
@@ -28,10 +28,10 @@
     queueActionError = null;
 
     try {
-      const next = await runHost(removeQueuedMessageApi(sessionId, msg.id));
-      chatQueueState.set(sessionId, next);
+      const next = await runOnHost(hostId, removeQueuedMessageApi(sessionId, msg.id));
+      chatQueueState.set(hostId, sessionId, next);
       if (options.recall) {
-        queuedMessageActionsState.recall(sessionId, msg.text, msg.queueKind ?? "steer");
+        queuedMessageActionsState.recall(hostId, sessionId, msg.text, msg.queueKind ?? "steer");
       }
       haptics.light();
     } catch (error) {

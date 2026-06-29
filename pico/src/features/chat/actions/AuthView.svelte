@@ -2,7 +2,7 @@
   import ProviderAuthView from "@/features/auth/ProviderAuthView.svelte";
   import type { ActionErrorHandler } from "./types";
 
-  let { onError, onConfigured }: { onError: ActionErrorHandler; onConfigured?: () => void } = $props();
+  let { hostId, onError, onConfigured }: { hostId: string; onError: ActionErrorHandler; onConfigured?: () => void } = $props();
 </script>
 
-<ProviderAuthView {onError} {onConfigured} class="px-3 py-3" />
+<ProviderAuthView {hostId} {onError} {onConfigured} class="px-3 py-3" />

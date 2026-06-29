@@ -12,7 +12,7 @@
   import TreeView from "@/features/chat/actions/TreeView.svelte";
   import { Button } from "@/shared/ui/button";
 
-  let { sessionId }: { sessionId: string } = $props();
+  let { hostId, sessionId }: { hostId: string; sessionId: string } = $props();
 
   const actions = createAgentActionsState();
 
@@ -22,7 +22,7 @@
     await tick();
 
     try {
-      if (await exportSessionHtml(sessionId)) actions.done();
+      if (await exportSessionHtml(hostId, sessionId)) actions.done();
     } catch (error) {
       actions.setOpen(true);
       actions.setError(hostIssueSummary(error));
@@ -58,13 +58,13 @@
         onExport={exportToHtml}
       />
     {:else if actions.view === "settings"}
-      <SessionSettingsView {sessionId} onError={actions.setError} excludeKeys={["model"]} />
+      <SessionSettingsView {hostId} {sessionId} onError={actions.setError} excludeKeys={["model"]} />
     {:else if actions.view === "tree"}
-      <TreeView {sessionId} onDone={actions.done} onError={actions.setError} />
+      <TreeView {hostId} {sessionId} onDone={actions.done} onError={actions.setError} />
     {:else if actions.view === "info"}
-      <SessionInfoView {sessionId} />
+      <SessionInfoView {hostId} {sessionId} />
     {:else if actions.view === "auth"}
-      <AuthView onError={actions.setError} />
+      <AuthView {hostId} onError={actions.setError} />
     {/if}
   </AgentActionSheet>
 {/if}

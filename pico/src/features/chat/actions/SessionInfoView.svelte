@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { SessionStats } from "@pico/protocol";
   import { getSessionStats } from "@/features/chat/api";
-  import { runHost } from "@/shared/lib/rpc-client";
+  import { runOnHost } from "@/shared/lib/rpc-client";
   import { formatCost, formatTokens } from "@/shared/lib/format";
 
-  let { sessionId }: { sessionId: string } = $props();
+  let { hostId, sessionId }: { hostId: string; sessionId: string } = $props();
 
   let stats = $state<SessionStats | null>(null);
   let loading = $state(false);
@@ -18,7 +18,7 @@
     loading = true;
     error = null;
     try {
-      stats = await runHost(getSessionStats(sessionId));
+      stats = await runOnHost(hostId, getSessionStats(sessionId));
     } catch (caught) {
       error = String(caught);
     } finally {

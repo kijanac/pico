@@ -1,28 +1,24 @@
+import { hostRegistryState, DEFAULT_HOST_URL } from "@/features/hosts/host-registry.state.svelte";
 import { getPreference, setPreference } from "@/shared/mobile/preferences";
 
-export const DEFAULT_HOST_URL = "http://localhost:7777";
-
-const HOST_URL_KEY = "host_url";
 const WELCOME_SKIPPED_KEY = "welcome_skipped";
 
 let loaded = $state(false);
 let hostUrl = $state(DEFAULT_HOST_URL);
-let hostUrlConfigured = $state(false);
 let welcomeSkipped = $state(false);
-let saving = $state(false);
 let error = $state<string | null>(null);
 
 export const settingsState = {
   get loaded() {
-    return loaded;
+    return loaded && hostRegistryState.loaded;
   },
 
   get hostUrl() {
-    return hostUrl;
+    return hostRegistryState.defaultHost?.url ?? hostUrl;
   },
 
   get hostUrlConfigured() {
-    return hostUrlConfigured;
+    return hostRegistryState.hasHosts;
   },
 
   get welcomeSkipped() {
@@ -30,18 +26,17 @@ export const settingsState = {
   },
 
   get saving() {
-    return saving;
+    return hostRegistryState.saving;
   },
 
   get error() {
-    return error;
+    return error ?? hostRegistryState.error;
   },
 
   async load(): Promise<void> {
     try {
-      const savedHostUrl = await getPreference(HOST_URL_KEY);
-      hostUrlConfigured = Boolean(savedHostUrl?.trim());
-      hostUrl = normalizeHostUrl(savedHostUrl);
+      await hostRegistryState.load();
+      hostUrl = hostRegistryState.defaultHost?.url ?? DEFAULT_HOST_URL;
       welcomeSkipped = (await getPreference(WELCOME_SKIPPED_KEY)) === "true";
       error = null;
     } catch (caught) {
@@ -51,28 +46,8 @@ export const settingsState = {
     }
   },
 
-  async setHostUrl(nextUrl: string): Promise<void> {
-    saving = true;
-    try {
-      hostUrl = normalizeHostUrl(nextUrl);
-      hostUrlConfigured = true;
-      await setPreference(HOST_URL_KEY, hostUrl);
-      error = null;
-    } catch (caught) {
-      error = String(caught);
-      throw caught;
-    } finally {
-      saving = false;
-    }
-  },
-
   async skipWelcome(): Promise<void> {
     welcomeSkipped = true;
     await setPreference(WELCOME_SKIPPED_KEY, "true").catch(() => {});
   },
 };
-
-function normalizeHostUrl(value: string | null | undefined): string {
-  const trimmed = value?.trim();
-  return trimmed || DEFAULT_HOST_URL;
-}

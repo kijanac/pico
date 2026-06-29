@@ -1,19 +1,18 @@
 <script lang="ts">
   import { Archive, ArchiveRestore, Pencil, Plus, Settings as SettingsIcon, Trash2 } from "@lucide/svelte";
-  import type { SessionMeta } from "@pico/protocol";
   import HostIssuePanel from "@/shared/components/HostIssuePanel.svelte";
+  import type { HostSessionIssue, HostSessionMeta } from "@/features/sessions/model/session-list.state.svelte";
   import StatusDot from "@/shared/components/StatusDot.svelte";
   import PullToRefresh from "@/shared/components/PullToRefresh.svelte";
   import SwipeActionRow from "@/shared/components/SwipeActionRow.svelte";
   import { formatCost, relativeTime } from "@/shared/lib/format";
-  import type { HostIssue } from "@/shared/lib/host-issues";
   import { cwdDisplayName } from "@/shared/lib/path-display";
   import { Button } from "@/shared/ui/button";
 
   let {
     sessions,
     refreshing,
-    error,
+    hostIssues = [],
     archivedView,
     visibleCount,
     creating = false,
@@ -21,6 +20,7 @@
     hostConfigured = true,
     openSwipeSessionId = $bindable(null),
     onRefresh = async () => {},
+    onRefreshHost = async () => {},
     onToggleArchived = () => {},
     onSettings = () => {},
     onSetupHost = () => {},
@@ -30,9 +30,9 @@
     onToggleArchive = () => {},
     onDelete = () => {},
   }: {
-    sessions: readonly SessionMeta[];
+    sessions: readonly HostSessionMeta[];
     refreshing: boolean;
-    error: HostIssue | null;
+    hostIssues?: readonly HostSessionIssue[];
     archivedView: boolean;
     visibleCount: number;
     creating?: boolean;
@@ -40,18 +40,20 @@
     hostConfigured?: boolean;
     openSwipeSessionId?: string | null;
     onRefresh?: () => Promise<void>;
+    onRefreshHost?: (hostId: string) => Promise<void>;
     onToggleArchived?: () => void | Promise<void>;
     onSettings?: () => void;
     onSetupHost?: () => void;
     onNewSession?: () => void;
-    onOpenSession?: (session: SessionMeta) => void;
-    onRename?: (session: SessionMeta) => void;
-    onToggleArchive?: (session: SessionMeta) => void | Promise<void>;
-    onDelete?: (session: SessionMeta) => void;
+    onOpenSession?: (session: HostSessionMeta) => void;
+    onRename?: (session: HostSessionMeta) => void;
+    onToggleArchive?: (session: HostSessionMeta) => void | Promise<void>;
+    onDelete?: (session: HostSessionMeta) => void;
   } = $props();
 
   const SESSION_ACTION_WIDTH = 58;
-  const hostIssue = $derived(error && hostConfigured ? error : null);
+  const activeHostIssues = $derived(hostConfigured ? hostIssues : []);
+  const firstHostIssue = $derived(activeHostIssues[0] ?? null);
 
   function closeOpenSwipeRow(event: Event): void {
     if (!interactive || !openSwipeSessionId) return;
@@ -84,22 +86,26 @@
     </div>
   </header>
 
-  {#if hostIssue && sessions.length > 0}
-    <HostIssuePanel issue={hostIssue} compact class="mx-3 mt-4">
-      {#snippet action()}
-        <button type="button" class="type-meta underline text-[color:var(--color-fg-muted)] active:opacity-70" onclick={() => void onRefresh()}>
-          retry
-        </button>
-      {/snippet}
-    </HostIssuePanel>
+  {#if activeHostIssues.length > 0 && sessions.length > 0}
+    <div class="mx-3 mt-4 space-y-2">
+      {#each activeHostIssues as item (item.hostId)}
+        <HostIssuePanel issue={item.issue} compact>
+          {#snippet action()}
+            <button type="button" class="type-meta underline text-[color:var(--color-fg-muted)] active:opacity-70" onclick={() => void onRefreshHost(item.hostId)}>
+              retry {item.hostName}
+            </button>
+          {/snippet}
+        </HostIssuePanel>
+      {/each}
+    </div>
   {/if}
 
   <PullToRefresh onRefresh={onRefresh} class="mt-4 min-h-0 flex-1">
     {#if refreshing && sessions.length === 0}
       <section class="type-copy flex min-h-full items-center justify-center text-[color:var(--color-fg-muted)]">loading sessions…</section>
-    {:else if hostIssue && sessions.length === 0}
+    {:else if firstHostIssue && sessions.length === 0}
       <section class="flex min-h-full flex-col items-center justify-center gap-4 px-6 text-center">
-        <HostIssuePanel issue={hostIssue} class="max-w-sm" />
+        <HostIssuePanel issue={firstHostIssue.issue} class="max-w-sm" />
         <div class="flex gap-2">
           <Button type="button" variant="outline" size="sm" onclick={() => void onRefresh()}>retry</Button>
           <Button type="button" size="sm" onclick={onSettings}>host settings</Button>
@@ -125,27 +131,27 @@
       </section>
     {:else}
       <section class="flex min-h-full flex-col">
-        {#each sessions as session (session.id)}
+        {#each sessions as item (`${item.hostId}:${item.session.id}`)}
           {#if interactive}
             <SwipeActionRow
-              open={openSwipeSessionId === session.id}
+              open={openSwipeSessionId === `${item.hostId}:${item.session.id}`}
               actionWidth={SESSION_ACTION_WIDTH}
               actionCount={3}
-              onOpen={() => (openSwipeSessionId = session.id)}
+              onOpen={() => (openSwipeSessionId = `${item.hostId}:${item.session.id}`)}
               onClose={() => {
-                if (openSwipeSessionId === session.id) openSwipeSessionId = null;
+                if (openSwipeSessionId === `${item.hostId}:${item.session.id}`) openSwipeSessionId = null;
               }}
             >
               {#snippet actions()}
-                {@render RowActions(session)}
+                {@render RowActions(item)}
               {/snippet}
 
-              {@render RowContent(session)}
+              {@render RowContent(item)}
             </SwipeActionRow>
           {:else}
             <div data-swipe-action-row class="hairline-b relative overflow-hidden bg-[color:var(--color-bg)]">
               <div class="bg-[color:var(--color-bg)]">
-                {@render RowContent(session)}
+                {@render RowContent(item)}
               </div>
             </div>
           {/if}
@@ -173,23 +179,24 @@
   </div>
 </main>
 
-{#snippet RowActions(session: SessionMeta)}
-  <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)]" onclick={() => onRename(session)} aria-label="Rename session"><Pencil class="size-4" /></button>
-  <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)]" onclick={() => void onToggleArchive(session)} aria-label={session.archived ? "Unarchive session" : "Archive session"}>{#if session.archived}<ArchiveRestore class="size-4" />{:else}<Archive class="size-4" />{/if}</button>
-  <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-danger)] text-[color:var(--color-bg)]" onclick={() => onDelete(session)} aria-label="Delete session"><Trash2 class="size-4" /></button>
+{#snippet RowActions(item: HostSessionMeta)}
+  <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)]" onclick={() => onRename(item)} aria-label="Rename session"><Pencil class="size-4" /></button>
+  <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)]" onclick={() => void onToggleArchive(item)} aria-label={item.session.archived ? "Unarchive session" : "Archive session"}>{#if item.session.archived}<ArchiveRestore class="size-4" />{:else}<Archive class="size-4" />{/if}</button>
+  <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-danger)] text-[color:var(--color-bg)]" onclick={() => onDelete(item)} aria-label="Delete session"><Trash2 class="size-4" /></button>
 {/snippet}
 
-{#snippet RowContent(session: SessionMeta)}
+{#snippet RowContent(item: HostSessionMeta)}
   <div class="flex items-center gap-2 bg-[color:var(--color-bg)] px-3 py-3 active:bg-[color:var(--color-surface)]">
-    <button type="button" class="min-w-0 flex-1 text-left" onclick={() => onOpenSession(session)}>
+    <button type="button" class="min-w-0 flex-1 text-left" onclick={() => onOpenSession(item)}>
       <div class="mb-1 flex items-center gap-2">
-        <StatusDot status={session.status} />
-        <span class="type-title min-w-0 flex-1 truncate">{session.title}</span>
-        <span class="type-label uppercase tracking-[0.08em] tabular-nums text-[color:var(--color-fg-faint)]">{relativeTime(session.updatedAt)}</span>
+        <StatusDot status={item.session.status} />
+        <span class="type-title min-w-0 flex-1 truncate">{item.session.title}</span>
+        <span class="type-label uppercase tracking-[0.08em] tabular-nums text-[color:var(--color-fg-faint)]">{relativeTime(item.session.updatedAt)}</span>
       </div>
       <div class="type-meta flex items-center gap-3 text-[color:var(--color-fg-muted)]">
-        <span class="truncate">{cwdDisplayName(session.cwd)}</span>
-        <span class="ml-auto shrink-0 tabular-nums">{formatCost(session.costUsd)}</span>
+        <span class="min-w-0 flex-1 truncate">{cwdDisplayName(item.session.cwd)}</span>
+        <span class="shrink-0 truncate text-[color:var(--color-fg-faint)]">{item.hostName}</span>
+        <span class="shrink-0 tabular-nums">{formatCost(item.session.costUsd)}</span>
       </div>
     </button>
   </div>

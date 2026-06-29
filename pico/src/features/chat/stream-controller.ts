@@ -8,6 +8,7 @@ import { sessionListState } from "@/features/sessions/model/session-list.state.s
 import { markSessionOpen } from "@/shared/lib/session-open-timing";
 
 export interface SessionStreamControllerOptions {
+  hostId: string;
   sessionId: string;
   hostUrl: string;
   onGone?: () => void;
@@ -19,6 +20,7 @@ const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 30_000;
 
 export class SessionStreamController {
+  readonly hostId: string;
   readonly sessionId: string;
   readonly #hostUrl: string;
 
@@ -31,6 +33,7 @@ export class SessionStreamController {
   #onConnectionStatus?: (status: ConnectionStatus) => void;
 
   constructor(opts: SessionStreamControllerOptions) {
+    this.hostId = opts.hostId;
     this.sessionId = opts.sessionId;
     this.#hostUrl = opts.hostUrl;
     this.#onGone = opts.onGone;
@@ -39,8 +42,8 @@ export class SessionStreamController {
 
   start(): void {
     if (this.#closed || this.#fiber) return;
-    chatLogState.activate(this.sessionId);
-    activeSessionState.activate(this.sessionId);
+    chatLogState.activate(this.hostId, this.sessionId);
+    activeSessionState.activate(this.hostId, this.sessionId);
     this.#fiber = Effect.runFork(this.#loop());
     activeSessionState.setSend((event) => this.send(event));
   }
@@ -63,7 +66,7 @@ export class SessionStreamController {
     if (this.#closed) return;
     this.#closed = true;
     activeSessionState.setSend(null);
-    activeSessionState.deactivate(this.sessionId);
+    activeSessionState.deactivate(this.hostId, this.sessionId);
     this.#setConnectionStatus("offline");
     this.#client = null;
     if (this.#fiber) {
@@ -90,7 +93,9 @@ export class SessionStreamController {
   // gone); transport failures reconnect.
   #loop(): Effect.Effect<void> {
     const self = this;
+    const hostId = this.hostId;
     const sessionId = this.sessionId;
+    const timingId = `${hostId}:${sessionId}`;
     const layer = sessionClientLayer(this.#hostUrl);
     return Effect.gen(function* () {
       let delay = RECONNECT_MIN_MS;
@@ -101,11 +106,11 @@ export class SessionStreamController {
           const client = yield* PicoSessionClient;
           self.#client = client;
           self.#everConnected = true;
-          markSessionOpen(sessionId, "ws-connected");
+          markSessionOpen(timingId, "ws-connected");
           self.#setConnectionStatus("connected");
           delay = RECONNECT_MIN_MS;
           yield* client.session
-            .events({ id: sessionId, cursor: chatLogState.getConnectCursor(sessionId) })
+            .events({ id: sessionId, cursor: chatLogState.getConnectCursor(hostId, sessionId) })
             .pipe(Stream.runForEach((event) => Effect.sync(() => self.#handleWireEvent(event))));
         }).pipe(
           Effect.provide(layer),
@@ -133,24 +138,24 @@ export class SessionStreamController {
 
   #handleWireEvent(event: WireEvent): void {
     if (event.t === "hello") {
-      markSessionOpen(this.sessionId, "hello");
+      markSessionOpen(`${this.hostId}:${this.sessionId}`, "hello");
       this.#replayBoundary = event.cursor;
-      sessionListState.upsert(event.session);
+      sessionListState.upsert(this.hostId, event.session);
       activeSessionState.setStatus(event.session.status);
     }
 
     const isReplay = event.seq > 0 && event.seq <= this.#replayBoundary;
 
     if (event.t === "cost" && !isReplay) {
-      sessionListState.patchLocal(this.sessionId, {
+      sessionListState.patchLocal(this.hostId, this.sessionId, {
         tokens: { in: event.tokensIn, out: event.tokensOut },
         costUsd: event.costUsd,
       });
     }
 
-    chatQueueState.applyWireEvent(this.sessionId, event);
-    chatLogState.applyWireEvent(this.sessionId, event);
-    if (!isReplay) activeSessionState.applyWireEvent(this.sessionId, event);
+    chatQueueState.applyWireEvent(this.hostId, this.sessionId, event);
+    chatLogState.applyWireEvent(this.hostId, this.sessionId, event);
+    if (!isReplay) activeSessionState.applyWireEvent(this.hostId, this.sessionId, event);
   }
 
   #setConnectionStatus(status: ConnectionStatus): void {

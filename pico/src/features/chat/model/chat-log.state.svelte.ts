@@ -13,11 +13,12 @@ interface SessionLog {
 }
 
 const logs = $state<Record<string, SessionLog>>({});
+let activeHostId = $state<string | null>(null);
 let activeSessionId = $state<string | null>(null);
 
 const emptyEntries: LogEntry[] = [];
 
-const activeLog = $derived(activeSessionId ? logs[activeSessionId] : undefined);
+const activeLog = $derived(activeHostId && activeSessionId ? logs[logKey(activeHostId, activeSessionId)] : undefined);
 
 // Retry re-sends the same clientId, which the Pico host dedupes, so retrying
 // can't double-send.
@@ -26,6 +27,7 @@ let localEchoCounter = 0;
 const ECHO_ACK_TIMEOUT_MS = 10_000;
 
 interface LocalEcho {
+  hostId: string;
   sessionId: string;
   event: SendEvent;
   timer: ReturnType<typeof setTimeout> | null;
@@ -53,13 +55,17 @@ function clearEcho(entryId: string): void {
   delete failedEchoes[entryId];
 }
 
-function clearEchoesForSession(sessionId: string): void {
+function clearEchoesForSession(hostId: string, sessionId: string): void {
   for (const [entryId, echo] of localEchoes) {
-    if (echo.sessionId === sessionId) clearEcho(entryId);
+    if (echo.hostId === hostId && echo.sessionId === sessionId) clearEcho(entryId);
   }
 }
 
 export const chatLogState = {
+  get activeHostId() {
+    return activeHostId;
+  },
+
   get activeSessionId() {
     return activeSessionId;
   },
@@ -76,20 +82,21 @@ export const chatLogState = {
     return activeLog?.hasMoreBefore ?? false;
   },
 
-  activate(sessionId: string): void {
+  activate(hostId: string, sessionId: string): void {
+    activeHostId = hostId;
     activeSessionId = sessionId;
   },
 
-  getConnectCursor(sessionId: string): number {
-    return logs[sessionId]?.cursor ?? -1;
+  getConnectCursor(hostId: string, sessionId: string): number {
+    return logs[logKey(hostId, sessionId)]?.cursor ?? -1;
   },
 
-  applyWireEvent(sessionId: string, event: WireEvent): void {
-    applyWireEventForSession(sessionId, event);
+  applyWireEvent(hostId: string, sessionId: string, event: WireEvent): void {
+    applyWireEventForSession(hostId, sessionId, event);
   },
 
-  prependEarlierEntries(sessionId: string, page: LogPage): void {
-    const log = getLog(sessionId);
+  prependEarlierEntries(hostId: string, sessionId: string, page: LogPage): void {
+    const log = getLog(hostId, sessionId);
     const ids = new Set(log.entries.map((entry) => entry.id));
     const entries = page.entries.filter((entry) => !ids.has(entry.id));
     if (entries.length > 0) {
@@ -99,8 +106,8 @@ export const chatLogState = {
     log.hasMoreBefore = page.hasMoreBefore;
   },
 
-  appendLocalEcho(sessionId: string, event: SendEvent): void {
-    const log = getLog(sessionId);
+  appendLocalEcho(hostId: string, sessionId: string, event: SendEvent): void {
+    const log = getLog(hostId, sessionId);
     const entryId = `local-echo-${++localEchoCounter}`;
     appendLogEntry(log, {
       kind: "user",
@@ -108,7 +115,7 @@ export const chatLogState = {
       at: Date.now(),
       text: event.text,
     });
-    const echo: LocalEcho = { sessionId, event, timer: null };
+    const echo: LocalEcho = { hostId, sessionId, event, timer: null };
     localEchoes.set(entryId, echo);
     startEchoTimer(entryId, echo);
     bumpActivity(log);
@@ -120,7 +127,7 @@ export const chatLogState = {
 
   retryLocalEcho(entryId: string): void {
     const echo = localEchoes.get(entryId);
-    if (!echo || echo.sessionId !== activeSessionId) return;
+    if (!echo || echo.hostId !== activeHostId || echo.sessionId !== activeSessionId) return;
     const send = activeSessionState.send;
     if (!send) return;
     delete failedEchoes[entryId];
@@ -129,15 +136,20 @@ export const chatLogState = {
   },
 };
 
-function getLog(sessionId: string): SessionLog {
-  logs[sessionId] ??= {
+function logKey(hostId: string, sessionId: string): string {
+  return `${hostId}:${sessionId}`;
+}
+
+function getLog(hostId: string, sessionId: string): SessionLog {
+  const key = logKey(hostId, sessionId);
+  logs[key] ??= {
     entries: [],
     cursor: 0,
     activityVersion: 0,
     hasMoreBefore: false,
     indexById: new Map(),
   };
-  return logs[sessionId];
+  return logs[key];
 }
 
 function bumpActivity(log: SessionLog): void {
@@ -158,13 +170,13 @@ function reconcileQueuedMessages(log: SessionLog, event: Extract<WireEvent, { t:
   if (changed) bumpActivity(log);
 }
 
-function applyWireEventForSession(sessionId: string, event: WireEvent): void {
-  const log = getLog(sessionId);
+function applyWireEventForSession(hostId: string, sessionId: string, event: WireEvent): void {
+  const log = getLog(hostId, sessionId);
 
   if (event.t === "log_reset") {
     log.cursor = event.seq;
     log.hasMoreBefore = event.hasMoreBefore ?? false;
-    clearEchoesForSession(sessionId);
+    clearEchoesForSession(hostId, sessionId);
     reduceLog(log, event, Date.now());
     bumpActivity(log);
     return;

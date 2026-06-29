@@ -12,7 +12,7 @@
   import { createLongPress } from "@/shared/gestures/long-press";
   import { clearSessionQueue, getSessionQueue, getSessionSettings } from "@/features/chat/api";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
-  import { runHost } from "@/shared/lib/rpc-client";
+  import { runOnHost } from "@/shared/lib/rpc-client";
   import { formatCost } from "@/shared/lib/format";
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
   import { Button } from "@/shared/ui/button";
@@ -30,9 +30,11 @@
   const DRAFT_SAVE_DELAY_MS = 350;
 
   let {
+    hostId,
     sessionId,
     contextStats,
   }: {
+    hostId: string;
     sessionId: string;
     contextStats?: { cost: number; usage: NonNullable<SessionStats["contextUsage"]> };
   } = $props();
@@ -61,6 +63,7 @@
 
   const stt = createSpeechRecognitionState();
   const slashCommands = createSlashCommandsState(
+    () => hostId,
     () => sessionId,
     () => value,
     () => cursor,
@@ -79,8 +82,8 @@
   const hasText = $derived(value.trim().length > 0);
   const hasSendable = $derived(hasText || images.length > 0);
   const canSend = $derived(activeSessionState.send !== null);
-  const queue = $derived(chatQueueState.get(sessionId));
-  const queueCount = $derived(chatQueueState.count(sessionId));
+  const queue = $derived(chatQueueState.get(hostId, sessionId));
+  const queueCount = $derived(chatQueueState.count(hostId, sessionId));
   const contextPercent = $derived(
     contextStats && contextStats.usage.percent !== null ? Math.round(contextStats.usage.percent) : null,
   );
@@ -94,7 +97,7 @@
 
   async function loadControls(): Promise<void> {
     try {
-      controls = await runHost(getSessionSettings(sessionId));
+      controls = await runOnHost(hostId, getSessionSettings(sessionId));
     } catch {
       controls = null;
     }
@@ -102,6 +105,7 @@
 
   // Refresh the model chip on session change and after the picker sheet closes.
   $effect(() => {
+    hostId;
     sessionId;
     if (modelOpen) return;
     untrack(() => void loadControls());
@@ -115,16 +119,16 @@
   });
 
   $effect(() => {
-    const id = sessionId;
+    const key = `${hostId}:${sessionId}`;
     untrack(() => {
-      void restoreDraft(id);
+      void restoreDraft(hostId, sessionId, key);
       void syncQueue();
     });
   });
 
   $effect(() => {
     const request = queuedMessageActionsState.recallRequest;
-    if (!request || request.sessionId !== sessionId || request.id === lastRecallRequestId) return;
+    if (!request || request.hostId !== hostId || request.sessionId !== sessionId || request.id === lastRecallRequestId) return;
 
     lastRecallRequestId = request.id;
     draftEditVersion += 1;
@@ -139,12 +143,12 @@
   });
 
   $effect(() => {
-    const id = sessionId;
+    const key = `${hostId}:${sessionId}`;
     const draftText = value;
-    if (draftLoadedFor !== id) return;
+    if (draftLoadedFor !== key) return;
 
     const timer = window.setTimeout(() => {
-      void saveChatDraft(id, draftText);
+      void saveChatDraft(hostId, sessionId, draftText);
     }, DRAFT_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
@@ -177,7 +181,7 @@
     cursor = node.selectionStart ?? value.length;
   }
 
-  async function restoreDraft(id: string): Promise<void> {
+  async function restoreDraft(nextHostId: string, nextSessionId: string, key: string): Promise<void> {
     const requestId = ++draftLoadRequestId;
     const editVersion = draftEditVersion;
     draftLoadedFor = null;
@@ -186,13 +190,13 @@
     images = [];
     textBeforeRecording = "";
 
-    const draftText = await loadChatDraft(id).catch(() => "");
-    if (requestId !== draftLoadRequestId || id !== sessionId) return;
+    const draftText = await loadChatDraft(nextHostId, nextSessionId).catch(() => "");
+    if (requestId !== draftLoadRequestId || key !== `${hostId}:${sessionId}`) return;
 
     if (draftEditVersion === editVersion) {
       value = draftText;
     }
-    draftLoadedFor = id;
+    draftLoadedFor = key;
   }
 
   function submit(mode: "steer" | "follow_up"): void {
@@ -207,12 +211,12 @@
       clientId: crypto.randomUUID(),
     };
     send(event);
-    if (text) chatLogState.appendLocalEcho(sessionId, event);
+    if (text) chatLogState.appendLocalEcho(hostId, sessionId, event);
     value = "";
     cursor = 0;
     images = [];
     textBeforeRecording = "";
-    void clearChatDraft(sessionId);
+    void clearChatDraft(hostId, sessionId);
     haptics.light();
   }
 
@@ -320,9 +324,9 @@
     }
 
     try {
-      const next = await runHost(getSessionQueue(sessionId));
+      const next = await runOnHost(hostId, getSessionQueue(sessionId));
       if (requestId !== queueRequestId) return;
-      chatQueueState.set(sessionId, next);
+      chatQueueState.set(hostId, sessionId, next);
     } catch (error) {
       if (requestId !== queueRequestId || !options.showLoading) return;
       queueError = hostIssueSummary(error);
@@ -338,8 +342,8 @@
   async function clearQueuedMessages(): Promise<void> {
     clearing = true;
     try {
-      await runHost(clearSessionQueue(sessionId));
-      chatQueueState.clear(sessionId);
+      await runOnHost(hostId, clearSessionQueue(sessionId));
+      chatQueueState.clear(hostId, sessionId);
     } finally {
       clearing = false;
     }
@@ -477,7 +481,7 @@
     </div>
   </div>
 
-  <CompactContextSheet bind:open={compactOpen} {sessionId} />
+  <CompactContextSheet bind:open={compactOpen} {hostId} {sessionId} />
 
   <QueuedMessagesSheet
     bind:open={queueOpen}
@@ -492,7 +496,7 @@
   <Sheet.Root bind:open={modelOpen}>
     <Sheet.BottomContent class="max-h-[82dvh]">
       <SheetHeader title="model" />
-      <SessionSettingsView {sessionId} onError={() => {}} filterKeys={["model"]} />
+      <SessionSettingsView {hostId} {sessionId} onError={() => {}} filterKeys={["model"]} />
     </Sheet.BottomContent>
   </Sheet.Root>
 </div>

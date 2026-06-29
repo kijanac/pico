@@ -6,26 +6,31 @@ type StoredChatDraft = {
   version: 1;
 };
 
-const draftKey = (sessionId: string): string => `chat:draft:${sessionId}`;
+const draftKey = (hostId: string, sessionId: string): string => `chat:draft:${hostId}:${sessionId}`;
+const legacyDraftKey = (sessionId: string): string => `chat:draft:${sessionId}`;
 
-export async function loadChatDraft(sessionId: string): Promise<string> {
-  const draft = await getJsonPreference<Partial<StoredChatDraft> | null>(draftKey(sessionId), null);
-  return typeof draft?.text === "string" ? draft.text : "";
+export async function loadChatDraft(hostId: string, sessionId: string): Promise<string> {
+  const draft = await getJsonPreference<Partial<StoredChatDraft> | null>(draftKey(hostId, sessionId), null);
+  if (typeof draft?.text === "string") return draft.text;
+
+  const legacyDraft = await getJsonPreference<Partial<StoredChatDraft> | null>(legacyDraftKey(sessionId), null);
+  return typeof legacyDraft?.text === "string" ? legacyDraft.text : "";
 }
 
-export async function saveChatDraft(sessionId: string, text: string): Promise<void> {
+export async function saveChatDraft(hostId: string, sessionId: string, text: string): Promise<void> {
   if (text.trim().length === 0) {
-    await clearChatDraft(sessionId);
+    await clearChatDraft(hostId, sessionId);
     return;
   }
 
-  await setJsonPreference(draftKey(sessionId), {
+  await setJsonPreference(draftKey(hostId, sessionId), {
     text,
     updatedAt: Date.now(),
     version: 1,
   } satisfies StoredChatDraft);
 }
 
-export async function clearChatDraft(sessionId: string): Promise<void> {
-  await removePreference(draftKey(sessionId));
+export async function clearChatDraft(hostId: string, sessionId: string): Promise<void> {
+  await removePreference(draftKey(hostId, sessionId));
+  await removePreference(legacyDraftKey(sessionId));
 }

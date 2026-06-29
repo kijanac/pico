@@ -1,8 +1,9 @@
 import { Effect } from "effect";
+import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 import { settingsState } from "@/features/settings/settings.state.svelte";
 import { cancelAuthLogin, getAuthLoginJob, listAuthProviders, saveAuthApiKey, startAuthLogin, submitAuthLoginInput } from "@/features/auth/api";
 import { classifyHostFailure, hostIssueSummary } from "@/shared/lib/host-issues";
-import { runHost } from "@/shared/lib/rpc-client";
+import { type PicoClient, runHost, runOnHost } from "@/shared/lib/rpc-client";
 import { haptics } from "@/shared/mobile/haptics";
 
 type AuthProviders = Effect.Effect.Success<ReturnType<typeof listAuthProviders>>;
@@ -10,6 +11,7 @@ type AuthProvider = AuthProviders["providers"][number];
 type AuthLoginJob = Effect.Effect.Success<ReturnType<typeof startAuthLogin>>;
 
 export interface ProviderAuthStateOptions {
+  hostId?: string;
   onError: (message: string | null) => void;
   onConfigured?: () => void;
 }
@@ -44,16 +46,20 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   let savingApiKey = $state(false);
   let startingProviderId = $state<string | null>(null);
 
+  const hostUrl = () => opts.hostId ? hostRegistryState.getHost(opts.hostId)?.url ?? settingsState.hostUrl : settingsState.hostUrl;
+  const run = <A, E>(effect: Effect.Effect<A, E, PicoClient>) => opts.hostId ? runOnHost(opts.hostId, effect) : runHost(effect);
+
   const reportFailure = (error: unknown) =>
-    classifyHostFailure(error, { url: settingsState.hostUrl }).pipe(
+    classifyHostFailure(error, { url: hostUrl() }).pipe(
       Effect.andThen((issue) => Effect.sync(() => opts.onError(`${issue.title}: ${issue.message}`))),
     );
 
   async function loadProviders(): Promise<void> {
     loading = true;
     try {
-      if (!settingsState.loaded) await settingsState.load();
-      await runHost(
+      if (opts.hostId && !hostRegistryState.loaded) await hostRegistryState.load();
+      else if (!settingsState.loaded) await settingsState.load();
+      await run(
         listAuthProviders().pipe(
           Effect.tap((result) => Effect.sync(() => { providers = result.providers; opts.onError(null); })),
           Effect.catchAll(reportFailure),
@@ -79,7 +85,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     startingProviderId = provider.id;
     opts.onError(null);
     try {
-      await runHost(
+      await run(
         startAuthLogin(provider.id).pipe(
           Effect.tap((next) => Effect.sync(() => { job = next; })),
           Effect.catchAll(reportFailure),
@@ -96,7 +102,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     savingApiKey = true;
     opts.onError(null);
     try {
-      await runHost(
+      await run(
         saveAuthApiKey(provider.id, apiKeyInput).pipe(
           Effect.tap((result) => Effect.sync(() => {
             providers = result.providers;
@@ -116,7 +122,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   async function refreshJob(): Promise<void> {
     const current = job;
     if (!current) return;
-    await runHost(
+    await run(
       getAuthLoginJob(current.id).pipe(
         Effect.tap((next) => Effect.sync(() => { job = next; })),
         Effect.catchAll(reportFailure),
@@ -132,7 +138,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   async function submit(): Promise<void> {
     const current = job;
     if (!current) return;
-    await runHost(
+    await run(
       submitAuthLoginInput(current.id, input).pipe(
         Effect.tap((next) => Effect.sync(() => { job = next; input = ""; opts.onError(null); })),
         Effect.catchAll(reportFailure),
@@ -143,7 +149,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   async function cancel(): Promise<void> {
     const current = job;
     if (!current) return;
-    await runHost(
+    await run(
       cancelAuthLogin(current.id).pipe(
         Effect.tap(() => Effect.sync(() => { job = null; opts.onError(null); })),
         Effect.catchAll(reportFailure),

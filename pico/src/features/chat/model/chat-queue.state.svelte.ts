@@ -12,29 +12,33 @@ function queueSnapshot(queue: QueueState = emptyQueue): QueueState {
   };
 }
 
-function queueItems(sessionId: string): readonly QueuedMessage[] {
-  return queues[sessionId]?.queued ?? emptyQueue.queued;
+function queueKey(hostId: string, sessionId: string): string {
+  return `${hostId}:${sessionId}`;
+}
+
+function queueItems(hostId: string, sessionId: string): readonly QueuedMessage[] {
+  return queues[queueKey(hostId, sessionId)]?.queued ?? emptyQueue.queued;
 }
 
 export const chatQueueState = {
-  get(sessionId: string): QueueState {
-    return queues[sessionId] ?? queueSnapshot();
+  get(hostId: string, sessionId: string): QueueState {
+    return queues[queueKey(hostId, sessionId)] ?? queueSnapshot();
   },
 
-  count(sessionId: string): number {
-    return queueItems(sessionId).length;
+  count(hostId: string, sessionId: string): number {
+    return queueItems(hostId, sessionId).length;
   },
 
-  set(sessionId: string, queue: QueueState): void {
-    queues = { ...queues, [sessionId]: queueSnapshot(queue) };
+  set(hostId: string, sessionId: string, queue: QueueState): void {
+    queues = { ...queues, [queueKey(hostId, sessionId)]: queueSnapshot(queue) };
   },
 
-  clear(sessionId: string): void {
-    queues = { ...queues, [sessionId]: queueSnapshot() };
+  clear(hostId: string, sessionId: string): void {
+    queues = { ...queues, [queueKey(hostId, sessionId)]: queueSnapshot() };
   },
 
-  applyWireEvent(sessionId: string, event: WireEvent): void {
+  applyWireEvent(hostId: string, sessionId: string, event: WireEvent): void {
     if (event.t !== "queue") return;
-    queues = { ...queues, [sessionId]: queueSnapshot({ queued: event.queued }) };
+    queues = { ...queues, [queueKey(hostId, sessionId)]: queueSnapshot({ queued: event.queued }) };
   },
 };

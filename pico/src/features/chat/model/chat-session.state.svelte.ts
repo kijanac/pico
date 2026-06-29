@@ -1,4 +1,4 @@
-import { settingsState } from "@/features/settings/settings.state.svelte";
+import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
 import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
 import { retryState } from "@/features/chat/model/retry-state.svelte";
@@ -8,6 +8,7 @@ import { appLifecycle } from "@/shared/mobile/lifecycle.svelte";
 import { markSessionOpen } from "@/shared/lib/session-open-timing";
 
 export interface ChatSessionState {
+  readonly hostId: string;
   readonly sessionId: string;
   readonly connected: boolean;
   readonly controller: SessionStreamController | null;
@@ -16,7 +17,7 @@ export interface ChatSessionState {
   stop: () => void;
 }
 
-export function createChatSessionState(sessionId: string): ChatSessionState {
+export function createChatSessionState(hostId: string, sessionId: string): ChatSessionState {
   let controller = $state<SessionStreamController | null>(null);
   let connected = $state(false);
   let lastResumeTick = $state(appLifecycle.resumeTick);
@@ -30,23 +31,26 @@ export function createChatSessionState(sessionId: string): ChatSessionState {
 
   async function start(): Promise<void> {
     if (controller) return;
-    markSessionOpen(sessionId, "state-start");
-    if (!settingsState.loaded) await settingsState.load();
+    markSessionOpen(`${hostId}:${sessionId}`, "state-start");
+    if (!hostRegistryState.loaded) await hostRegistryState.load();
+    const host = hostRegistryState.getHost(hostId);
+    if (!host) throw new Error(`Pico host not found: ${hostId}`);
 
-    chatLogState.activate(sessionId);
-    activeSessionState.activate(sessionId);
+    chatLogState.activate(hostId, sessionId);
+    activeSessionState.activate(hostId, sessionId);
 
     controller = new SessionStreamController({
+      hostId,
       sessionId,
-      hostUrl: settingsState.hostUrl,
+      hostUrl: host.url,
       onConnectionStatus: (status) => {
         connected = status === "connected";
       },
       onGone: () => {
-        sessionListState.removeLocal(sessionId);
+        sessionListState.removeLocal(hostId, sessionId);
       },
     });
-    markSessionOpen(sessionId, "stream-start");
+    markSessionOpen(`${hostId}:${sessionId}`, "stream-start");
     controller.start();
   }
 
@@ -61,6 +65,9 @@ export function createChatSessionState(sessionId: string): ChatSessionState {
   }
 
   return {
+    get hostId() {
+      return hostId;
+    },
     get sessionId() {
       return sessionId;
     },

@@ -2,6 +2,7 @@ import type { SendMode } from "@pico/protocol";
 
 interface RecallRequest {
   id: number;
+  hostId: string;
   sessionId: string;
   text: string;
   mode: SendMode;
@@ -15,7 +16,7 @@ export const queuedMessageActionsState = {
     return recallRequest;
   },
 
-  recall(sessionId: string, text: string, mode: SendMode): void {
-    recallRequest = { id: ++recallCounter, sessionId, text, mode };
+  recall(hostId: string, sessionId: string, text: string, mode: SendMode): void {
+    recallRequest = { id: ++recallCounter, hostId, sessionId, text, mode };
   },
 };

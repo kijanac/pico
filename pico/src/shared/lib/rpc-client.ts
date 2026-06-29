@@ -3,7 +3,7 @@ import { RpcClient } from "@effect/rpc";
 import { Cause, Context, Effect, Exit, Layer, ManagedRuntime } from "effect";
 import { PicoRpc, PicoSessionRpc } from "@pico/protocol/rpc";
 import { picoHttpProtocol, picoSocketProtocol } from "@pico/protocol/client";
-import { settingsState } from "@/features/settings/settings.state.svelte";
+import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 
 const makeClient = RpcClient.make(PicoRpc);
 export type PicoClientService = Effect.Effect.Success<typeof makeClient>;
@@ -37,8 +37,19 @@ export const runAt = async <A, E>(baseUrl: string, effect: Effect.Effect<A, E, P
   throw Cause.squash(exit.cause);
 };
 
-export const runHost = <A, E>(effect: Effect.Effect<A, E, PicoClient>): Promise<A> =>
-  runAt(settingsState.hostUrl, effect);
+export const runOnHost = async <A, E>(hostId: string, effect: Effect.Effect<A, E, PicoClient>): Promise<A> => {
+  if (!hostRegistryState.loaded) await hostRegistryState.load();
+  const host = hostRegistryState.getHost(hostId);
+  if (!host) throw new Error(`Pico host not found: ${hostId}`);
+  return runAt(host.url, effect);
+};
+
+export const runHost = async <A, E>(effect: Effect.Effect<A, E, PicoClient>): Promise<A> => {
+  if (!hostRegistryState.loaded) await hostRegistryState.load();
+  const host = hostRegistryState.defaultHost;
+  if (!host) throw new Error("No Pico host configured");
+  return runAt(host.url, effect);
+};
 
 const makeSessionClient = RpcClient.make(PicoSessionRpc);
 export type PicoSessionClientService = Effect.Effect.Success<typeof makeSessionClient>;

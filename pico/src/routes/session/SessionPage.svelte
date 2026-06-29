@@ -1,9 +1,9 @@
 <script lang="ts">
   import ChatSessionScreen from "@/features/chat/ChatSessionScreen.svelte";
 
-  let { id }: { id: string } = $props();
+  let { hostId, id }: { hostId: string; id: string } = $props();
 </script>
 
-{#key id}
-  <ChatSessionScreen sessionId={id} />
+{#key `${hostId}:${id}`}
+  <ChatSessionScreen {hostId} sessionId={id} />
 {/key}

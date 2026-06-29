@@ -21,6 +21,7 @@
 
   const loadSessions = lazy(() => import("@/routes/sessions/SessionsPage.svelte"));
   const loadSession = lazy(() => import("@/routes/session/SessionPage.svelte"));
+  const loadLegacySession = lazy(() => import("@/routes/session/LegacySessionRedirect.svelte"));
   const loadSettings = lazy(() => import("@/routes/settings/SettingsPage.svelte"));
   const loadConnect = lazy(() => import("@/routes/connect/ConnectPage.svelte"));
   const loadWelcome = lazy(() => import("@/routes/welcome/WelcomePage.svelte"));
@@ -101,7 +102,11 @@
     {/await}
   {:else if route.id === "session"}
     {#await loadSession() then { default: SessionPage }}
-      <SessionPage id={route.params.id} />
+      <SessionPage hostId={route.params.hostId} id={route.params.id} />
+    {/await}
+  {:else if route.id === "legacy-session"}
+    {#await loadLegacySession() then { default: LegacySessionRedirect }}
+      <LegacySessionRedirect id={route.params.id} />
     {/await}
   {:else if route.id === "settings"}
     {#await loadSettings() then { default: SettingsPage }}

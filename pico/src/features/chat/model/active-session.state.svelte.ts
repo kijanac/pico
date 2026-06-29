@@ -5,6 +5,7 @@ export type ConnectionStatus = "offline" | "connecting" | "connected" | "reconne
 export type InteractiveExtensionUiRequest = Extract<ExtensionUiRequest, { kind: "confirm" | "select" | "input" }>;
 export type ExtensionUiNotification = Extract<ExtensionUiRequest, { kind: "notify" }>;
 
+let activeHostId = $state<string | null>(null);
 let activeSessionId = $state<string | null>(null);
 let activeStatus = $state<SessionMeta["status"]>("idle");
 let connectionStatus = $state<ConnectionStatus>("offline");
@@ -39,6 +40,10 @@ function showNotification(request: ExtensionUiNotification): void {
 }
 
 export const activeSessionState = {
+  get hostId() {
+    return activeHostId;
+  },
+
   get id() {
     return activeSessionId;
   },
@@ -75,7 +80,8 @@ export const activeSessionState = {
     return activeSend;
   },
 
-  activate(sessionId: string): void {
+  activate(hostId: string, sessionId: string): void {
+    activeHostId = hostId;
     activeSessionId = sessionId;
     activeStatus = "idle";
     compacting = false;
@@ -84,8 +90,10 @@ export const activeSessionState = {
     retryState.reset();
   },
 
-  deactivate(sessionId?: string): void {
+  deactivate(hostId?: string, sessionId?: string): void {
+    if (hostId !== undefined && activeHostId !== hostId) return;
     if (sessionId !== undefined && activeSessionId !== sessionId) return;
+    activeHostId = null;
     activeSessionId = null;
     activeStatus = "idle";
     compacting = false;
@@ -117,8 +125,8 @@ export const activeSessionState = {
     clearNotification();
   },
 
-  applyWireEvent(sessionId: string, event: WireEvent): void {
-    if (activeSessionId !== sessionId) return;
+  applyWireEvent(hostId: string, sessionId: string, event: WireEvent): void {
+    if (activeHostId !== hostId || activeSessionId !== sessionId) return;
 
     // hello is an authoritative snapshot on (re)connect; adopt its status so a
     // turn killed by a host restart (whose turn-ending status event died with

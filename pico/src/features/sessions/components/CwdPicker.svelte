@@ -2,14 +2,14 @@
   import { Check, ChevronLeft, ChevronRight, Folder, Home } from "@lucide/svelte";
   import { Effect } from "effect";
   import type { FsListing } from "@pico/protocol/rpc";
-  import { settingsState } from "@/features/settings/settings.state.svelte";
+  import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
   import { listDirectories } from "@/features/sessions/api";
   import ActionRow from "@/shared/components/ActionRow.svelte";
   import { classifyHostFailure } from "@/shared/lib/host-issues";
-  import { runHost } from "@/shared/lib/rpc-client";
+  import { runOnHost } from "@/shared/lib/rpc-client";
   import { Button } from "@/shared/ui/button";
 
-  let { initial, onSelect }: { initial?: string; onSelect: (path: string) => void } = $props();
+  let { hostId, initial, onSelect }: { hostId: string; initial?: string; onSelect: (path: string) => void } = $props();
 
   // svelte-ignore state_referenced_locally
   let path = $state<string | undefined>(initial);
@@ -19,6 +19,7 @@
   let listingRequestId = 0;
 
   $effect(() => {
+    hostId;
     void load(path);
   });
 
@@ -26,8 +27,15 @@
     const requestId = ++listingRequestId;
     loading = true;
     error = null;
-    if (!settingsState.loaded) await settingsState.load();
-    await runHost(
+    if (!hostRegistryState.loaded) await hostRegistryState.load();
+    const host = hostRegistryState.getHost(hostId);
+    if (!host) {
+      error = "Pico host not found.";
+      loading = false;
+      return;
+    }
+    await runOnHost(
+      hostId,
       listDirectories(nextPath).pipe(
         Effect.tap((nextListing) =>
           Effect.sync(() => {
@@ -36,7 +44,7 @@
           }),
         ),
         Effect.catchAll((caught) =>
-          classifyHostFailure(caught, { url: settingsState.hostUrl }).pipe(
+          classifyHostFailure(caught, { url: host.url }).pipe(
             Effect.andThen((issue) =>
               Effect.sync(() => {
                 if (requestId !== listingRequestId || nextPath !== path) return;

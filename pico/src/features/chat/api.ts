@@ -1,6 +1,6 @@
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { settingsState } from "@/features/settings/settings.state.svelte";
+import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 import { sessionExportHtmlUrl } from "@/shared/lib/host-http";
 import { rpc } from "@/shared/lib/rpc-client";
 
@@ -29,8 +29,11 @@ export const getSessionLogBefore = (sessionId: string, beforeId: string, limit?:
 const safeFilenamePart = (value: string): string =>
   value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "session";
 
-export async function exportSessionHtml(sessionId: string): Promise<boolean> {
-  const url = sessionExportHtmlUrl(settingsState.hostUrl, sessionId);
+export async function exportSessionHtml(hostId: string, sessionId: string): Promise<boolean> {
+  if (!hostRegistryState.loaded) await hostRegistryState.load();
+  const host = hostRegistryState.getHost(hostId);
+  if (!host) throw new Error(`Pico host not found: ${hostId}`);
+  const url = sessionExportHtmlUrl(host.url, sessionId);
   const response = await fetch(url);
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: response.statusText }));

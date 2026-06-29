@@ -1,71 +1,88 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Check, Loader2, X } from "@lucide/svelte";
-  import { navigateTo, routePaths } from "@/app/routes";
-  import { hostStatusState } from "@/features/settings/host-status.state.svelte";
-  import { settingsState } from "@/features/settings/settings.state.svelte";
+  import { Check, Loader2, Star, Trash2, X } from "@lucide/svelte";
+  import { Effect } from "effect";
+  import type { HostProfile } from "@/features/hosts/host-registry.state.svelte";
+  import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
+  import { healthcheckHost } from "@/features/settings/api";
   import HostIssuePanel from "@/shared/components/HostIssuePanel.svelte";
+  import { reachabilityIssue, type HostIssue } from "@/shared/lib/host-issues";
   import { Button } from "@/shared/ui/button";
 
-  // Stale-guarded, silent refresh: shows the last-known status instantly and only
-  // re-checks if it's gone stale — so it never flickers when re-entering settings.
+  type HostStatus = "idle" | "checking" | "online" | "offline";
+
+  let { host }: { host: HostProfile } = $props();
+
+  let status = $state<HostStatus>("idle");
+  let issue = $state<HostIssue | null>(null);
+
+  const isDefault = $derived(hostRegistryState.defaultHostId === host.id);
+  const canRemove = $derived(hostRegistryState.hosts.length > 1);
+
   onMount(() => {
-    if (settingsState.hostUrlConfigured) void hostStatusState.refresh();
+    void refresh();
   });
+
+  async function refresh(): Promise<void> {
+    status = "checking";
+    issue = null;
+    const reachability = await Effect.runPromise(healthcheckHost(host.url));
+    status = reachability === "healthy" ? "online" : "offline";
+    issue = reachability === "healthy" ? null : reachabilityIssue(reachability, { url: host.url });
+  }
+
+  async function removeHost(): Promise<void> {
+    if (!canRemove) return;
+    await hostRegistryState.removeHost(host.id);
+  }
 </script>
 
 <section class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
   <div class="mb-3 flex items-start justify-between gap-3">
-    <div>
-      <h2 class="type-title font-medium text-[color:var(--color-fg)]">Pico host</h2>
-      {#if settingsState.hostUrlConfigured}
-        <p class="type-copy mt-1 break-all text-[color:var(--color-fg-muted)]">
-          {settingsState.hostUrl}
-        </p>
-      {:else}
-        <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">
-          no Pico host connected yet.
-        </p>
-      {/if}
-    </div>
-
-    {#if settingsState.hostUrlConfigured}
-      <div class="type-label uppercase tracking-[0.08em] flex shrink-0 items-center gap-1.5 rounded-full border border-[color:var(--color-border)] px-2 py-1 text-[color:var(--color-fg-muted)]">
-        {#if hostStatusState.status === "checking"}
-          <Loader2 class="size-3 animate-spin" /> checking
-        {:else if hostStatusState.status === "online"}
-          <Check class="size-3 text-[color:var(--color-accent)]" /> online
-        {:else if hostStatusState.status === "offline"}
-          <X class="size-3 text-[color:var(--color-danger)]" /> offline
-        {:else}
-          not checked
+    <div class="min-w-0">
+      <div class="flex items-center gap-2">
+        <h2 class="type-title truncate font-medium text-[color:var(--color-fg)]">{host.name}</h2>
+        {#if isDefault}
+          <span class="type-label uppercase tracking-[0.08em] rounded-full border border-[color:var(--color-border)] px-2 py-0.5 text-[color:var(--color-fg-faint)]">default</span>
         {/if}
       </div>
-    {/if}
+      <p class="type-copy mt-1 break-all text-[color:var(--color-fg-muted)]">{host.url}</p>
+    </div>
+
+    <div class="type-label uppercase tracking-[0.08em] flex shrink-0 items-center gap-1.5 rounded-full border border-[color:var(--color-border)] px-2 py-1 text-[color:var(--color-fg-muted)]">
+      {#if status === "checking"}
+        <Loader2 class="size-3 animate-spin" /> checking
+      {:else if status === "online"}
+        <Check class="size-3 text-[color:var(--color-accent)]" /> online
+      {:else if status === "offline"}
+        <X class="size-3 text-[color:var(--color-danger)]" /> offline
+      {:else}
+        not checked
+      {/if}
+    </div>
   </div>
 
-  {#if settingsState.hostUrlConfigured}
-    {#if hostStatusState.status === "offline" && hostStatusState.issue}
-      <HostIssuePanel issue={hostStatusState.issue} compact class="mb-3" />
-    {/if}
-
-    <div class="flex gap-2">
-      <Button
-        type="button"
-        variant="outline"
-        class="h-10 flex-1"
-        disabled={hostStatusState.status === "checking"}
-        onclick={() => hostStatusState.refresh({ force: true, showProgress: true })}
-      >
-        {hostStatusState.status === "checking" ? "checking…" : "check"}
-      </Button>
-      <Button type="button" class="h-10 flex-1" onclick={() => navigateTo(routePaths.welcome)}>
-        replace
-      </Button>
-    </div>
-  {:else}
-    <Button type="button" class="h-10 w-full" onclick={() => navigateTo(routePaths.welcome)}>
-      set up Pico host
-    </Button>
+  {#if status === "offline" && issue}
+    <HostIssuePanel issue={issue} compact class="mb-3" />
   {/if}
+
+  <div class="flex gap-2">
+    <Button
+      type="button"
+      variant="outline"
+      class="h-10 flex-1"
+      disabled={status === "checking"}
+      onclick={() => void refresh()}
+    >
+      {status === "checking" ? "checking…" : "check"}
+    </Button>
+    {#if !isDefault}
+      <Button type="button" variant="outline" class="h-10 flex-1" onclick={() => hostRegistryState.setDefaultHost(host.id)}>
+        <Star class="size-3.5" /> default
+      </Button>
+    {/if}
+    <Button type="button" variant="outline" size="icon" disabled={!canRemove} onclick={() => void removeHost()} aria-label="Remove host" title="Remove host">
+      <Trash2 class="size-3.5" />
+    </Button>
+  </div>
 </section>

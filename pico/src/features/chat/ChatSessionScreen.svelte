@@ -14,7 +14,7 @@
   import ExtensionNotifications from "@/features/chat/components/ExtensionNotifications.svelte";
   import type { SessionStats } from "@pico/protocol";
   import { getSessionStats } from "@/features/chat/api";
-  import { runHost } from "@/shared/lib/rpc-client";
+  import { runOnHost } from "@/shared/lib/rpc-client";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
   import { cwdDisplayName } from "@/shared/lib/path-display";
   import StatusDot from "@/shared/components/StatusDot.svelte";
@@ -24,7 +24,8 @@
   import { warmHighlighter } from "@/shared/lib/highlighter";
   import { markSessionOpen } from "@/shared/lib/session-open-timing";
 
-  let { sessionId }: { sessionId: string } = $props();
+  let { hostId, sessionId }: { hostId: string; sessionId: string } = $props();
+  const timingId = $derived(`${hostId}:${sessionId}`);
 
   let stats = $state<SessionStats>();
   let forceUnknownContext = $state(false);
@@ -32,7 +33,8 @@
   let statsRequestId = 0;
   let lastContextUsageInvalidationVersion = activeSessionState.contextUsageInvalidationVersion;
 
-  const session = $derived(sessionListState.sessions.find((candidate) => candidate.id === sessionId) ?? null);
+  const sessionItem = $derived(sessionListState.sessions.find((candidate) => candidate.hostId === hostId && candidate.session.id === sessionId) ?? null);
+  const session = $derived(sessionItem?.session ?? null);
   const contextStats = $derived.by(() => {
     if (stats?.sessionId !== sessionId || !stats.contextUsage) return undefined;
     return {
@@ -44,8 +46,8 @@
   });
 
   onMount(() => {
-    markSessionOpen(sessionId, "route-mounted");
-    const session = createChatSessionState(sessionId);
+    markSessionOpen(timingId, "route-mounted");
+    const session = createChatSessionState(hostId, sessionId);
     void session.start();
     warmHighlighter();
     return () => session.stop();
@@ -61,6 +63,7 @@
   });
 
   $effect(() => {
+    hostId;
     sessionId;
     activeSessionState.contextUsageVersion;
     void loadStats();
@@ -69,7 +72,7 @@
   async function loadStats(): Promise<void> {
     const requestId = ++statsRequestId;
     try {
-      const next = await runHost(getSessionStats(sessionId));
+      const next = await runOnHost(hostId, getSessionStats(sessionId));
       if (requestId === statsRequestId) {
         stats = next;
         if (
@@ -103,7 +106,7 @@
           <div class="min-w-0 flex-1">
             <div class="type-title truncate font-medium">{session.title}</div>
             <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">
-              {cwdDisplayName(session.cwd)}
+              {cwdDisplayName(session.cwd)}{#if sessionItem} · {sessionItem.hostName}{/if}
             </div>
           </div>
         </div>
@@ -113,7 +116,7 @@
       {/if}
     </div>
     <div class="flex w-12 justify-end">
-      <SessionAgentActions {sessionId} />
+      <SessionAgentActions {hostId} {sessionId} />
     </div>
   </header>
 
@@ -127,9 +130,9 @@
       <Button type="button" variant="outline" size="sm" class="mt-2" onclick={() => navigateTo(routePaths.sessions, "pop")}>back to sessions</Button>
     </div>
   {:else}
-    <MessageList {sessionId} />
+    <MessageList {hostId} {sessionId} />
     <ExtensionNotifications />
-    <InputBar {sessionId} {contextStats} />
+    <InputBar {hostId} {sessionId} {contextStats} />
   {/if}
   <ExtensionUiSheet />
 </main>
