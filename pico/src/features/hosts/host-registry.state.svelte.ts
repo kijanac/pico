@@ -132,7 +132,10 @@ export const hostRegistryState = {
 
   async removeHost(hostId: string): Promise<void> {
     hosts = hosts.filter((host) => host.id !== hostId);
-    if (defaultHostId === hostId) defaultHostId = hosts[0]?.id ?? null;
+    if (defaultHostId === hostId) {
+      const nextDefault = hosts.at(0);
+      defaultHostId = nextDefault ? nextDefault.id : null;
+    }
     await saveHosts();
   },
 };

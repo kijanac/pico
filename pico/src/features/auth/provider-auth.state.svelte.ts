@@ -46,7 +46,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   let startingProviderId = $state<string | null>(null);
 
   const hostUrl = () => {
-    const hostId = opts.hostId ?? hostRegistryState.defaultHostId ?? hostRegistryState.hosts[0]?.id;
+    const hostId = opts.hostId ?? hostRegistryState.defaultHostId;
     return hostId ? hostRegistryState.getHost(hostId)?.url : undefined;
   };
   const run = <A, E>(effect: Effect.Effect<A, E, PicoClient>) => opts.hostId ? runOnHost(opts.hostId, effect) : runHost(effect);

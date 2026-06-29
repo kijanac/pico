@@ -34,7 +34,7 @@
   const canCreate = $derived(!!hostId && !!cwd && !creating);
 
   $effect(() => {
-    if (!hostId || !hosts.some((host) => host.id === hostId)) hostId = defaultHostId ?? hosts[0]?.id ?? null;
+    if (!hostId || !hosts.some((host) => host.id === hostId)) hostId = defaultHostId;
   });
 
   function handleCreate(): void {
