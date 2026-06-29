@@ -26,14 +26,21 @@
   let { sessionId }: { sessionId: string } = $props();
 
   let stats = $state<SessionStats>();
+  let forceUnknownContext = $state(false);
+  let invalidatedAtUsageVersion = 0;
   let statsRequestId = 0;
+  let lastContextUsageInvalidationVersion = activeSessionState.contextUsageInvalidationVersion;
 
   const session = $derived(sessionListState.sessions.find((candidate) => candidate.id === sessionId) ?? null);
-  const contextStats = $derived(
-    stats?.sessionId === sessionId && stats.contextUsage
-      ? { cost: stats.cost, usage: stats.contextUsage }
-      : undefined,
-  );
+  const contextStats = $derived.by(() => {
+    if (stats?.sessionId !== sessionId || !stats.contextUsage) return undefined;
+    return {
+      cost: stats.cost,
+      usage: forceUnknownContext
+        ? { ...stats.contextUsage, tokens: null, percent: null }
+        : stats.contextUsage,
+    };
+  });
 
   onMount(() => {
     const session = createChatSessionState(sessionId);
@@ -43,9 +50,17 @@
   });
 
   $effect(() => {
+    const version = activeSessionState.contextUsageInvalidationVersion;
+    if (version === lastContextUsageInvalidationVersion) return;
+    lastContextUsageInvalidationVersion = version;
+    forceUnknownContext = true;
+    invalidatedAtUsageVersion = activeSessionState.contextUsageVersion;
+    void loadStats();
+  });
+
+  $effect(() => {
     sessionId;
-    activeSessionState.status;
-    activeSessionState.compacting;
+    activeSessionState.contextUsageVersion;
     void loadStats();
   });
 
@@ -53,7 +68,17 @@
     const requestId = ++statsRequestId;
     try {
       const next = await runHost(getSessionStats(sessionId));
-      if (requestId === statsRequestId) stats = next;
+      if (requestId === statsRequestId) {
+        stats = next;
+        if (
+          forceUnknownContext &&
+          activeSessionState.contextUsageVersion > invalidatedAtUsageVersion &&
+          next.contextUsage &&
+          next.contextUsage.percent !== null
+        ) {
+          forceUnknownContext = false;
+        }
+      }
     } catch {
     }
   }

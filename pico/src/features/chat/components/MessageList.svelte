@@ -38,12 +38,17 @@
     return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
   }
 
-  function applyScrollToLatest(behavior: ScrollBehavior): void {
+  function pinToBottom(): void {
     if (!scroller) return;
-    bottomSentinel?.scrollIntoView({ block: "end", behavior });
     scroller.scrollTop = scroller.scrollHeight;
     stuckToBottom = true;
     hasNewActivity = false;
+  }
+
+  function applyScrollToLatest(behavior: ScrollBehavior): void {
+    if (!scroller) return;
+    bottomSentinel?.scrollIntoView({ block: "end", behavior });
+    pinToBottom();
   }
 
   let settleRaf: number | null = null;
@@ -68,14 +73,15 @@
     if (stuck) hasNewActivity = false;
   }
 
-  // scrollTo forces layout; coalesce into one rAF/frame to avoid a reflow per streamed chunk.
+  // Streamed deltas should gently preserve the bottom lock, not run the
+  // multi-frame settle path used for keyboard/composer resize.
   let scrollRaf: number | null = null;
 
   function scheduleScrollSync(): void {
     if (scrollRaf !== null) return;
     scrollRaf = requestAnimationFrame(() => {
       scrollRaf = null;
-      if (stuckToBottom) void scrollToLatest("auto");
+      if (stuckToBottom) pinToBottom();
       else hasNewActivity = true;
     });
   }
@@ -124,7 +130,7 @@
     {#each chatLogState.entries as entry (entry.id)}
       <div class="msg-cv">
         {#if entry.kind === "user"}
-          <UserMessageView msg={entry} />
+          <UserMessageView msg={entry} {sessionId} />
         {:else if entry.kind === "assistant"}
           <AssistantMessageView msg={entry} {sessionId} />
         {:else if entry.kind === "tool_call"}

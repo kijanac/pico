@@ -48,6 +48,7 @@ interface ManagedSessionState {
   readonly idleEvictionTimer: Ref.Ref<ReturnType<typeof setTimeout> | null>;
   readonly pendingSends: Ref.Ref<PendingSend[]>;
   readonly compacting: Ref.Ref<boolean>;
+  readonly queueEventsToIgnore: Ref.Ref<number>;
   /** Newest last; retries with a seen id are dropped. */
   readonly seenClientIds: Ref.Ref<string[]>;
 }
@@ -153,6 +154,7 @@ export class SessionManager extends Context.Tag("SessionManager")<
     readonly listCommands: (id: string) => Effect.Effect<Commands, PiError | SessionNotFound>;
     readonly getQueue: (id: string) => Effect.Effect<QueueState, PiError | SessionNotFound>;
     readonly clearQueue: (id: string) => Effect.Effect<QueueState, PiError | SessionNotFound>;
+    readonly removeQueued: (id: string, messageId: string) => Effect.Effect<QueueState, PiError | SessionNotFound>;
     readonly getSettings: (id: string) => Effect.Effect<SessionControls, PiError | SessionNotFound>;
     readonly patchSetting: (
       id: string,
@@ -207,6 +209,9 @@ const make = Effect.gen(function* () {
   const queueEvent = (seq: number, pending: readonly PendingSend[]): WireEvent =>
     parseWireEvent({ t: "queue", seq, ...projectQueue(pending) });
 
+  const userMessageRemovedEvent = (seq: number, id: string): WireEvent =>
+    parseWireEvent({ t: "user_message_removed", seq, id });
+
   const publishQueueSnapshot = (
     ms: ManagedSessionState,
     sessionId: string,
@@ -216,6 +221,35 @@ const make = Effect.gen(function* () {
       const event = queueEvent(seq, yield* Ref.get(ms.pendingSends));
       yield* store.appendEvent(sessionId, event);
       yield* PubSub.publish(ms.pubsub, event);
+    });
+
+  const publishUserMessageRemoved = (
+    ms: ManagedSessionState,
+    sessionId: string,
+    messageId: string,
+  ): Effect.Effect<void, PiError> =>
+    Effect.gen(function* () {
+      const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
+      const event = userMessageRemovedEvent(seq, messageId);
+      yield* store.appendEvent(sessionId, event);
+      yield* PubSub.publish(ms.pubsub, event);
+    });
+
+  const resyncSdkQueue = (
+    ms: ManagedSessionState,
+    pending: readonly PendingSend[],
+  ): Effect.Effect<void, PiError> =>
+    Effect.gen(function* () {
+      const sdkQueued = pending.filter((message) => message.phase === "sdk_queue");
+      yield* Ref.update(ms.queueEventsToIgnore, (count) => count + 1 + sdkQueued.length);
+      yield* ms.pi.clearQueue();
+
+      const meta = yield* Ref.get(ms.meta);
+      if (meta.status !== "thinking" && meta.status !== "tool") return;
+
+      for (const message of sdkQueued) {
+        yield* ms.pi.send(message.text, message.queueKind, message.images);
+      }
     });
 
   const flushCompactionQueue = (
@@ -310,15 +344,20 @@ const make = Effect.gen(function* () {
       ms.pi.events,
       Stream.runForEach((emission: PiEmission) =>
         Effect.gen(function* () {
-          const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
-
           let event: WireEvent;
           if (emission.t === "queue") {
+            const ignore = yield* Ref.modify(ms.queueEventsToIgnore, (count) =>
+              count > 0 ? [true, count - 1] : [false, 0],
+            );
+            if (ignore) return;
+
+            const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
             event = queueEvent(
               seq,
               yield* Ref.updateAndGet(ms.pendingSends, (pending) => reconcileSdkQueue(pending, emission)),
             );
           } else {
+            const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
             // A decode mismatch (PiEmission drifting from WireEvent) must not throw:
             // a defect here kills the pump fiber and zombifies the session. Drop it.
             const decoded = yield* Effect.either(Effect.try(() => parseWireEvent({ ...emission, seq })));
@@ -393,6 +432,7 @@ const make = Effect.gen(function* () {
         idleEvictionTimer: yield* Ref.make<ReturnType<typeof setTimeout> | null>(null),
         pendingSends: yield* Ref.make<PendingSend[]>([]),
         compacting: yield* Ref.make(false),
+        queueEventsToIgnore: yield* Ref.make(0),
         seenClientIds: yield* Ref.make<string[]>([]),
       };
       // A pump death silently zombifies the session: pi keeps running but no events reach store or subscribers.
@@ -589,7 +629,14 @@ const make = Effect.gen(function* () {
       }
 
       if (queued) {
-        const pendingSend: PendingSend = { id: userMessageId, at, text, queueKind, phase: "sdk_queue" };
+        const pendingSend: PendingSend = {
+          id: userMessageId,
+          at,
+          text,
+          queueKind,
+          phase: "sdk_queue",
+          ...(images && images.length > 0 ? { images } : {}),
+        };
         yield* Ref.update(ms.pendingSends, (pending) => [...pending, pendingSend]);
         yield* publishQueueSnapshot(ms, id);
         yield* ms.pi.send(text, mode, images).pipe(
@@ -646,10 +693,27 @@ const make = Effect.gen(function* () {
   const clearQueue = (id: string) =>
     Effect.gen(function* () {
       const ms = yield* lookupOrReattach(id);
+      const pending = yield* Ref.get(ms.pendingSends);
       yield* Ref.set(ms.pendingSends, []);
       yield* ms.pi.clearQueue();
+      for (const message of pending) yield* publishUserMessageRemoved(ms, id, message.id);
       yield* publishQueueSnapshot(ms, id);
       return { queued: [] };
+    });
+
+  const removeQueued = (id: string, messageId: string) =>
+    Effect.gen(function* () {
+      const ms = yield* lookupOrReattach(id);
+      const pending = yield* Ref.get(ms.pendingSends);
+      const removed = pending.find((message) => message.id === messageId);
+      if (!removed) return projectQueue(pending);
+
+      const next = pending.filter((message) => message.id !== messageId);
+      yield* Ref.set(ms.pendingSends, next);
+      if (removed.phase === "sdk_queue") yield* resyncSdkQueue(ms, next);
+      yield* publishUserMessageRemoved(ms, id, messageId);
+      yield* publishQueueSnapshot(ms, id);
+      return projectQueue(next);
     });
 
   const getSettings = (id: string) =>
@@ -739,6 +803,7 @@ const make = Effect.gen(function* () {
     listCommands,
     getQueue,
     clearQueue,
+    removeQueued,
     getSettings,
     patchSetting,
     getStats,

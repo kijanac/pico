@@ -9,6 +9,8 @@ let activeSessionId = $state<string | null>(null);
 let activeStatus = $state<SessionMeta["status"]>("idle");
 let connectionStatus = $state<ConnectionStatus>("offline");
 let compacting = $state(false);
+let contextUsageInvalidationVersion = $state(0);
+let contextUsageVersion = $state(0);
 let extensionUiRequests = $state<InteractiveExtensionUiRequest[]>([]);
 let extensionNotification = $state<ExtensionUiNotification | null>(null);
 let activeSend = $state<((event: ClientEvent) => void) | null>(null);
@@ -51,6 +53,14 @@ export const activeSessionState = {
 
   get compacting() {
     return compacting;
+  },
+
+  get contextUsageInvalidationVersion() {
+    return contextUsageInvalidationVersion;
+  },
+
+  get contextUsageVersion() {
+    return contextUsageVersion;
   },
 
   get extensionUiRequests() {
@@ -125,7 +135,12 @@ export const activeSessionState = {
 
     if (event.t === "compaction") {
       compacting = event.entry.status === "running";
+      if (event.entry.status === "success") contextUsageInvalidationVersion += 1;
       return;
+    }
+
+    if (event.t === "assistant_end" && event.usage) {
+      contextUsageVersion += 1;
     }
 
     if (event.t === "extension_ui_request") {

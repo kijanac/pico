@@ -79,6 +79,7 @@ export const PicoRpc = RpcGroup.make(
   Rpc.make("sessions.compact", { payload: { id: Schema.String, instructions: Schema.optional(Schema.String) }, error: SessionFail }),
   Rpc.make("sessions.queue", { payload: { id: Schema.String }, success: QueueState, error: SessionFail }),
   Rpc.make("sessions.clearQueue", { payload: { id: Schema.String }, success: QueueState, error: SessionFail }),
+  Rpc.make("sessions.removeQueued", { payload: { id: Schema.String, messageId: Schema.String }, success: QueueState, error: SessionFail }),
   Rpc.make("sessions.stats", { payload: { id: Schema.String }, success: SessionStats, error: SessionFail }),
   Rpc.make("sessions.tree", { payload: { id: Schema.String }, success: SessionTree, error: SessionFail }),
   Rpc.make("sessions.navigateTree", { payload: { id: Schema.String, entryId: Schema.String, summarize: Schema.optional(Schema.Boolean) }, error: SessionFail }),

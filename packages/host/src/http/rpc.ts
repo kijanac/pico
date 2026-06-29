@@ -80,6 +80,7 @@ const HandlersLive = PicoRpc.toLayer({
   "sessions.compact": ({ id, instructions }) => onSessions((m) => m.compact(id, instructions)),
   "sessions.queue": ({ id }) => onSessions((m) => m.getQueue(id)),
   "sessions.clearQueue": ({ id }) => onSessions((m) => m.clearQueue(id)),
+  "sessions.removeQueued": ({ id, messageId }) => onSessions((m) => m.removeQueued(id, messageId)),
   "sessions.stats": ({ id }) => onSessions((m) => m.getStats(id)),
   "sessions.tree": ({ id }) => onSessions((m) => m.getTree(id)),
   "sessions.navigateTree": ({ id, entryId, summarize }) => onSessions((m) => m.navigateTree(id, entryId, summarize)),

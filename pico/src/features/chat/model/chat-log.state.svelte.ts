@@ -1,5 +1,5 @@
 import type { ClientEvent, LogEntry, WireEvent } from "@pico/protocol";
-import { appendLogEntry, type Mutable, reconcileOrphanedToolCalls, reduceLog } from "@pico/protocol/log";
+import { appendLogEntry, type Mutable, reconcileOrphanedToolCalls, reduceLog, removeLogEntry } from "@pico/protocol/log";
 import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
 
 type SendEvent = Extract<ClientEvent, { t: "send" }>;
@@ -171,6 +171,11 @@ function applyWireEventForSession(sessionId: string, event: WireEvent): void {
     return;
   }
   if (event.t === "cost" || event.t === "auto_retry_start" || event.t === "auto_retry_end") return;
+  if (event.t === "user_message_removed") {
+    clearEcho(event.id);
+    if (removeLogEntry(log, event.id)) bumpActivity(log);
+    return;
+  }
   if (event.t === "queue") {
     reconcileQueuedMessages(log, event);
     return;

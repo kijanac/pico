@@ -7,9 +7,9 @@ export type Mutable<T> = T extends ReadonlyArray<infer U>
     ? { -readonly [K in keyof T]: Mutable<T[K]> }
     : T;
 
-// Set on a tool call orphaned by a bridge restart: its tool_result never arrived
+// Set on a tool call orphaned by a host restart: its tool_result never arrived
 // and never will, so cursor replay alone can't heal it.
-export const TOOL_INTERRUPTED_MESSAGE = "Interrupted — the bridge restarted while this command was running.";
+export const TOOL_INTERRUPTED_MESSAGE = "Interrupted — the host restarted while this command was running.";
 
 // The mutable accumulator the fold operates on. Callers wrap it with their own
 // concerns — the mobile log adds a cursor and a reactivity counter; the host
@@ -36,6 +36,14 @@ export function findLogEntry(acc: LogAccumulator, id: string): Mutable<LogEntry>
     return acc.entries[fallback];
   }
   return undefined;
+}
+
+export function removeLogEntry(acc: LogAccumulator, id: string): boolean {
+  const index = acc.entries.findIndex((entry) => entry.id === id);
+  if (index < 0) return false;
+  acc.entries.splice(index, 1);
+  acc.indexById = new Map(acc.entries.map((entry, i) => [entry.id, i]));
+  return true;
 }
 
 // Marks tool calls still "running" as interrupted — called by the caller when a
@@ -115,6 +123,9 @@ export function reduceLog(acc: LogAccumulator, event: WireEvent, now: number): b
     case "user_message":
       appendLogEntry(acc, event.entry);
       return true;
+
+    case "user_message_removed":
+      return removeLogEntry(acc, event.id);
 
     case "assistant_delta": {
       const existing = findLogEntry(acc, event.id);

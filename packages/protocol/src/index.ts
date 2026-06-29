@@ -483,6 +483,7 @@ export const WireEvent = Schema.Union(
     cursor: Schema.Number,
   }),
   Schema.Struct({ t: Schema.Literal("user_message"), ...Seq, entry: UserMessage }),
+  Schema.Struct({ t: Schema.Literal("user_message_removed"), ...Seq, id: Schema.String }),
   Schema.Struct({ t: Schema.Literal("log_reset"), ...Seq, entries: Schema.Array(LogEntry) }),
   Schema.Struct({
     t: Schema.Literal("assistant_delta"),

@@ -11,6 +11,9 @@ export const getSessionQueue = (sessionId: string) => rpc((c) => c.sessions.queu
 
 export const clearSessionQueue = (sessionId: string) => rpc((c) => c.sessions.clearQueue({ id: sessionId }));
 
+export const removeQueuedMessage = (sessionId: string, messageId: string) =>
+  rpc((c) => c.sessions.removeQueued({ id: sessionId, messageId }));
+
 export const listSessionCommands = (sessionId: string) => rpc((c) => c.sessions.commands({ id: sessionId }));
 
 export const getSessionSettings = (sessionId: string) => rpc((c) => c.sessions.controls({ id: sessionId }));

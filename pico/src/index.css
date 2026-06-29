@@ -311,9 +311,38 @@
   }
 
   .agent-working-glyph {
-    display: inline-block;
+    display: inline-grid;
+    place-items: center;
+    width: 1.05em;
+    height: 1.05em;
+    line-height: 1;
+    isolation: isolate;
+  }
+
+  .agent-working-glyph__spark {
+    grid-area: 1 / 1;
+    line-height: 1;
     transform-origin: 50% 50%;
-    animation: agent-working-pulse 1.2s ease-in-out infinite;
+    will-change: opacity, transform, filter;
+  }
+
+  .agent-working-glyph__spark--core {
+    animation: agent-working-core 1.45s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    text-shadow:
+      0 0 8px var(--color-accent-dim),
+      0 0 18px var(--color-accent-dim);
+  }
+
+  .agent-working-glyph__spark--trail {
+    opacity: 0;
+    filter: blur(0.2px);
+    animation: agent-working-trail 1.45s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+
+  .agent-working-glyph__spark--halo {
+    opacity: 0;
+    filter: blur(0.45px);
+    animation: agent-working-halo 1.45s cubic-bezier(0.22, 1, 0.36, 1) infinite;
   }
 
   @keyframes message-entry {
@@ -327,21 +356,65 @@
     }
   }
 
-  @keyframes agent-working-pulse {
+  @keyframes agent-working-core {
     0%, 100% {
-      opacity: 0.38;
+      opacity: 0.5;
       transform: scale(0.86) rotate(0deg);
     }
-    50% {
+    42% {
       opacity: 1;
-      transform: scale(1.06) rotate(45deg);
+      transform: scale(1.14) rotate(45deg);
+    }
+    72% {
+      opacity: 0.72;
+      transform: scale(0.96) rotate(90deg);
+    }
+  }
+
+  @keyframes agent-working-trail {
+    0%, 18%, 100% {
+      opacity: 0;
+      transform: translate3d(-0.18em, 0.14em, 0) scale(0.56) rotate(-30deg);
+    }
+    38% {
+      opacity: 0.48;
+      transform: translate3d(0.16em, -0.12em, 0) scale(0.78) rotate(28deg);
+    }
+    68% {
+      opacity: 0;
+      transform: translate3d(0.22em, -0.18em, 0) scale(0.62) rotate(72deg);
+    }
+  }
+
+  @keyframes agent-working-halo {
+    0%, 100% {
+      opacity: 0;
+      transform: scale(0.78) rotate(0deg);
+    }
+    46% {
+      opacity: 0.34;
+      transform: scale(1.72) rotate(45deg);
+    }
+    72% {
+      opacity: 0;
+      transform: scale(2.05) rotate(90deg);
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .msg-cv,
-    .agent-working-glyph {
+    .agent-working-glyph__spark {
       animation: none;
+    }
+
+    .agent-working-glyph__spark--halo,
+    .agent-working-glyph__spark--trail {
+      display: none;
+    }
+
+    .agent-working-glyph__spark--core {
+      opacity: 1;
+      transform: none;
     }
   }
 

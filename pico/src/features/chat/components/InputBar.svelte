@@ -5,6 +5,7 @@
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
   import { chatQueueState } from "@/features/chat/model/chat-queue.state.svelte";
+  import { queuedMessageActionsState } from "@/features/chat/model/queued-message-actions.state.svelte";
   import { createSpeechRecognitionState } from "@/shared/mobile/speech.svelte";
   import { pickImages } from "@/shared/mobile/image-picker";
   import { haptics } from "@/shared/mobile/haptics";
@@ -44,6 +45,7 @@
   let cursor = $state(0);
   let composing = $state(false);
   let holding = $state(false);
+  let ignoreNextSendClick = false;
   let actionsOpen = $state(false);
   let compactOpen = $state(false);
   let queueOpen = $state(false);
@@ -55,6 +57,7 @@
   let draftLoadRequestId = 0;
   let draftLoadedFor = $state<string | null>(null);
   let draftEditVersion = 0;
+  let lastRecallRequestId = 0;
 
   const stt = createSpeechRecognitionState();
   const slashCommands = createSlashCommandsState(
@@ -116,6 +119,22 @@
     untrack(() => {
       void restoreDraft(id);
       void syncQueue();
+    });
+  });
+
+  $effect(() => {
+    const request = queuedMessageActionsState.recallRequest;
+    if (!request || request.sessionId !== sessionId || request.id === lastRecallRequestId) return;
+
+    lastRecallRequestId = request.id;
+    draftEditVersion += 1;
+    value = request.text;
+    cursor = request.text.length;
+    images = [];
+    textBeforeRecording = "";
+    requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(request.text.length, request.text.length);
     });
   });
 
@@ -223,7 +242,27 @@
     },
   });
 
+  function handleSendPointerDown(event: PointerEvent): void {
+    // Keep the textarea focused so the native keyboard/WebView layout doesn't
+    // move under the finger before the tap completes.
+    event.preventDefault();
+    ignoreNextSendClick = false;
+    sendPress.start(event);
+  }
+
+  function handleSendPointerUp(event: PointerEvent): void {
+    event.preventDefault();
+    ignoreNextSendClick = true;
+    sendPress.end();
+    if (sendPress.consumeClick()) return;
+    submit("steer");
+  }
+
   function handleSendClick(): void {
+    if (ignoreNextSendClick) {
+      ignoreNextSendClick = false;
+      return;
+    }
     if (sendPress.consumeClick()) return;
     submit("steer");
   }
@@ -393,7 +432,7 @@
           aria-label="Context usage — tap to compact"
           title="Compact context"
         >
-          {contextPercent !== null ? `${contextPercent}%` : "ctx"} · {formatCost(contextStats.cost)}
+          {contextPercent !== null ? `${contextPercent}%` : "—"} · {formatCost(contextStats.cost)}
         </button>
       {/if}
 
@@ -421,10 +460,10 @@
         {#if hasSendable || !busy}
           <Button
             type="button"
-            size="icon"
+            size="icon-lg"
             onclick={handleSendClick}
-            onpointerdown={(event) => sendPress.start(event)}
-            onpointerup={sendPress.end}
+            onpointerdown={handleSendPointerDown}
+            onpointerup={handleSendPointerUp}
             onpointerleave={sendPress.end}
             onpointercancel={sendPress.end}
             disabled={!hasSendable || !canSend}
