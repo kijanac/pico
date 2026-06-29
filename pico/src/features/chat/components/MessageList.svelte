@@ -14,15 +14,25 @@
   let { sessionId }: { sessionId: string } = $props();
 
   const STICK_THRESHOLD_PX = 64;
+  const INITIAL_VISIBLE_ENTRIES = 120;
+  const REVEAL_ENTRIES = 120;
 
   let scroller = $state<HTMLDivElement | null>(null);
+  let topSentinel = $state<HTMLDivElement | null>(null);
   let bottomSentinel = $state<HTMLDivElement | null>(null);
   let stuckToBottom = $state(true);
   let hasNewActivity = $state(false);
+  let visibleCount = $state(INITIAL_VISIBLE_ENTRIES);
+  let pagingEnabled = $state(false);
+  let loadingEarlier = false;
+  let lastEntryCount = $state(chatLogState.entries.length);
   let lastActivityVersion = $state(chatLogState.activityVersion);
   let lastThinkingIndicatorVisible = false;
   let firstRenderMarked = false;
 
+  const totalEntries = $derived(chatLogState.entries.length);
+  const hasEarlierEntries = $derived(visibleCount < totalEntries);
+  const visibleEntries = $derived.by(() => chatLogState.entries.slice(Math.max(0, totalEntries - visibleCount)));
   const latestEntry = $derived.by(() => chatLogState.entries[chatLogState.entries.length - 1]);
   const showThinkingIndicator = $derived.by(() => {
     if (activeSessionState.status !== "thinking") return false;
@@ -69,6 +79,18 @@
     step();
   }
 
+  async function revealEarlierEntries(): Promise<void> {
+    if (!scroller || loadingEarlier || visibleCount >= totalEntries) return;
+
+    loadingEarlier = true;
+    const beforeHeight = scroller.scrollHeight;
+    const beforeTop = scroller.scrollTop;
+    visibleCount = Math.min(totalEntries, visibleCount + REVEAL_ENTRIES);
+    await tick();
+    scroller.scrollTop = beforeTop + (scroller.scrollHeight - beforeHeight);
+    loadingEarlier = false;
+  }
+
   function onScroll(): void {
     const stuck = distanceFromBottom() < STICK_THRESHOLD_PX;
     stuckToBottom = stuck;
@@ -89,7 +111,12 @@
   }
 
   onMount(() => {
-    void scrollToLatest("auto");
+    void (async () => {
+      await scrollToLatest("auto");
+      requestAnimationFrame(() => {
+        pagingEnabled = true;
+      });
+    })();
 
     let lastScrollerHeight = scroller?.clientHeight ?? 0;
     const resizeObserver = new ResizeObserver(() => {
@@ -115,6 +142,31 @@
   });
 
   $effect(() => {
+    const nextCount = totalEntries;
+    if (nextCount < lastEntryCount) {
+      visibleCount = INITIAL_VISIBLE_ENTRIES;
+    } else if (nextCount > lastEntryCount && !stuckToBottom) {
+      visibleCount += nextCount - lastEntryCount;
+    }
+    lastEntryCount = nextCount;
+  });
+
+  $effect(() => {
+    if (!pagingEnabled || !scroller || !topSentinel || !hasEarlierEntries) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (stuckToBottom) return;
+        if (entries.some((entry) => entry.isIntersecting)) void revealEarlierEntries();
+      },
+      { root: scroller, rootMargin: "800px 0px 0px 0px" },
+    );
+    observer.observe(topSentinel);
+
+    return () => observer.disconnect();
+  });
+
+  $effect(() => {
     if (chatLogState.entries.length > 0 && !firstRenderMarked) {
       firstRenderMarked = true;
       void tick().then(() => requestAnimationFrame(() => markSessionOpen(sessionId, "first-render")));
@@ -136,7 +188,10 @@
 
 <div class="relative min-h-0 flex-1 overflow-hidden">
   <div bind:this={scroller} onscroll={onScroll} class="scroll-momentum h-full overflow-y-auto py-2" style="padding-bottom: 0.5rem">
-    {#each chatLogState.entries as entry (entry.id)}
+    {#if hasEarlierEntries}
+      <div bind:this={topSentinel} class="h-px" aria-hidden="true"></div>
+    {/if}
+    {#each visibleEntries as entry (entry.id)}
       <div class="msg-cv">
         {#if entry.kind === "user"}
           <UserMessageView msg={entry} {sessionId} />
