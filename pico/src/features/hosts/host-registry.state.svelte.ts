@@ -1,8 +1,6 @@
 import type { SystemInfo } from "@pico/protocol";
 import { getJsonPreference, getPreference, removePreference, setJsonPreference, setPreference } from "@/shared/mobile/preferences";
 
-export const DEFAULT_HOST_URL = "http://localhost:7777";
-
 const HOSTS_KEY = "pico_hosts_v1";
 const DEFAULT_HOST_ID_KEY = "pico_default_host_id";
 const LEGACY_HOST_URL_KEY = "host_url";
@@ -22,23 +20,18 @@ let defaultHostId = $state<string | null>(null);
 let saving = $state(false);
 let error = $state<string | null>(null);
 
-const defaultHost = $derived(hosts.find((host) => host.id === defaultHostId) ?? hosts[0] ?? null);
-
-function normalizeHostUrl(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, "");
-  return trimmed || DEFAULT_HOST_URL;
+function cleanHostUrl(value: string): string {
+  const url = value.trim().replace(/\/+$/, "");
+  if (!url) throw new Error("Host URL is required");
+  return url;
 }
 
 function hostNameFromUrl(url: string): string {
-  try {
-    return new URL(url).hostname.split(".")[0] || url;
-  } catch {
-    return url;
-  }
+  return new URL(url).hostname.replace(/\..*$/, "");
 }
 
 function makeHost(url: string, systemInfo?: SystemInfo): HostProfile {
-  const normalized = normalizeHostUrl(url);
+  const normalized = cleanHostUrl(url);
   const now = Date.now();
   return {
     id: crypto.randomUUID(),
@@ -85,7 +78,6 @@ export const hostRegistryState = {
   get loaded() { return loaded; },
   get hosts() { return hosts; },
   get defaultHostId() { return defaultHostId; },
-  get defaultHost() { return defaultHost; },
   get hasHosts() { return hosts.length > 0; },
   get saving() { return saving; },
   get error() { return error; },
@@ -110,7 +102,7 @@ export const hostRegistryState = {
     if (!loaded) await this.load();
     saving = true;
     try {
-      const normalized = normalizeHostUrl(url);
+      const normalized = cleanHostUrl(url);
       const existing = hosts.find((host) => host.url === normalized);
       const now = Date.now();
       const host = existing

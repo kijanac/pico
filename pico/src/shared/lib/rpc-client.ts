@@ -46,9 +46,9 @@ export const runOnHost = async <A, E>(hostId: string, effect: Effect.Effect<A, E
 
 export const runHost = async <A, E>(effect: Effect.Effect<A, E, PicoClient>): Promise<A> => {
   if (!hostRegistryState.loaded) await hostRegistryState.load();
-  const host = hostRegistryState.defaultHost;
-  if (!host) throw new Error("No Pico host configured");
-  return runAt(host.url, effect);
+  const hostId = hostRegistryState.defaultHostId ?? hostRegistryState.hosts[0]?.id;
+  if (!hostId) throw new Error("No Pico host configured");
+  return runOnHost(hostId, effect);
 };
 
 const makeSessionClient = RpcClient.make(PicoSessionRpc);

@@ -1,20 +1,15 @@
-import { hostRegistryState, DEFAULT_HOST_URL } from "@/features/hosts/host-registry.state.svelte";
+import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 import { getPreference, setPreference } from "@/shared/mobile/preferences";
 
 const WELCOME_SKIPPED_KEY = "welcome_skipped";
 
 let loaded = $state(false);
-let hostUrl = $state(DEFAULT_HOST_URL);
 let welcomeSkipped = $state(false);
 let error = $state<string | null>(null);
 
 export const settingsState = {
   get loaded() {
     return loaded && hostRegistryState.loaded;
-  },
-
-  get hostUrl() {
-    return hostRegistryState.defaultHost?.url ?? hostUrl;
   },
 
   get hostUrlConfigured() {
@@ -36,7 +31,6 @@ export const settingsState = {
   async load(): Promise<void> {
     try {
       await hostRegistryState.load();
-      hostUrl = hostRegistryState.defaultHost?.url ?? DEFAULT_HOST_URL;
       welcomeSkipped = (await getPreference(WELCOME_SKIPPED_KEY)) === "true";
       error = null;
     } catch (caught) {

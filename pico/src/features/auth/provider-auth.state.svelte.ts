@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
-import { settingsState } from "@/features/settings/settings.state.svelte";
 import { cancelAuthLogin, getAuthLoginJob, listAuthProviders, saveAuthApiKey, startAuthLogin, submitAuthLoginInput } from "@/features/auth/api";
 import { classifyHostFailure, hostIssueSummary } from "@/shared/lib/host-issues";
 import { type PicoClient, runHost, runOnHost } from "@/shared/lib/rpc-client";
@@ -46,7 +45,10 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   let savingApiKey = $state(false);
   let startingProviderId = $state<string | null>(null);
 
-  const hostUrl = () => opts.hostId ? hostRegistryState.getHost(opts.hostId)?.url ?? settingsState.hostUrl : settingsState.hostUrl;
+  const hostUrl = () => {
+    const hostId = opts.hostId ?? hostRegistryState.defaultHostId ?? hostRegistryState.hosts[0]?.id;
+    return hostId ? hostRegistryState.getHost(hostId)?.url : undefined;
+  };
   const run = <A, E>(effect: Effect.Effect<A, E, PicoClient>) => opts.hostId ? runOnHost(opts.hostId, effect) : runHost(effect);
 
   const reportFailure = (error: unknown) =>
@@ -57,8 +59,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   async function loadProviders(): Promise<void> {
     loading = true;
     try {
-      if (opts.hostId && !hostRegistryState.loaded) await hostRegistryState.load();
-      else if (!settingsState.loaded) await settingsState.load();
+      if (!hostRegistryState.loaded) await hostRegistryState.load();
       await run(
         listAuthProviders().pipe(
           Effect.tap((result) => Effect.sync(() => { providers = result.providers; opts.onError(null); })),
