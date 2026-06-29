@@ -184,10 +184,7 @@ export type ToolCallMessage = typeof ToolCallMessage.Type;
 
 export function hasToolDetails(details: unknown): boolean {
   if (details === undefined || details === null) return false;
-  if (typeof details === "string") return details.trim().length > 0;
-  if (Array.isArray(details)) return details.length > 0;
-  if (typeof details === "object") return Object.keys(details).length > 0;
-  return true;
+  return typeof details !== "object" || Object.keys(details).length > 0;
 }
 
 export const CompactionReason = Schema.Literal("manual", "threshold", "overflow");
