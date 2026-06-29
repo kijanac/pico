@@ -307,7 +307,7 @@
   }
 </script>
 
-<div class="sticky bottom-0 z-20 bg-[color:var(--color-bg)]/95 backdrop-blur-md" style="padding-bottom: env(safe-area-inset-bottom)">
+<div class="relative z-20 shrink-0 bg-[color:var(--color-bg)]/95 backdrop-blur-md" style="padding-bottom: env(safe-area-inset-bottom)">
   {#if slashCommands.query !== null}
     <SlashCommandSuggestions
       entries={slashCommands.matches}

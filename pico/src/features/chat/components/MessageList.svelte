@@ -6,6 +6,8 @@
   import AssistantMessageView from "@/features/chat/components/AssistantMessage.svelte";
   import ToolCallView from "@/features/chat/components/ToolCall.svelte";
   import CompactionMessageView from "@/features/chat/components/CompactionMessage.svelte";
+  import AgentThinkingIndicator from "@/features/chat/components/AgentThinkingIndicator.svelte";
+  import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { Button } from "@/shared/ui/button";
 
   let { sessionId }: { sessionId: string } = $props();
@@ -17,6 +19,19 @@
   let stuckToBottom = $state(true);
   let hasNewActivity = $state(false);
   let lastActivityVersion = $state(chatLogState.activityVersion);
+  let lastThinkingIndicatorVisible = false;
+
+  const latestEntry = $derived.by(() => chatLogState.entries[chatLogState.entries.length - 1]);
+  const showThinkingIndicator = $derived.by(() => {
+    if (activeSessionState.status !== "thinking") return false;
+
+    const latest = latestEntry;
+    if (!latest) return true;
+    if (latest.kind === "assistant") return false;
+    if (latest.kind === "tool_call" && latest.status === "running") return false;
+    if (latest.kind === "compaction" && latest.status === "running") return false;
+    return true;
+  });
 
   function distanceFromBottom(): number {
     if (!scroller) return 0;
@@ -67,7 +82,25 @@
 
   onMount(() => {
     void scrollToLatest("auto");
+
+    let lastScrollerHeight = scroller?.clientHeight ?? 0;
+    const resizeObserver = new ResizeObserver(() => {
+      if (!scroller) return;
+
+      const nextHeight = scroller.clientHeight;
+      const lostHeight = Math.max(0, lastScrollerHeight - nextHeight);
+      lastScrollerHeight = nextHeight;
+
+      // When the keyboard/composer changes height, keep the latest message pinned
+      // only if the user was already following the bottom of the chat.
+      if (stuckToBottom || distanceFromBottom() <= STICK_THRESHOLD_PX + lostHeight) {
+        void scrollToLatest("auto");
+      }
+    });
+    if (scroller) resizeObserver.observe(scroller);
+
     return () => {
+      resizeObserver.disconnect();
       if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
       if (settleRaf !== null) cancelAnimationFrame(settleRaf);
     };
@@ -75,9 +108,14 @@
 
   $effect(() => {
     const version = chatLogState.activityVersion;
-    if (version === lastActivityVersion) return;
+    const indicatorVisible = showThinkingIndicator;
+    const logChanged = version !== lastActivityVersion;
+    const indicatorAppeared = indicatorVisible && !lastThinkingIndicatorVisible;
+
     lastActivityVersion = version;
-    scheduleScrollSync();
+    lastThinkingIndicatorVisible = indicatorVisible;
+
+    if (logChanged || indicatorAppeared) scheduleScrollSync();
   });
 </script>
 
@@ -96,6 +134,11 @@
         {/if}
       </div>
     {/each}
+    {#if showThinkingIndicator}
+      <div class="msg-cv">
+        <AgentThinkingIndicator />
+      </div>
+    {/if}
     <div bind:this={bottomSentinel} aria-hidden="true"></div>
   </div>
 
