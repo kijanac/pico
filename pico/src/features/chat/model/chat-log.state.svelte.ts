@@ -95,7 +95,7 @@ export const chatLogState = {
     applyWireEventForSession(hostId, sessionId, event);
   },
 
-  prependEarlierEntries(hostId: string, sessionId: string, page: LogPage): void {
+  prependEarlierEntries(hostId: string, sessionId: string, page: LogPage): number {
     const log = getLog(hostId, sessionId);
     const ids = new Set(log.entries.map((entry) => entry.id));
     const entries = page.entries.filter((entry) => !ids.has(entry.id));
@@ -104,6 +104,7 @@ export const chatLogState = {
       log.indexById = new Map(log.entries.map((entry, index) => [entry.id, index]));
     }
     log.hasMoreBefore = page.hasMoreBefore;
+    return entries.length;
   },
 
   appendLocalEcho(hostId: string, sessionId: string, event: SendEvent): void {

@@ -19,7 +19,8 @@
 
   const STICK_THRESHOLD_PX = 64;
   const INITIAL_VISIBLE_ENTRIES = 120;
-  const REVEAL_ENTRIES = 120;
+  const REVEAL_ENTRIES = 60;
+  const LOAD_EARLIER_MARGIN_PX = 120;
 
   let scroller = $state<HTMLDivElement | null>(null);
   let topSentinel = $state<HTMLDivElement | null>(null);
@@ -29,6 +30,7 @@
   let visibleCount = $state(INITIAL_VISIBLE_ENTRIES);
   let pagingEnabled = $state(false);
   let loadingEarlier = false;
+  let expectedEarlierEntryGrowth = 0;
   let lastEntryCount = $state(chatLogState.entries.length);
   let lastActivityVersion = $state(chatLogState.activityVersion);
   let lastThinkingIndicatorVisible = false;
@@ -37,6 +39,11 @@
   type DisplayRow =
     | { kind: "entry"; key: string; entry: LogEntry }
     | { kind: "thinking"; key: string };
+
+  interface ScrollAnchor {
+    entryId: string;
+    top: number;
+  }
 
   // Key agent rows by the slot after the previous entry so the thinking row
   // can turn into the first real agent row without a remove/add layout jolt.
@@ -127,12 +134,39 @@
     step();
   }
 
+  function captureScrollAnchor(): ScrollAnchor | null {
+    if (!scroller) return null;
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    for (const row of Array.from(scroller.querySelectorAll<HTMLElement>("[data-log-entry-id]"))) {
+      const rect = row.getBoundingClientRect();
+      if (rect.bottom <= scrollerRect.top + 1) continue;
+      if (rect.top >= scrollerRect.bottom - 1) return null;
+
+      const entryId = row.dataset.logEntryId;
+      return entryId ? { entryId, top: rect.top - scrollerRect.top } : null;
+    }
+    return null;
+  }
+
+  function restoreScrollAnchor(anchor: ScrollAnchor | null): void {
+    if (!scroller || !anchor) return;
+
+    const row = Array.from(scroller.querySelectorAll<HTMLElement>("[data-log-entry-id]")).find(
+      (candidate) => candidate.dataset.logEntryId === anchor.entryId,
+    );
+    if (!row) return;
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const nextTop = row.getBoundingClientRect().top - scrollerRect.top;
+    scroller.scrollTop += nextTop - anchor.top;
+  }
+
   async function revealEarlierEntries(): Promise<void> {
     if (!scroller || loadingEarlier || !hasEarlierEntries) return;
 
     loadingEarlier = true;
-    const beforeHeight = scroller.scrollHeight;
-    const beforeTop = scroller.scrollTop;
+    const anchor = captureScrollAnchor();
 
     try {
       if (hasLocalEarlierEntries) {
@@ -141,12 +175,13 @@
         const beforeId = visibleEntries[0]?.id;
         if (!beforeId) return;
         const page = await runOnHost(hostId, getSessionLogBefore(sessionId, beforeId, REVEAL_ENTRIES));
-        chatLogState.prependEarlierEntries(hostId, sessionId, page);
-        visibleCount += page.entries.length;
+        const prepended = chatLogState.prependEarlierEntries(hostId, sessionId, page);
+        expectedEarlierEntryGrowth += prepended;
+        visibleCount += prepended;
       }
 
       await tick();
-      scroller.scrollTop = beforeTop + (scroller.scrollHeight - beforeHeight);
+      restoreScrollAnchor(anchor);
     } finally {
       loadingEarlier = false;
     }
@@ -206,8 +241,12 @@
     const nextCount = totalEntries;
     if (nextCount < lastEntryCount) {
       visibleCount = INITIAL_VISIBLE_ENTRIES;
+      expectedEarlierEntryGrowth = 0;
     } else if (nextCount > lastEntryCount && !stuckToBottom) {
-      visibleCount += nextCount - lastEntryCount;
+      const growth = nextCount - lastEntryCount;
+      const appended = Math.max(0, growth - expectedEarlierEntryGrowth);
+      expectedEarlierEntryGrowth = Math.max(0, expectedEarlierEntryGrowth - growth);
+      visibleCount += appended;
     }
     lastEntryCount = nextCount;
   });
@@ -220,7 +259,7 @@
         if (stuckToBottom) return;
         if (entries.some((entry) => entry.isIntersecting)) void revealEarlierEntries();
       },
-      { root: scroller, rootMargin: "800px 0px 0px 0px" },
+      { root: scroller, rootMargin: `${LOAD_EARLIER_MARGIN_PX}px 0px 0px 0px` },
     );
     observer.observe(topSentinel);
 
@@ -253,7 +292,7 @@
       <div bind:this={topSentinel} class="h-px" aria-hidden="true"></div>
     {/if}
     {#each displayRows as row (row.key)}
-      <div class="msg-cv">
+      <div class="msg-cv" data-log-entry-id={row.kind === "entry" ? row.entry.id : undefined}>
         {#if row.kind === "thinking"}
           <AgentThinkingIndicator />
         {:else if row.entry.kind === "user"}
