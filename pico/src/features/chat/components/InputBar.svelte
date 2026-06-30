@@ -400,7 +400,6 @@
 </script>
 
 <div class="pointer-events-auto relative z-20 shrink-0" style="padding-bottom: env(safe-area-inset-bottom)">
-  <div class="composer-bottom-fade pointer-events-none absolute inset-x-0 -top-9 bottom-0" aria-hidden="true"></div>
   {#if slashCommands.query !== null}
     <SlashCommandSuggestions
       entries={slashCommands.matches}

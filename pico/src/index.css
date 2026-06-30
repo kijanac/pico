@@ -306,18 +306,6 @@
     animation: message-entry 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
-  .composer-bottom-fade {
-    background: linear-gradient(
-      to bottom,
-      transparent 0,
-      color-mix(in srgb, var(--color-bg) 72%, transparent) 1.35rem,
-      var(--color-bg) 3rem,
-      var(--color-bg) 100%
-    );
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-  }
-
   .agent-working-glyph {
     display: inline-grid;
     place-items: center;
