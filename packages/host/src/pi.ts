@@ -134,7 +134,7 @@ export interface PiSession {
   readonly events: Stream.Stream<PiEmission, PiError>;
   readonly send: (
     text: string,
-    mode?: SendMode,
+    mode: SendMode,
     images?: ImageContent[],
   ) => Effect.Effect<void, PiError>;
   readonly isCompacting: () => Effect.Effect<boolean, PiError>;

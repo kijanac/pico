@@ -146,7 +146,7 @@ try {
     assert(first?.t === "hello", "first event should be hello");
     assert.equal(first.session.id, session.id);
 
-    await sessionRuntime.runPromise(sessionClient.session.send({ id: session.id, text: "smoke prompt" }));
+    await sessionRuntime.runPromise(sessionClient.session.send({ id: session.id, text: "smoke prompt", mode: "steer" }));
 
     const replay = await eventsUntil(0, (event) => event.t === "assistant_end");
     assert.equal(replay[0]?.t, "hello");

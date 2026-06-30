@@ -139,7 +139,7 @@ export class SessionManager extends Context.Tag("SessionManager")<
     readonly send: (
       id: string,
       text: string,
-      mode?: SendMode,
+      mode: SendMode,
       images?: ImageContent[],
       clientId?: string,
     ) => Effect.Effect<void, PiError | SessionNotFound>;
@@ -633,7 +633,7 @@ const make = Effect.gen(function* () {
   const send = (
     id: string,
     text: string,
-    mode?: SendMode,
+    mode: SendMode,
     images?: ImageContent[],
     clientId?: string,
   ) =>
@@ -647,7 +647,6 @@ const make = Effect.gen(function* () {
       if (queued && (yield* Ref.get(ms.pendingSends)).length >= MAX_PENDING_SENDS) {
         return yield* Effect.fail(new PiError({ message: `send queue full (${MAX_PENDING_SENDS})` }));
       }
-      const sendMode: QueuedMessage["mode"] = mode === "follow_up" ? "follow_up" : "steer";
       const userMessageId = randomUUIDv7();
       const at = Date.now();
       const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
@@ -659,7 +658,7 @@ const make = Effect.gen(function* () {
         images,
         clientId,
       };
-      const entry: UserMessage = queued ? { ...baseEntry, queued: true, mode: sendMode } : baseEntry;
+      const entry: UserMessage = queued ? { ...baseEntry, queued: true, mode } : baseEntry;
       const userEvent: WireEvent = { t: "user_message", seq, entry };
       yield* store.appendEvent(id, userEvent);
       if (clientId) {
@@ -673,7 +672,7 @@ const make = Effect.gen(function* () {
           at,
           text,
           images,
-          mode: sendMode,
+          mode,
           phase: "held_for_compaction",
         };
         yield* Ref.update(ms.pendingSends, (pending) => [...pending, pendingSend]);
@@ -687,7 +686,7 @@ const make = Effect.gen(function* () {
           at,
           text,
           images,
-          mode: sendMode,
+          mode,
           phase: "sdk_queue",
         };
         yield* Ref.update(ms.pendingSends, (pending) => [...pending, pendingSend]);

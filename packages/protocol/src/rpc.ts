@@ -113,7 +113,7 @@ export const PicoSessionRpc = RpcGroup.make(
     payload: {
       id: Schema.String,
       text: Schema.String,
-      mode: Schema.optional(SendMode),
+      mode: SendMode,
       images: Schema.optional(Schema.Array(ImageContent)),
       clientId: Schema.optional(Schema.String),
     },

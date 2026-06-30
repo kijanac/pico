@@ -599,7 +599,7 @@ export const ClientEvent = Schema.Union(
   Schema.Struct({
     t: Schema.Literal("send"),
     text: Schema.String,
-    mode: Schema.optional(SendMode),
+    mode: SendMode,
     images: Schema.optional(Schema.Array(ImageContent)),
     // Idempotency key: the host drops repeats and echoes it back on user_message.
     clientId: Schema.optional(Schema.String),
