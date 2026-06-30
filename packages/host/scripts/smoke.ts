@@ -1,5 +1,4 @@
 import { strict as assert } from "node:assert";
-import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,6 +12,7 @@ import type { WireEvent } from "@pico/protocol";
 import { picoHttpProtocol, picoSocketProtocol } from "@pico/protocol/client";
 import { PicoRpc, PicoSessionRpc } from "@pico/protocol/rpc";
 import { WebSocket as WsWebSocket } from "ws";
+import { v7 as randomUUIDv7 } from "uuid";
 
 // realpath: tmpdir is a symlink on macOS (/var -> /private/var) but host-side paths are canonicalized.
 const tempRoot = realpathSync(mkdtempSync(join(tmpdir(), "pico-host-smoke-")));
@@ -147,7 +147,7 @@ try {
     assert(first?.t === "hello", "first event should be hello");
     assert.equal(first.session.id, session.id);
 
-    await sessionRuntime.runPromise(sessionClient.session.send({ id: session.id, text: "smoke prompt", mode: "steer", clientId: randomUUID() }));
+    await sessionRuntime.runPromise(sessionClient.session.send({ id: session.id, text: "smoke prompt", mode: "steer", clientId: randomUUIDv7() }));
 
     const replay = await eventsUntil(0, (event) => event.t === "assistant_end");
     assert.equal(replay[0]?.t, "hello");
