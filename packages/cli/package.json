@@ -1,6 +1,6 @@
 {
   "name": "@pico/cli",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "type": "module",
   "bin": {
     "pico": "./dist/index.js"

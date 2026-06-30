@@ -2,6 +2,11 @@
 
 All notable changes to Pico.
 
+## 1.4.4 — 2026-06-30
+
+### Removed
+- Remove composer blur overlay
+
 ## 1.4.3 — 2026-06-30
 
 ### Fixed
