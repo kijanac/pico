@@ -306,6 +306,16 @@
     animation: message-entry 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
+  .composer-scroll-scrim {
+    background: linear-gradient(
+      to bottom,
+      transparent 0,
+      color-mix(in srgb, var(--color-bg) 36%, transparent) 2.5rem,
+      color-mix(in srgb, var(--color-bg) 84%, transparent) 4rem,
+      var(--color-bg) 100%
+    );
+  }
+
   .agent-working-glyph {
     display: inline-grid;
     place-items: center;

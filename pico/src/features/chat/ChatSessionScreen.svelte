@@ -133,6 +133,11 @@
   {:else}
     <div class="relative min-h-0 flex-1 overflow-hidden">
       <MessageList {hostId} {sessionId} bottomInset={composerHeight} />
+      <div
+        class="composer-scroll-scrim pointer-events-none absolute inset-x-0 bottom-0 z-10"
+        style={`height: calc(${composerHeight}px + 4rem)`}
+        aria-hidden="true"
+      ></div>
       <div bind:clientHeight={composerHeight} class="pointer-events-none absolute inset-x-0 bottom-0 z-30">
         <ExtensionNotifications />
         <InputBar {hostId} {sessionId} {contextStats} />

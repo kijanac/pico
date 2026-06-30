@@ -7,6 +7,7 @@
   import { chatQueueState } from "@/features/chat/model/chat-queue.state.svelte";
   import { queuedMessageActionsState } from "@/features/chat/model/queued-message-actions.state.svelte";
   import { createSpeechRecognitionState } from "@/shared/mobile/speech.svelte";
+  import { keyboardState } from "@/shared/mobile/keyboard.svelte";
   import { pickImages } from "@/shared/mobile/image-picker";
   import { cloneImageContent, filesToImageContent } from "@/shared/mobile/image-content";
   import { haptics } from "@/shared/mobile/haptics";
@@ -90,6 +91,7 @@
   const contextPercent = $derived(
     contextStats && contextStats.usage.percent !== null ? Math.round(contextStats.usage.percent) : null,
   );
+  const bottomPadding = $derived(keyboardState.height > 0 ? "0px" : "env(safe-area-inset-bottom)");
 
   const modelControl = $derived(controls?.controls.find((control) => control.key === "model"));
   const modelLabel = $derived.by(() => {
@@ -399,7 +401,7 @@
   }
 </script>
 
-<div class="pointer-events-auto relative z-20 shrink-0" style="padding-bottom: env(safe-area-inset-bottom)">
+<div class="pointer-events-auto relative z-20 shrink-0" style:padding-bottom={bottomPadding}>
   {#if slashCommands.query !== null}
     <SlashCommandSuggestions
       entries={slashCommands.matches}
