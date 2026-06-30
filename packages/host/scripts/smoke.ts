@@ -1,4 +1,5 @@
 import { strict as assert } from "node:assert";
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -146,7 +147,7 @@ try {
     assert(first?.t === "hello", "first event should be hello");
     assert.equal(first.session.id, session.id);
 
-    await sessionRuntime.runPromise(sessionClient.session.send({ id: session.id, text: "smoke prompt", mode: "steer" }));
+    await sessionRuntime.runPromise(sessionClient.session.send({ id: session.id, text: "smoke prompt", mode: "steer", clientId: randomUUID() }));
 
     const replay = await eventsUntil(0, (event) => event.t === "assistant_end");
     assert.equal(replay[0]?.t, "hello");

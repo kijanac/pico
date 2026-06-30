@@ -140,8 +140,8 @@ export class SessionManager extends Context.Tag("SessionManager")<
       id: string,
       text: string,
       mode: SendMode,
-      images?: ImageContent[],
-      clientId?: string,
+      images: ImageContent[] | undefined,
+      clientId: string,
     ) => Effect.Effect<void, PiError | SessionNotFound>;
     readonly interrupt: (
       id: string,
@@ -634,13 +634,13 @@ const make = Effect.gen(function* () {
     id: string,
     text: string,
     mode: SendMode,
-    images?: ImageContent[],
-    clientId?: string,
+    images: ImageContent[] | undefined,
+    clientId: string,
   ) =>
     Effect.gen(function* () {
       const ms = yield* lookupOrReattach(id);
       // Duplicate of a send that already landed; the original user_message is the ack.
-      if (clientId && (yield* Ref.get(ms.seenClientIds)).includes(clientId)) return;
+      if ((yield* Ref.get(ms.seenClientIds)).includes(clientId)) return;
       const currentMeta = yield* Ref.get(ms.meta);
       const compacting = (yield* Ref.get(ms.compacting)) || (yield* ms.pi.isCompacting());
       const queued = compacting || currentMeta.status === "thinking" || currentMeta.status === "tool";
@@ -661,9 +661,7 @@ const make = Effect.gen(function* () {
       const entry: UserMessage = queued ? { ...baseEntry, queued: true, mode } : baseEntry;
       const userEvent: WireEvent = { t: "user_message", seq, entry };
       yield* store.appendEvent(id, userEvent);
-      if (clientId) {
-        yield* Ref.update(ms.seenClientIds, (seen) => [...seen, clientId].slice(-MAX_SEEN_CLIENT_IDS));
-      }
+      yield* Ref.update(ms.seenClientIds, (seen) => [...seen, clientId].slice(-MAX_SEEN_CLIENT_IDS));
       yield* PubSub.publish(ms.pubsub, userEvent);
 
       if (compacting) {

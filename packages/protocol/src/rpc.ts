@@ -115,7 +115,7 @@ export const PicoSessionRpc = RpcGroup.make(
       text: Schema.String,
       mode: SendMode,
       images: Schema.optional(Schema.Array(ImageContent)),
-      clientId: Schema.optional(Schema.String),
+      clientId: Schema.String,
     },
     error: SessionFail,
   }),

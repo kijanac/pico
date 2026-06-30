@@ -230,14 +230,9 @@ function applyWireEventForSession(hostId: string, sessionId: string, event: Wire
 
   if (event.t === "user_message") {
     const entry = event.entry;
-    // An ack with a clientId may only be absorbed by its own echo; text matching
-    // is the fallback for acks from older hosts. Non-echo acks fall through to
-    // the shared fold (plain append).
-    const echoIndex = log.entries.findIndex((e) => {
-      if (e.kind !== "user" || !isLocalEcho(e.id)) return false;
-      if (entry.clientId) return localEchoes.get(e.id)?.event.clientId === entry.clientId;
-      return e.text === entry.text;
-    });
+    // Acks are reconciled only through the idempotency key from the send event.
+    // Non-echo acks fall through to the shared fold (plain append).
+    const echoIndex = log.entries.findIndex((e) => e.kind === "user" && isLocalEcho(e.id) && localEchoes.get(e.id)?.event.clientId === entry.clientId);
     if (echoIndex >= 0) {
       const echoId = log.entries[echoIndex].id;
       clearEcho(echoId);

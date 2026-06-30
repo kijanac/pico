@@ -602,7 +602,7 @@ export const ClientEvent = Schema.Union(
     mode: SendMode,
     images: Schema.optional(Schema.Array(ImageContent)),
     // Idempotency key: the host drops repeats and echoes it back on user_message.
-    clientId: Schema.optional(Schema.String),
+    clientId: Schema.String,
   }),
   Schema.Struct({ t: Schema.Literal("interrupt") }),
   Schema.Struct({
