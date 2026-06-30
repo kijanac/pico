@@ -495,7 +495,6 @@
           size="icon-lg"
           onclick={handleSendClick}
           onpointerdown={handleSendPointerDown}
-          onpointercancel={handleWindowSendPointerCancel}
           disabled={!hasSendable || !canSend}
           class={`shrink-0 rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)] transition-transform duration-100 active:opacity-80 disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-100 ${holding ? "scale-95" : ""}`}
           aria-label={busy ? "Steer (hold to queue a follow-up)" : "Send"}
