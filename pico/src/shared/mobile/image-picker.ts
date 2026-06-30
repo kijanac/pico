@@ -1,6 +1,6 @@
 import { Camera, MediaTypeSelection, type MediaResult } from "@capacitor/camera";
 import type { ImageContent } from "@pico/protocol";
-import { blobToImageContent } from "@/shared/mobile/image-content";
+import { blobToImageContent, MAX_IMAGE_SIDE, OUTPUT_QUALITY_PERCENT } from "@/shared/mobile/image-content";
 
 export interface PickImagesOptions {
   limit?: number;
@@ -14,6 +14,10 @@ export async function pickImages(opts?: PickImagesOptions): Promise<ImageContent
       mediaType: MediaTypeSelection.Photo,
       allowMultipleSelection: limit > 1,
       ...(limit > 1 ? { limit } : {}),
+      quality: OUTPUT_QUALITY_PERCENT,
+      targetWidth: MAX_IMAGE_SIDE,
+      targetHeight: MAX_IMAGE_SIDE,
+      correctOrientation: true,
     });
 
     const attachments: ImageContent[] = [];

@@ -102,6 +102,23 @@ describe("decoding rejects malformed input", () => {
     } as const;
     expect(Schema.decodeUnknownSync(QueueState)(queue)).toStrictEqual(queue);
   });
+
+  it("rejects prototype-polluting custom tool args", () => {
+    const args = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(args, "__proto__", { value: [], enumerable: true });
+
+    expect(() =>
+      Schema.decodeUnknownSync(ToolCallMessage)({
+        kind: "tool_call",
+        toolKind: "custom",
+        id: "tool1",
+        at: 1,
+        tool: "custom_tool",
+        args,
+        status: "pending",
+      }),
+    ).toThrow();
+  });
 });
 
 describe("version constants hold their invariants across releases", () => {

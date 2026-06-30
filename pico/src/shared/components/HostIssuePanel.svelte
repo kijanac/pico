@@ -49,8 +49,11 @@
           {/each}
         </ul>
       {/if}
+      {#if action && compact}
+        <div class="mt-2 min-w-0">{@render action()}</div>
+      {/if}
     </div>
-    {#if action}
+    {#if action && !compact}
       <div class="shrink-0 self-start">{@render action()}</div>
     {/if}
   </div>

@@ -121,7 +121,22 @@ export const BashToolArgs = Schema.Struct({
 });
 export type BashToolArgs = typeof BashToolArgs.Type;
 
-export const CustomToolArgs = Schema.Record({ key: Schema.String, value: Schema.Unknown });
+const UNSAFE_RECORD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+const isSafePlainRecord = (value: object): boolean => {
+  const proto = Object.getPrototypeOf(value);
+  return (proto === null || proto === Object.prototype) && !Object.keys(value).some((key) => UNSAFE_RECORD_KEYS.has(key));
+};
+
+const SafeCustomToolArgsInput = Schema.Object.pipe(
+  Schema.filter(isSafePlainRecord, { message: () => "custom tool args must be a safe plain record" }),
+);
+
+const CustomToolArgsRecord = Schema.Record({ key: Schema.String, value: Schema.Unknown }).pipe(
+  Schema.filter(isSafePlainRecord, { message: () => "custom tool args must not contain prototype-polluting keys" }),
+);
+
+export const CustomToolArgs = SafeCustomToolArgsInput.pipe(Schema.compose(CustomToolArgsRecord));
 export type CustomToolArgs = typeof CustomToolArgs.Type;
 
 const ToolStatus = Schema.Literal("pending", "running", "ok", "error");
