@@ -3,7 +3,6 @@ import { getJsonPreference, getPreference, removePreference, setJsonPreference, 
 
 const HOSTS_KEY = "pico_hosts_v1";
 const DEFAULT_HOST_ID_KEY = "pico_default_host_id";
-const LEGACY_HOST_URL_KEY = "host_url";
 
 export interface HostProfile {
   id: string;
@@ -58,15 +57,6 @@ async function loadHosts(): Promise<void> {
       ? savedDefaultHostId
       : savedHosts[0]?.id ?? null;
     if (defaultHostId !== savedDefaultHostId) await saveHosts();
-    return;
-  }
-
-  const legacyHostUrl = await getPreference(LEGACY_HOST_URL_KEY);
-  if (legacyHostUrl?.trim()) {
-    const host = makeHost(legacyHostUrl);
-    hosts = [host];
-    defaultHostId = host.id;
-    await saveHosts();
     return;
   }
 
