@@ -2,6 +2,23 @@
 
 All notable changes to Pico.
 
+## 1.4.2 — 2026-06-30
+
+### Added
+- Add Pi-shaped image messages
+
+### Changed
+- Support generic provider auth selection
+- Use uuid v7 in host smoke send
+- Require send idempotency keys
+- Require explicit send mode
+- Stabilize send pointer lifecycle
+- Float composer above chat fade
+
+### Removed
+- Remove legacy host preference migration
+- Remove redundant send cancel binding
+
 ## 1.4.1 — 2026-06-30
 
 ### Added
