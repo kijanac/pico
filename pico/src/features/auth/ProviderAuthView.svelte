@@ -118,6 +118,17 @@
         <p class="type-meta text-[color:var(--color-danger)]">{auth.job.error}</p>
       {/if}
 
+      {#if auth.job.status === "select" && auth.job.selectOptions}
+        <div class="space-y-2">
+          <p class="type-copy text-[color:var(--color-fg-muted)]">{auth.job.selectMessage ?? "choose an option"}</p>
+          {#each auth.job.selectOptions as option (option.id)}
+            <ActionRow variant="card" class="hairline-b" onclick={() => auth.submit(option.id)}>
+              <span class="type-copy font-medium text-[color:var(--color-fg)]">{option.label}</span>
+            </ActionRow>
+          {/each}
+        </div>
+      {/if}
+
       {#if auth.job.status === "prompt" || auth.job.status === "manual"}
         <div>
           <label class="label mb-1.5 block" for="auth_input">{auth.job.promptMessage ?? "input"}</label>

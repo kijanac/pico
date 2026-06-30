@@ -31,7 +31,7 @@ export interface ProviderAuthState {
   start(provider: AuthProvider): Promise<void>;
   saveApiKey(): Promise<void>;
   refreshJob(): Promise<void>;
-  submit(): Promise<void>;
+  submit(value?: string): Promise<void>;
   cancel(): Promise<void>;
 }
 
@@ -136,11 +136,11 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     }
   }
 
-  async function submit(): Promise<void> {
+  async function submit(value = input): Promise<void> {
     const current = job;
     if (!current) return;
     await run(
-      submitAuthLoginInput(current.id, input).pipe(
+      submitAuthLoginInput(current.id, value).pipe(
         Effect.tap((next) => Effect.sync(() => { job = next; input = ""; opts.onError(null); })),
         Effect.catchAll(reportFailure),
       ),
@@ -184,5 +184,5 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
 }
 
 export function authJobShouldPoll(job: AuthLoginJob | null): boolean {
-  return !!job && !["success", "failed", "cancelled", "prompt", "manual"].includes(job.status);
+  return !!job && !["success", "failed", "cancelled", "select", "prompt", "manual"].includes(job.status);
 }

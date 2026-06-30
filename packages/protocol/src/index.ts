@@ -296,15 +296,23 @@ export type AuthProvider = typeof AuthProvider.Type;
 export const AuthProviders = Schema.Struct({ providers: Schema.Array(AuthProvider) });
 export type AuthProviders = typeof AuthProviders.Type;
 
+export const AuthSelectOption = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+});
+export type AuthSelectOption = typeof AuthSelectOption.Type;
+
 export const AuthLoginJob = Schema.Struct({
   id: Schema.String,
   providerId: Schema.String,
-  status: Schema.Literal("starting", "auth", "device", "prompt", "manual", "progress", "success", "failed", "cancelled"),
+  status: Schema.Literal("starting", "auth", "device", "select", "prompt", "manual", "progress", "success", "failed", "cancelled"),
   providerName: Schema.optional(Schema.String),
   authUrl: Schema.optional(Schema.String),
   instructions: Schema.optional(Schema.String),
   userCode: Schema.optional(Schema.String),
   verificationUri: Schema.optional(Schema.String),
+  selectMessage: Schema.optional(Schema.String),
+  selectOptions: Schema.optional(Schema.Array(AuthSelectOption)),
   promptMessage: Schema.optional(Schema.String),
   promptPlaceholder: Schema.optional(Schema.String),
   progress: Schema.optional(Schema.String),

@@ -115,7 +115,10 @@ export const ProviderAuthLive = Layer.effect(
               onProgress: (progress) => {
                 state.job = { ...state.job, status: "progress", progress };
               },
-              onSelect: async () => providerId,
+              onSelect: async (prompt) => {
+                state.job = { ...state.job, status: "select", selectMessage: prompt.message, selectOptions: [...prompt.options] };
+                return await new Promise<string | undefined>((resolve) => { state.resolveInput = (value) => resolve(value); });
+              },
               onPrompt: async (prompt) => {
                 state.job = { ...state.job, status: "prompt", promptMessage: prompt.message, promptPlaceholder: prompt.placeholder };
                 return await new Promise<string>((resolve) => { state.resolveInput = resolve; });

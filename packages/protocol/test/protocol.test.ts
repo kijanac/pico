@@ -2,6 +2,7 @@ import { Arbitrary, FastCheck, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   AssistantMessage,
+  AuthLoginJob,
   CompactionEntry,
   ImageContent,
   MessageUsage,
@@ -26,6 +27,7 @@ const WIRE_SCHEMAS: ReadonlyArray<readonly [string, Schema.Schema<any>]> = [
   ["MessageUsage", MessageUsage],
   ["UserMessage", UserMessage],
   ["AssistantMessage", AssistantMessage],
+  ["AuthLoginJob", AuthLoginJob],
   ["ToolCallMessage", ToolCallMessage],
   ["CompactionEntry", CompactionEntry],
   ["SessionMeta", SessionMeta],
@@ -80,6 +82,18 @@ describe("decoding rejects malformed input", () => {
     const log = emptyLog();
     reduceLog(log, event, 1);
     expect(log.entries[0]).toMatchObject({ kind: "user", text: "look", images: event.entry.images });
+  });
+
+  it("preserves provider auth select jobs", () => {
+    const job = {
+      id: "auth1",
+      providerId: "provider",
+      providerName: "Provider",
+      status: "select",
+      selectMessage: "Choose login method",
+      selectOptions: [{ id: "device_code", label: "Device code login" }],
+    } as const;
+    expect(Schema.decodeUnknownSync(AuthLoginJob)(job)).toStrictEqual(job);
   });
 
   it("preserves images on queue snapshots", () => {
