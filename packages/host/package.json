@@ -1,6 +1,6 @@
 {
   "name": "@pico/host",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "type": "module",
   "main": "./dist/pico-host.js",
   "types": "./dist/pico-host.d.ts",

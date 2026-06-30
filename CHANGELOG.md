@@ -2,6 +2,11 @@
 
 All notable changes to Pico.
 
+## 1.4.5 — 2026-06-30
+
+### Added
+- Add composer scroll scrim
+
 ## 1.4.4 — 2026-06-30
 
 ### Removed
