@@ -95,13 +95,14 @@ export const hostRegistryState = {
       const normalized = cleanHostUrl(url);
       const existing = hosts.find((host) => host.url === normalized);
       const now = Date.now();
-      const host = existing
-        ? { ...existing, name: existing.name || hostNameFromUrl(normalized), lastSeenAt: now, ...(systemInfo ? { systemInfo } : {}) }
-        : makeHost(normalized, systemInfo);
-
-      hosts = existing
-        ? hosts.map((candidate) => (candidate.id === existing.id ? host : candidate))
-        : [...hosts, host];
+      const host = existing ?? makeHost(normalized, systemInfo);
+      if (existing) {
+        existing.name ||= hostNameFromUrl(normalized);
+        existing.lastSeenAt = now;
+        if (systemInfo) existing.systemInfo = systemInfo;
+      } else {
+        hosts.push(host);
+      }
       if (!defaultHostId) defaultHostId = host.id;
       await saveHosts();
       error = null;
@@ -120,8 +121,19 @@ export const hostRegistryState = {
     await saveHosts();
   },
 
+  async renameHost(hostId: string, name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("Host name is required");
+    const host = hosts.find((candidate) => candidate.id === hostId);
+    if (!host) return;
+    host.name = trimmed;
+    await saveHosts();
+  },
+
   async removeHost(hostId: string): Promise<void> {
-    hosts = hosts.filter((host) => host.id !== hostId);
+    const index = hosts.findIndex((host) => host.id === hostId);
+    if (index === -1) return;
+    hosts.splice(index, 1);
     if (defaultHostId === hostId) {
       const nextDefault = hosts.at(0);
       defaultHostId = nextDefault ? nextDefault.id : null;

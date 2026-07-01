@@ -82,6 +82,10 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
   function onTouchStart(event: TouchEvent): void {
     if (event.touches.length !== 1 || isIgnoredTarget(event.target)) return;
 
+    // If a previous touch sequence was dropped by the WebView/browser, do not
+    // let its partial transform poison the next interaction.
+    if (tracking) finish(false);
+
     const touch = event.touches[0];
     if (!touch || touch.clientX > EDGE_WIDTH) return;
 
@@ -179,11 +183,19 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
 
   const onTouchEnd = () => finish();
   const onTouchCancel = () => finish(false);
+  const onWindowBlur = () => finish(false);
+  const onVisibilityChange = () => {
+    if (document.hidden) finish(false);
+  };
 
   options.page.addEventListener("touchstart", onTouchStart, { passive: true });
   options.page.addEventListener("touchmove", onTouchMove, { passive: false });
   options.page.addEventListener("touchend", onTouchEnd, { passive: true });
   options.page.addEventListener("touchcancel", onTouchCancel, { passive: true });
+  window.addEventListener("touchend", onTouchEnd, { passive: true });
+  window.addEventListener("touchcancel", onTouchCancel, { passive: true });
+  window.addEventListener("blur", onWindowBlur);
+  document.addEventListener("visibilitychange", onVisibilityChange);
 
   return {
     destroy(): void {
@@ -191,6 +203,10 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
       options.page.removeEventListener("touchmove", onTouchMove);
       options.page.removeEventListener("touchend", onTouchEnd);
       options.page.removeEventListener("touchcancel", onTouchCancel);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchcancel", onTouchCancel);
+      window.removeEventListener("blur", onWindowBlur);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       if (navTimer !== undefined) window.clearTimeout(navTimer);
       if (settleTimer !== undefined) window.clearTimeout(settleTimer);
       reset();

@@ -55,14 +55,14 @@ const visibleCount = $derived(sessions.length);
 
 const recordError = (host: HostProfile, caught: unknown) =>
   classifyHostFailure(caught, { url: host.url }).pipe(
-    Effect.andThen((issue) => Effect.sync(() => { errorsByHost = { ...errorsByHost, [host.id]: issue }; })),
+    Effect.andThen((issue) => Effect.sync(() => { errorsByHost[host.id] = issue; })),
   );
 
 async function recordHostError(host: HostProfile, caught: unknown): Promise<void> {
   try {
     await runOnHost(host.id, recordError(host, caught));
   } catch {
-    errorsByHost = { ...errorsByHost, [host.id]: classifyHostIssue(caught, { url: host.url }) };
+    errorsByHost[host.id] = classifyHostIssue(caught, { url: host.url });
   }
 }
 
@@ -73,30 +73,30 @@ function hostOrThrow(hostId: string): HostProfile {
 }
 
 function removeLocal(hostId: string, sessionId: string): void {
-  sessionsByHost = {
-    ...sessionsByHost,
-    [hostId]: (sessionsByHost[hostId] ?? []).filter((session) => session.id !== sessionId),
-  };
+  const current = sessionsByHost[hostId];
+  if (!current) return;
+  const index = current.findIndex((session) => session.id === sessionId);
+  if (index !== -1) current.splice(index, 1);
 }
 
 function replaceSession(hostId: string, session: SessionMeta): void {
-  const current = sessionsByHost[hostId] ?? [];
+  const current = sessionsByHost[hostId];
+  if (!current) {
+    sessionsByHost[hostId] = [session];
+    return;
+  }
   const index = current.findIndex((candidate) => candidate.id === session.id);
-  sessionsByHost = {
-    ...sessionsByHost,
-    [hostId]: index === -1
-      ? [session, ...current]
-      : current.map((candidate) => (candidate.id === session.id ? session : candidate)),
-  };
+  if (index === -1) current.unshift(session);
+  else current[index] = session;
 }
 
 async function refreshHost(host: HostProfile): Promise<void> {
   try {
     const list = await runOnHost(host.id, loadSessionList({ archived: archivedView }));
-    sessionsByHost = { ...sessionsByHost, [host.id]: [...list] };
-    errorsByHost = { ...errorsByHost, [host.id]: undefined };
+    sessionsByHost[host.id] = [...list];
+    errorsByHost[host.id] = undefined;
   } catch (caught) {
-    sessionsByHost = { ...sessionsByHost, [host.id]: [] };
+    sessionsByHost[host.id] = [];
     await recordHostError(host, caught);
   }
 }
@@ -107,7 +107,7 @@ async function mutate<A, E>(hostId: string, sessionId: string, effect: Effect.Ef
   mutatingSessionKey = `${hostId}:${sessionId}`;
   try {
     const result = await runOnHost(hostId, effect);
-    errorsByHost = { ...errorsByHost, [hostId]: undefined };
+    errorsByHost[hostId] = undefined;
     return result;
   } catch (caught) {
     await recordHostError(host, caught);
@@ -127,14 +127,14 @@ export const sessionListState = {
   get hostIssues() { return hostIssues; },
   get error() { return hostIssues[0]?.issue ?? null; },
 
-  clearError(): void { errorsByHost = {}; },
-  clearHostError(hostId: string): void { errorsByHost = { ...errorsByHost, [hostId]: undefined }; },
+  clearError(): void {
+    for (const hostId of Object.keys(errorsByHost)) delete errorsByHost[hostId];
+  },
+  clearHostError(hostId: string): void { errorsByHost[hostId] = undefined; },
   upsert(hostId: string, session: SessionMeta): void { replaceSession(hostId, session); },
   patchLocal(hostId: string, sessionId: string, patch: Partial<SessionMeta>): void {
-    sessionsByHost = {
-      ...sessionsByHost,
-      [hostId]: (sessionsByHost[hostId] ?? []).map((session) => (session.id === sessionId ? { ...session, ...patch } : session)),
-    };
+    const session = sessionsByHost[hostId]?.find((candidate) => candidate.id === sessionId);
+    if (session) Object.assign(session, patch);
   },
   removeLocal,
 
@@ -172,8 +172,8 @@ export const sessionListState = {
         }),
       );
       archivedView = false;
-      sessionsByHost = { ...sessionsByHost, [input.hostId]: [...result.list] };
-      errorsByHost = { ...errorsByHost, [input.hostId]: undefined };
+      sessionsByHost[input.hostId] = [...result.list];
+      errorsByHost[input.hostId] = undefined;
       return { hostId: host.id, hostName: host.name, session: result.session };
     } catch (caught) {
       await recordHostError(host, caught);

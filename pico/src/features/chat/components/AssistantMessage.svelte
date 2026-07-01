@@ -11,6 +11,7 @@
   import { navigateSessionTree } from "@/features/chat/api";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
   import { runOnHost } from "@/shared/lib/rpc-client";
+  import { copyText as copyClipboardText } from "@/shared/mobile/clipboard";
 
   let { msg, hostId, sessionId }: { msg: AssistantMessage; hostId: string; sessionId: string } = $props();
 
@@ -23,7 +24,7 @@
   const showActions = $derived(!msg.streaming && msg.text.length > 0);
 
   async function copyText(): Promise<void> {
-    await navigator.clipboard?.writeText(msg.text);
+    await copyClipboardText(msg.text);
     copied = true;
     window.setTimeout(() => {
       copied = false;

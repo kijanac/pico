@@ -100,6 +100,14 @@
     return mc.options.find((option) => option.value === mc.value)?.label ?? mc.value;
   });
 
+  function replaceImages(next: readonly ImageContent[] | undefined): void {
+    images.splice(0, images.length, ...(cloneImageContent(next) ?? []));
+  }
+
+  function clearImages(): void {
+    images.length = 0;
+  }
+
   async function loadControls(): Promise<void> {
     try {
       controls = await runOnHost(hostId, getSessionSettings(sessionId));
@@ -139,7 +147,7 @@
     draftEditVersion += 1;
     value = request.text;
     cursor = request.text.length;
-    images = cloneImageContent(request.images) ?? [];
+    replaceImages(request.images);
     textBeforeRecording = "";
     requestAnimationFrame(() => {
       textarea?.focus();
@@ -192,7 +200,7 @@
     draftLoadedFor = null;
     value = "";
     cursor = 0;
-    images = [];
+    clearImages();
     textBeforeRecording = "";
 
     const draftText = await loadChatDraft(nextHostId, nextSessionId).catch(() => "");
@@ -220,7 +228,7 @@
     chatLogState.appendLocalEcho(hostId, sessionId, event);
     value = "";
     cursor = 0;
-    images = [];
+    clearImages();
     textBeforeRecording = "";
     void clearChatDraft(hostId, sessionId);
     haptics.light();
@@ -335,7 +343,8 @@
   function addImages(next: readonly ImageContent[]): void {
     const cloned = cloneImageContent(next);
     if (!cloned) return;
-    images = [...images, ...cloned].slice(0, MAX_IMAGES);
+    images.push(...cloned);
+    if (images.length > MAX_IMAGES) images.splice(MAX_IMAGES);
     draftEditVersion += 1;
   }
 
@@ -363,7 +372,8 @@
   }
 
   function removeImage(index: number): void {
-    images = images.filter((_, candidate) => candidate !== index);
+    if (index < 0 || index >= images.length) return;
+    images.splice(index, 1);
     draftEditVersion += 1;
   }
 

@@ -310,9 +310,9 @@
     background: linear-gradient(
       to bottom,
       transparent 0,
-      color-mix(in srgb, var(--color-bg) 36%, transparent) 2.5rem,
-      color-mix(in srgb, var(--color-bg) 84%, transparent) 4rem,
-      var(--color-bg) 100%
+      color-mix(in srgb, var(--color-bg) 18%, transparent) 35%,
+      color-mix(in srgb, var(--color-bg) 52%, transparent) 72%,
+      color-mix(in srgb, var(--color-bg) 86%, transparent) 100%
     );
   }
 

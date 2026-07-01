@@ -57,7 +57,7 @@
     <div class="relative max-w-[85%] min-w-0">
       <button
         type="button"
-        class="type-message font-readable w-full min-w-0 overflow-hidden break-words rounded-[var(--radius-md)] border border-dashed border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)] px-3 py-2 pr-8 text-right text-[color:var(--color-fg-muted)] opacity-90 transition-opacity duration-200 active:opacity-70 disabled:opacity-60"
+        class="type-message font-readable w-full min-w-0 overflow-hidden break-words rounded-[var(--radius-md)] border border-dashed border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)] px-3 py-2 pr-8 text-left text-[color:var(--color-fg-muted)] opacity-90 transition-opacity duration-200 active:opacity-70 disabled:opacity-60"
         disabled={queueActionBusy !== null}
         onclick={() => void removeQueued(queuedMessage, { recall: true })}
         aria-label="Edit queued message"

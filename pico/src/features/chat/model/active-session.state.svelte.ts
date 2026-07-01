@@ -85,7 +85,7 @@ export const activeSessionState = {
     activeSessionId = sessionId;
     activeStatus = "idle";
     compacting = false;
-    extensionUiRequests = [];
+    extensionUiRequests.length = 0;
     clearNotification();
     retryState.reset();
   },
@@ -97,7 +97,7 @@ export const activeSessionState = {
     activeSessionId = null;
     activeStatus = "idle";
     compacting = false;
-    extensionUiRequests = [];
+    extensionUiRequests.length = 0;
     clearNotification();
     connectionStatus = "offline";
     activeSend = null;
@@ -118,7 +118,8 @@ export const activeSessionState = {
 
   respondToExtensionUi(id: string, value: string | boolean | null): void {
     activeSend?.({ t: "extension_ui_response", id, value });
-    extensionUiRequests = extensionUiRequests.filter((request) => request.id !== id);
+    const index = extensionUiRequests.findIndex((request) => request.id === id);
+    if (index !== -1) extensionUiRequests.splice(index, 1);
   },
 
   dismissExtensionNotification(): void {
@@ -156,7 +157,9 @@ export const activeSessionState = {
       if (request.kind === "notify") {
         showNotification(request);
       } else if (request.kind === "confirm" || request.kind === "select" || request.kind === "input") {
-        extensionUiRequests = [...extensionUiRequests.filter((existing) => existing.id !== request.id), request];
+        const index = extensionUiRequests.findIndex((existing) => existing.id === request.id);
+        if (index === -1) extensionUiRequests.push(request);
+        else extensionUiRequests[index] = request;
       }
       return;
     }

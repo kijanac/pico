@@ -36,15 +36,15 @@ export const chatQueueState = {
   },
 
   set(hostId: string, sessionId: string, queue: QueueState): void {
-    queues = { ...queues, [queueKey(hostId, sessionId)]: queueSnapshot(queue) };
+    queues[queueKey(hostId, sessionId)] = queueSnapshot(queue);
   },
 
   clear(hostId: string, sessionId: string): void {
-    queues = { ...queues, [queueKey(hostId, sessionId)]: queueSnapshot() };
+    queues[queueKey(hostId, sessionId)] = queueSnapshot();
   },
 
   applyWireEvent(hostId: string, sessionId: string, event: WireEvent): void {
     if (event.t !== "queue") return;
-    queues = { ...queues, [queueKey(hostId, sessionId)]: queueSnapshot({ queued: event.queued }) };
+    queues[queueKey(hostId, sessionId)] = queueSnapshot({ queued: event.queued });
   },
 };

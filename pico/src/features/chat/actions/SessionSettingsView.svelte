@@ -98,15 +98,22 @@
       {@render SelectRows(control.label, control.options, control.value, isSaving, onChange)}
     {/if}
   {:else if control.kind === "boolean"}
-    {@render ToggleRow(control.label, control.value, isSaving, onChange)}
+    {@render BooleanSegmented(control.label, control.value, isSaving, onChange)}
   {/if}
 {/snippet}
 
-{#snippet ToggleRow(label: string, checked: boolean, disabled: boolean, onChange: (checked: boolean) => void)}
-  <ActionRow variant="card" justify="between" disabled={disabled} onclick={() => onChange(!checked)}>
-    <span class="type-copy font-medium">{label}</span>
-    <span class={checked ? "type-meta text-[color:var(--color-accent)]" : "type-meta text-[color:var(--color-fg-muted)]"}>{checked ? "on" : "off"}</span>
-  </ActionRow>
+{#snippet BooleanSegmented(label: string, checked: boolean, disabled: boolean, onChange: (checked: boolean) => void)}
+  <div>
+    <div class="label mb-1.5">{label}</div>
+    <div class="grid grid-cols-2 gap-1 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-1">
+      <button type="button" disabled={disabled || !checked} onclick={() => onChange(false)} class={!checked ? "type-meta rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] px-2 py-2 font-medium text-[color:var(--color-bg)]" : "type-meta rounded-[var(--radius-sm)] px-2 py-2 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)] disabled:opacity-70"}>
+        off
+      </button>
+      <button type="button" disabled={disabled || checked} onclick={() => onChange(true)} class={checked ? "type-meta rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] px-2 py-2 font-medium text-[color:var(--color-bg)]" : "type-meta rounded-[var(--radius-sm)] px-2 py-2 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)] disabled:opacity-70"}>
+        on
+      </button>
+    </div>
+  </div>
 {/snippet}
 
 {#snippet Segmented(label: string, options: readonly { value: string; label: string; description?: string; disabled?: boolean }[], value: string, disabled: boolean, onChange: (value: string) => void)}

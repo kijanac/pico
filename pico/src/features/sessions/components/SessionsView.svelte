@@ -51,9 +51,22 @@
     onDelete?: (session: HostSessionMeta) => void;
   } = $props();
 
+  type DotTone = "muted" | "accent" | "warn" | "danger";
+
   const SESSION_ACTION_WIDTH = 58;
   const activeHostIssues = $derived(hostConfigured ? hostIssues : []);
   const firstHostIssue = $derived(activeHostIssues[0] ?? null);
+
+  function sessionStatusTone(status: HostSessionMeta["session"]["status"]): DotTone {
+    if (status === "thinking" || status === "tool") return "accent";
+    if (status === "waiting") return "warn";
+    if (status === "error") return "danger";
+    return "muted";
+  }
+
+  function sessionStatusActive(status: HostSessionMeta["session"]["status"]): boolean {
+    return status === "thinking" || status === "tool";
+  }
 
   function closeOpenSwipeRow(event: Event): void {
     if (!interactive || !openSwipeSessionId) return;
@@ -189,7 +202,7 @@
   <div class="flex items-center gap-2 bg-[color:var(--color-bg)] px-3 py-3 active:bg-[color:var(--color-surface)]">
     <button type="button" class="min-w-0 flex-1 text-left" onclick={() => onOpenSession(item)}>
       <div class="mb-1 flex items-center gap-2">
-        <StatusDot status={item.session.status} />
+        <StatusDot tone={sessionStatusTone(item.session.status)} active={sessionStatusActive(item.session.status)} label={item.session.status} />
         <span class="type-title min-w-0 flex-1 truncate">{item.session.title}</span>
         <span class="type-label uppercase tracking-[0.08em] tabular-nums text-[color:var(--color-fg-faint)]">{relativeTime(item.session.updatedAt)}</span>
       </div>

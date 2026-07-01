@@ -45,6 +45,16 @@
         : stats.contextUsage,
     };
   });
+  const statusDotTone = $derived(
+    activeSessionState.status === "thinking" || activeSessionState.status === "tool"
+      ? "accent"
+      : activeSessionState.status === "waiting"
+        ? "warn"
+        : activeSessionState.status === "error"
+          ? "danger"
+          : "muted",
+  );
+  const statusDotActive = $derived(activeSessionState.status === "thinking" || activeSessionState.status === "tool");
 
   onMount(() => {
     markSessionOpen(timingId, "route-mounted");
@@ -103,7 +113,7 @@
     <div class="min-w-0 flex-1">
       {#if session}
         <div class="flex min-w-0 items-center gap-2">
-          <StatusDot status={activeSessionState.status} />
+          <StatusDot tone={statusDotTone} active={statusDotActive} label={activeSessionState.status} />
           <div class="min-w-0 flex-1">
             <div class="type-title truncate font-medium">{session.title}</div>
             <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">
@@ -135,7 +145,7 @@
       <MessageList {hostId} {sessionId} bottomInset={composerHeight} />
       <div
         class="composer-scroll-scrim pointer-events-none absolute inset-x-0 bottom-0 z-10"
-        style={`height: calc(${composerHeight}px + 4rem)`}
+        style={`height: ${composerHeight}px`}
         aria-hidden="true"
       ></div>
       <div bind:clientHeight={composerHeight} class="pointer-events-none absolute inset-x-0 bottom-0 z-30">

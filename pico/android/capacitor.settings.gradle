@@ -8,8 +8,14 @@ project(':capacitor-community-speech-recognition').projectDir = new File('../../
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File('../../node_modules/.pnpm/@capacitor+app@8.1.0_@capacitor+core@8.3.4/node_modules/@capacitor/app/android')
 
+include ':capacitor-barcode-scanner'
+project(':capacitor-barcode-scanner').projectDir = new File('../../node_modules/.pnpm/@capacitor+barcode-scanner@3.0.2_@capacitor+core@8.3.4/node_modules/@capacitor/barcode-scanner/android')
+
 include ':capacitor-camera'
 project(':capacitor-camera').projectDir = new File('../../node_modules/.pnpm/@capacitor+camera@8.2.0_@capacitor+core@8.3.4/node_modules/@capacitor/camera/android')
+
+include ':capacitor-clipboard'
+project(':capacitor-clipboard').projectDir = new File('../../node_modules/.pnpm/@capacitor+clipboard@8.0.1_@capacitor+core@8.3.4/node_modules/@capacitor/clipboard/android')
 
 include ':capacitor-filesystem'
 project(':capacitor-filesystem').projectDir = new File('../../node_modules/.pnpm/@capacitor+filesystem@8.1.2_@capacitor+core@8.3.4/node_modules/@capacitor/filesystem/android')
