@@ -15,6 +15,7 @@
   import { clearSessionQueue, getSessionQueue, getSessionSettings } from "@/features/chat/api";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
   import { runOnHost } from "@/shared/lib/rpc-client";
+  import { createLatest } from "@/shared/lib/latest";
   import { formatCost } from "@/shared/lib/format";
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
   import { Button } from "@/shared/ui/button";
@@ -58,8 +59,8 @@
   let queueLoading = $state(false);
   let queueError = $state<string | null>(null);
   let clearing = $state(false);
-  let queueRequestId = 0;
-  let draftLoadRequestId = 0;
+  const queueRequest = createLatest();
+  const draftLoadRequest = createLatest();
   let draftLoadedFor = $state<string | null>(null);
   let draftEditVersion = 0;
   let lastRecallRequestId = 0;
@@ -195,7 +196,7 @@
   }
 
   async function restoreDraft(nextHostId: string, nextSessionId: string, key: string): Promise<void> {
-    const requestId = ++draftLoadRequestId;
+    const token = draftLoadRequest.begin();
     const editVersion = draftEditVersion;
     draftLoadedFor = null;
     value = "";
@@ -204,7 +205,7 @@
     textBeforeRecording = "";
 
     const draftText = await loadChatDraft(nextHostId, nextSessionId).catch(() => "");
-    if (requestId !== draftLoadRequestId || key !== `${hostId}:${sessionId}`) return;
+    if (!draftLoadRequest.isCurrent(token) || key !== `${hostId}:${sessionId}`) return;
 
     if (draftEditVersion === editVersion) {
       value = draftText;
@@ -378,7 +379,7 @@
   }
 
   async function syncQueue(options: { showLoading?: boolean } = {}): Promise<void> {
-    const requestId = ++queueRequestId;
+    const token = queueRequest.begin();
     if (options.showLoading) {
       queueLoading = true;
       queueError = null;
@@ -386,13 +387,13 @@
 
     try {
       const next = await runOnHost(hostId, getSessionQueue(sessionId));
-      if (requestId !== queueRequestId) return;
+      if (!queueRequest.isCurrent(token)) return;
       chatQueueState.set(hostId, sessionId, next);
     } catch (error) {
-      if (requestId !== queueRequestId || !options.showLoading) return;
+      if (!queueRequest.isCurrent(token) || !options.showLoading) return;
       queueError = hostIssueSummary(error);
     } finally {
-      if (requestId === queueRequestId && options.showLoading) queueLoading = false;
+      if (queueRequest.isCurrent(token) && options.showLoading) queueLoading = false;
     }
   }
 

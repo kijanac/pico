@@ -15,6 +15,7 @@
   import type { SessionStats } from "@pico/protocol";
   import { getSessionStats } from "@/features/chat/api";
   import { runOnHost } from "@/shared/lib/rpc-client";
+  import { createLatest } from "@/shared/lib/latest";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
   import { cwdDisplayName } from "@/shared/lib/path-display";
   import StatusDot from "@/shared/components/StatusDot.svelte";
@@ -31,7 +32,7 @@
   let composerHeight = $state(0);
   let forceUnknownContext = $state(false);
   let invalidatedAtUsageVersion = 0;
-  let statsRequestId = 0;
+  const statsRequest = createLatest();
   let lastContextUsageInvalidationVersion = activeSessionState.contextUsageInvalidationVersion;
 
   const sessionItem = $derived(sessionListState.sessions.find((candidate) => candidate.hostId === hostId && candidate.session.id === sessionId) ?? null);
@@ -81,10 +82,10 @@
   });
 
   async function loadStats(): Promise<void> {
-    const requestId = ++statsRequestId;
+    const token = statsRequest.begin();
     try {
       const next = await runOnHost(hostId, getSessionStats(sessionId));
-      if (requestId === statsRequestId) {
+      if (statsRequest.isCurrent(token)) {
         stats = next;
         if (
           forceUnknownContext &&

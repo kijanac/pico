@@ -1,5 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import { slide } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
   import { Check, FileText, Loader2, Pencil, PlusSquare, Terminal, X } from "@lucide/svelte";
   import { hasToolDetails, type ToolCallMessage } from "@pico/protocol";
   import { shortPath } from "@/shared/lib/format";
@@ -7,6 +9,13 @@
   import ToolResult from "@/features/chat/components/ToolResult.svelte";
 
   let { msg }: { msg: ToolCallMessage } = $props();
+
+  // Expand/collapse the detail pane with a slide; instant when reduced motion is requested.
+  const detailSlide = (node: HTMLElement) =>
+    slide(node, {
+      duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 160,
+      easing: cubicOut,
+    });
   // svelte-ignore state_referenced_locally
   let open = $state(msg.toolKind === "builtin" && msg.tool === "edit");
   let detailScroller: HTMLDivElement | null = $state(null);
@@ -88,6 +97,7 @@
   {#if open && (isEdit || isCustom || hasResultPane)}
     <div
       bind:this={detailScroller}
+      transition:detailSlide
       class="scroll-momentum mt-1 overflow-y-auto overscroll-contain rounded-[var(--radius-sm)]"
       style={detailScrollStyle}
       aria-label={`${label} details`}

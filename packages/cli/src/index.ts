@@ -2,6 +2,7 @@
 import { Command, HelpDoc, Options, Span, ValidationError } from "@effect/cli";
 import { NodeContext, NodeRuntime } from "@effect/platform-node";
 import { Effect } from "effect";
+import { PRODUCT_VERSION } from "@pico/protocol";
 import { setupErrorMessage } from "./host/errors.ts";
 import { doctorCommand } from "./commands/doctor.ts";
 import { pairCodeCommand, pairCommand } from "./commands/pair.ts";
@@ -106,7 +107,7 @@ const pico = Command.make("pico").pipe(
 
 const cli = Command.run(pico, {
   name: "Pico host CLI",
-  version: "1.0.1",
+  version: PRODUCT_VERSION,
   footer: envFooter,
 });
 

@@ -2,6 +2,7 @@ import { untrack } from "svelte";
 import type { Commands, CommandEntry } from "@pico/protocol";
 import { listSessionCommands } from "@/features/chat/api";
 import { runOnHost } from "@/shared/lib/rpc-client";
+import { createLatest } from "@/shared/lib/latest";
 
 export type { CommandEntry };
 
@@ -31,7 +32,7 @@ export function createSlashCommandsState(
   let loading = $state(false);
   let error = $state<string | null>(null);
   let attemptedFor = $state<string | null>(null);
-  let requestId = 0;
+  const loadRequest = createLatest();
   let selectedIndex = $state(0);
 
   const query = $derived(slashCommandQuery(text(), cursor()));
@@ -53,19 +54,19 @@ export function createSlashCommandsState(
     const currentHost = hostId();
     const currentSession = sessionId();
     const currentKey = `${currentHost}:${currentSession}`;
-    const currentRequest = ++requestId;
+    const token = loadRequest.begin();
     loading = true;
     error = null;
 
     try {
       const next = await runOnHost(currentHost, listSessionCommands(currentSession));
-      if (currentRequest !== requestId) return;
+      if (!loadRequest.isCurrent(token)) return;
       commands = next;
     } catch (caught) {
-      if (currentRequest !== requestId) return;
+      if (!loadRequest.isCurrent(token)) return;
       error = String(caught);
     } finally {
-      if (currentRequest === requestId) {
+      if (loadRequest.isCurrent(token)) {
         attemptedFor = currentKey;
         loading = false;
       }

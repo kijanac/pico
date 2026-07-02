@@ -7,6 +7,7 @@
   import ActionRow from "@/shared/components/ActionRow.svelte";
   import { classifyHostFailure } from "@/shared/lib/host-issues";
   import { runOnHost } from "@/shared/lib/rpc-client";
+  import { createLatest } from "@/shared/lib/latest";
   import { Button } from "@/shared/ui/button";
 
   let { hostId, initial, onSelect }: { hostId: string; initial?: string; onSelect: (path: string) => void } = $props();
@@ -16,7 +17,7 @@
   let listing = $state<FsListing | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let listingRequestId = 0;
+  const listingRequest = createLatest();
 
   $effect(() => {
     hostId;
@@ -24,7 +25,7 @@
   });
 
   async function load(nextPath?: string): Promise<void> {
-    const requestId = ++listingRequestId;
+    const token = listingRequest.begin();
     loading = true;
     error = null;
     if (!hostRegistryState.loaded) await hostRegistryState.load();
@@ -39,7 +40,7 @@
       listDirectories(nextPath).pipe(
         Effect.tap((nextListing) =>
           Effect.sync(() => {
-            if (requestId !== listingRequestId || nextPath !== path) return;
+            if (!listingRequest.isCurrent(token) || nextPath !== path) return;
             listing = nextListing;
           }),
         ),
@@ -47,7 +48,7 @@
           classifyHostFailure(caught, { url: host.url }).pipe(
             Effect.andThen((issue) =>
               Effect.sync(() => {
-                if (requestId !== listingRequestId || nextPath !== path) return;
+                if (!listingRequest.isCurrent(token) || nextPath !== path) return;
                 error = `${issue.title}: ${issue.message}`;
               }),
             ),
@@ -55,7 +56,7 @@
         ),
       ),
     );
-    if (requestId === listingRequestId) loading = false;
+    if (listingRequest.isCurrent(token)) loading = false;
   }
 
   function drill(name: string): void {

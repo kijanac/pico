@@ -27,6 +27,12 @@ export const statusCommand = (options: { readonly mode?: ServiceMode; readonly s
       if (tailnetUrl) console.log(`tailnet:    ${tailnetUrl}`);
       console.log(`workspaces: ${adminStatus?.workspacesDir ?? paths.workspacesDir}`);
       console.log(`data:       ${adminStatus?.dataDir ?? paths.dataDir}`);
+      if (adminStatus?.system) {
+        const s = adminStatus.system;
+        console.log(
+          `host:       ${s.hostVersion} (protocol ${s.protocolVersion}, min mobile ${s.minMobileVersion}, channel ${s.updateChannel}, auto-update ${s.autoUpdate ? "on" : "off"})`,
+        );
+      }
       if (adminStatus) {
         console.log(`admin:      pid ${adminStatus.pid}, ${adminStatus.claimed ? `claimed by ${adminStatus.owners.join(", ")}` : "unclaimed"}`);
       } else {

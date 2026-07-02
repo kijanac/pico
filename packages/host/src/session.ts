@@ -639,12 +639,24 @@ const make = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       const ms = yield* lookupOrReattach(id);
-      // Duplicate of a send that already landed; the original user_message is the ack.
-      if ((yield* Ref.get(ms.seenClientIds)).includes(clientId)) return;
+      // Atomically claim this clientId. A duplicate is a send that already landed
+      // (the original user_message is the ack) — drop it before any work. Checking and
+      // claiming in one Ref.modify closes the retry-vs-ack race: without it, two
+      // concurrent sends with the same clientId both read an empty set and each mint a
+      // fresh userMessageId, double-posting the turn to pi. The claim is released below
+      // on any path that fails before the event is durably appended.
+      const duplicate = yield* Ref.modify(ms.seenClientIds, (seen) =>
+        seen.includes(clientId)
+          ? ([true, seen] as const)
+          : ([false, [...seen, clientId].slice(-MAX_SEEN_CLIENT_IDS)] as const),
+      );
+      if (duplicate) return;
+      const releaseClaim = Ref.update(ms.seenClientIds, (seen) => seen.filter((c) => c !== clientId));
       const currentMeta = yield* Ref.get(ms.meta);
       const compacting = (yield* Ref.get(ms.compacting)) || (yield* ms.pi.isCompacting());
       const queued = compacting || currentMeta.status === "thinking" || currentMeta.status === "tool";
       if (queued && (yield* Ref.get(ms.pendingSends)).length >= MAX_PENDING_SENDS) {
+        yield* releaseClaim;
         return yield* Effect.fail(new PiError({ message: `send queue full (${MAX_PENDING_SENDS})` }));
       }
       const userMessageId = randomUUIDv7();
@@ -660,8 +672,8 @@ const make = Effect.gen(function* () {
       };
       const entry: UserMessage = queued ? { ...baseEntry, queued: true, mode } : baseEntry;
       const userEvent: WireEvent = { t: "user_message", seq, entry };
-      yield* store.appendEvent(id, userEvent);
-      yield* Ref.update(ms.seenClientIds, (seen) => [...seen, clientId].slice(-MAX_SEEN_CLIENT_IDS));
+      // Release the claim if the event never lands, so a legitimate retry isn't swallowed.
+      yield* store.appendEvent(id, userEvent).pipe(Effect.tapError(() => releaseClaim));
       yield* PubSub.publish(ms.pubsub, userEvent);
 
       if (compacting) {

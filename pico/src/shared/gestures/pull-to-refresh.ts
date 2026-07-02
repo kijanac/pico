@@ -18,18 +18,22 @@ export function createPullToRefresh(container: HTMLElement, options: PullToRefre
   let crossed = false;
   let destroyed = false;
 
+  const reducedMotion = (): boolean => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
   function progress(): number {
     return Math.min(1, pull / THRESHOLD);
   }
 
   function render(): void {
     const visible = pull > 0 || refreshing;
+    const still = reducedMotion();
     options.indicator.hidden = !visible;
     options.indicator.style.height = `${pull}px`;
     options.indicator.style.transition = refreshing ? "height 120ms ease-out" : "none";
     options.icon.style.opacity = String(refreshing ? 1 : progress());
-    options.icon.style.transform = refreshing ? "" : `rotate(${progress() * 360}deg)`;
-    options.icon.style.animation = refreshing ? "spin 1s linear infinite" : "none";
+    // Skip the rotate-follow and the infinite spin under reduced motion; opacity alone conveys progress.
+    options.icon.style.transform = refreshing || still ? "" : `rotate(${progress() * 360}deg)`;
+    options.icon.style.animation = refreshing && !still ? "spin 1s linear infinite" : "none";
     options.content.style.transform = `translateY(${pull}px)`;
     options.content.style.transition = pull === 0 || refreshing ? "transform 120ms ease-out" : "none";
   }

@@ -67,7 +67,7 @@
       </button>
       <button
         type="button"
-        class="absolute right-1 top-1 flex size-6 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-faint)] active:bg-[color:var(--color-surface-2)] active:text-[color:var(--color-fg-muted)] disabled:opacity-50"
+        class="absolute right-1 top-1 flex size-6 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-faint)] before:absolute before:-inset-2.5 before:content-[''] active:bg-[color:var(--color-surface-2)] active:text-[color:var(--color-fg-muted)] disabled:opacity-50"
         disabled={queueActionBusy !== null}
         onclick={() => void removeQueued(queuedMessage, { recall: false })}
         aria-label="Remove queued message"

@@ -584,6 +584,21 @@
     50%       { opacity: 0.35; }
   }
 
+  /* Vestibular-safety: the infinite accent pulse (active-session dots, recording
+     mic) and the sheet slide/fade are motion, not information — neutralize them
+     for users who ask for reduced motion. The dot/mic still reads via its solid
+     accent color; sheets still open, just without the translate. */
+  @media (prefers-reduced-motion: reduce) {
+    .pulse-accent {
+      animation: none;
+      opacity: 1;
+    }
+    [data-slot="sheet-content"],
+    [data-slot="sheet-overlay"] {
+      animation: none !important;
+    }
+  }
+
   .label {
     font-size: var(--type-label);
     line-height: var(--type-label--line-height);
