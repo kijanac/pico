@@ -21,6 +21,6 @@
     },
     "types": ["svelte"]
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts", "capacitor.config.ts"],
+  "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts"],
   "exclude": ["src/lib/**", "src/stores/**"]
 }

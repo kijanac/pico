@@ -1,5 +1,3 @@
-import { getPreference, setPreference } from "@/shared/mobile/preferences";
-
 export type ThemeMode = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
 
@@ -49,7 +47,7 @@ export function initThemeSync(): void {
 
 export async function loadThemePreference(): Promise<void> {
   initThemeSync();
-  const saved = normalizeThemeMode(await getPreference(THEME_PREFERENCE_KEY).catch(() => null) ?? localStorageTheme());
+  const saved = normalizeThemeMode(localStorageTheme());
   mode = saved;
   applyTheme(mode);
   loaded = true;
@@ -62,7 +60,6 @@ export async function setThemeMode(nextMode: ThemeMode): Promise<void> {
     window.localStorage.setItem(THEME_PREFERENCE_KEY, mode);
   } catch {
   }
-  await setPreference(THEME_PREFERENCE_KEY, mode);
 }
 
 function applyTheme(nextMode: ThemeMode): void {

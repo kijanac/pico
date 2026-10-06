@@ -1,5 +1,3 @@
-import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
-import { Share } from "@capacitor/share";
 import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 import { sessionExportHtmlUrl } from "@/shared/lib/host-http";
 import { rpc } from "@/shared/lib/rpc-client";
@@ -40,31 +38,22 @@ export async function exportSessionHtml(hostId: string, sessionId: string): Prom
   }
 
   const filename = `pi-session-${safeFilenamePart(sessionId)}.html`;
-  const path = `exports/${filename}`;
-  await Filesystem.writeFile({
-    path,
-    directory: Directory.Cache,
-    data: await response.text(),
-    encoding: Encoding.UTF8,
-    recursive: true,
-  });
-  const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache });
-
-  try {
-    await Share.share({
-      title: filename,
-      files: [uri],
-      dialogTitle: "Export to HTML",
-    });
-    return true;
-  } catch (error) {
-    if (isShareCanceled(error)) return false;
-    throw error;
+  const file = new File([await response.blob()], filename, { type: "text/html" });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: filename });
+      return true;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return false;
+      // NotAllowedError: the tap's activation lapsed during the fetch; download instead.
+    }
   }
-}
-
-function isShareCanceled(error: unknown): boolean {
-  return error instanceof Error && error.message === "Share canceled";
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(file);
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+  return true;
 }
 
 export const getSessionTree = (sessionId: string) => rpc((c) => c.sessions.tree({ id: sessionId }));

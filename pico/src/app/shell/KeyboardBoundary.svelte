@@ -1,13 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { keyboardState, type KeyboardAvoidanceMode } from "@/shared/mobile/keyboard.svelte";
+  import { keyboardState } from "@/shared/mobile/keyboard.svelte";
 
-  let {
-    children,
-    mode = "manual",
-  }: { children?: import("svelte").Snippet; mode?: KeyboardAvoidanceMode } = $props();
+  let { children }: { children?: import("svelte").Snippet } = $props();
 
-  const bottomInset = $derived(mode === "manual" ? keyboardState.height : 0);
+  const bottomInset = $derived(keyboardState.height);
 
   $effect(() => {
     document.documentElement.style.setProperty("--keyboard-bottom-inset", `${bottomInset}px`);
@@ -16,18 +13,11 @@
 
   onMount(() => {
     keyboardState.install();
-    if (mode === "manual") keyboardState.acquireManualResize();
-
-    return () => {
-      if (mode === "manual") keyboardState.releaseManualResize();
-    };
   });
 </script>
 
 <div
   class="flex min-h-0 flex-1 flex-col"
-  data-keyboard-boundary
-  data-keyboard-mode={mode}
   style:--keyboard-bottom-inset={`${bottomInset}px`}
   style:padding-bottom={`${bottomInset}px`}
 >

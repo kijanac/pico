@@ -1,9 +1,8 @@
 import type { ImageContent } from "@pico/protocol";
 
-export const MAX_IMAGE_SIDE = 1600;
-export const OUTPUT_MIME = "image/jpeg";
-export const OUTPUT_QUALITY = 0.84;
-export const OUTPUT_QUALITY_PERCENT = Math.round(OUTPUT_QUALITY * 100);
+const MAX_IMAGE_SIDE = 1600;
+const OUTPUT_MIME = "image/jpeg";
+const OUTPUT_QUALITY = 0.84;
 
 export function cloneImageContent(images: readonly ImageContent[] | undefined): ImageContent[] | undefined {
   return images && images.length > 0

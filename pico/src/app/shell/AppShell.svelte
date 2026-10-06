@@ -8,7 +8,7 @@
 
 <MobileViewport>
   <AppLifecycle>
-    <KeyboardBoundary mode="manual">
+    <KeyboardBoundary>
       {@render children?.()}
     </KeyboardBoundary>
   </AppLifecycle>

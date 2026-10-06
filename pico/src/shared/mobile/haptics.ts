@@ -1,31 +1,11 @@
-import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
-
-function fire(effect: () => Promise<void>): void {
-  void effect().catch(() => {});
-}
+// The Vibration API; iOS Safari doesn't implement it, so these are silent there.
+const vibrate = (pattern: number | number[]) => {
+  navigator.vibrate?.(pattern);
+};
 
 export const haptics = {
-  light(): void {
-    fire(() => Haptics.impact({ style: ImpactStyle.Light }));
-  },
-
-  medium(): void {
-    fire(() => Haptics.impact({ style: ImpactStyle.Medium }));
-  },
-
-  heavy(): void {
-    fire(() => Haptics.impact({ style: ImpactStyle.Heavy }));
-  },
-
-  success(): void {
-    fire(() => Haptics.notification({ type: NotificationType.Success }));
-  },
-
-  warning(): void {
-    fire(() => Haptics.notification({ type: NotificationType.Warning }));
-  },
-
-  error(): void {
-    fire(() => Haptics.notification({ type: NotificationType.Error }));
-  },
+  light: () => vibrate(10),
+  medium: () => vibrate(20),
+  heavy: () => vibrate(30),
+  success: () => vibrate([10, 50, 10]),
 };
