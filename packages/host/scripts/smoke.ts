@@ -82,15 +82,21 @@ try {
     const spoofed = await fetch(`${baseUrl}/rpc`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify([{
+      body: JSON.stringify({
         _tag: "Request",
         id: "1",
         tag: "sessions.list",
         payload: {},
         headers: [["tailscale-user-login", "smoke@example.test"]],
-      }]),
+      }),
     });
     assert.equal(spoofed.status, 401, "an identity header inside an RPC message must not authenticate");
+    const crossSite = await fetch(`${baseUrl}/rpc`, {
+      method: "POST",
+      headers: { "content-type": "text/plain", origin: "https://evil.example", ...authHeaders },
+      body: JSON.stringify({ _tag: "Request", id: "1", tag: "sessions.list", payload: {}, headers: [] }),
+    });
+    assert.equal(crossSite.status, 403, "a cross-origin browser request must be refused");
 
     const fsListing = await call(client.fs.ls({ path: workspaceDir }));
     assert.equal(fsListing.path, workspaceDir);

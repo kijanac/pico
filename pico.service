@@ -1,11 +1,10 @@
 [Unit]
 Description=Pico host
-After=network-online.target
 
 [Service]
 WorkingDirectory=%h/work/pico
 ExecStart=%h/.local/share/mise/installs/node/26/bin/node packages/host/dist/main.js
-Restart=on-failure
+Restart=always
 RestartSec=3
 Environment=NODE_ENV=production
 Environment=PICO_OWNER=kijanac@github
