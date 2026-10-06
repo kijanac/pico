@@ -118,7 +118,7 @@
           <div class="min-w-0 flex-1">
             <div class="type-title truncate font-medium">{session.title}</div>
             <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">
-              {cwdDisplayName(session.cwd)}{#if sessionItem} · {sessionItem.hostName}{/if}{#if activeSessionState.execution === "terminal"} · terminal{:else if activeSessionState.execution === "transferring"} · moving to background{:else if activeSessionState.execution === "host"} · background{/if}
+              {cwdDisplayName(session.cwd)}{#if sessionItem} · {sessionItem.hostName}{/if}
             </div>
           </div>
         </div>

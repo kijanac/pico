@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Args, Command, HelpDoc, Options, Span, ValidationError } from "@effect/cli";
+import { Command, HelpDoc, Options, Span, ValidationError } from "@effect/cli";
 import { NodeContext, NodeRuntime } from "@effect/platform-node";
 import { Effect } from "effect";
 import { PRODUCT_VERSION } from "@pico/protocol";
@@ -15,9 +15,7 @@ import {
   uninstallCommand,
 } from "./commands/service.ts";
 import { serveCommand } from "./commands/serve.ts";
-import { resumeCommand } from "./commands/resume.ts";
 import { statusCommand } from "./commands/status.ts";
-import { setupCommand } from "./commands/setup.ts";
 
 // --user/--create-user apply only when installing a --system service.
 const systemMode = Options.boolean("system").pipe(
@@ -35,10 +33,6 @@ const tailscaleServe = Options.boolean("tailscale-serve").pipe(
 );
 const autoUpdate = Options.boolean("auto-update").pipe(
   Options.withDescription("Enable the release auto-update timer (--system only; user installs have no release updater)"),
-);
-
-const setup = Command.make("setup", {}, () => setupCommand).pipe(
-  Command.withDescription("Install the host service and Pi extension, configure Tailscale, and print pairing"),
 );
 
 const pair = Command.make("pair", {}, () => pairCommand).pipe(
@@ -88,12 +82,6 @@ const stop = Command.make("stop", { system: systemMode }, ({ system }) =>
   stopCommand({ mode: system ? "system" : "user" }),
 ).pipe(Command.withDescription("Stop the installed service"));
 
-const resume = Command.make(
-  "resume",
-  { session: Args.text({ name: "session-id-or-title" }) },
-  ({ session }) => resumeCommand(session),
-).pipe(Command.withDescription("Safely return a host-owned session (id, prefix, or exact title) to terminal Pi"));
-
 const logs = Command.make("logs", { system: systemMode }, ({ system }) =>
   logsCommand({ mode: system ? "system" : "user" }),
 ).pipe(Command.withDescription("Follow installed service logs"));
@@ -114,7 +102,7 @@ const envFooter = HelpDoc.sequence(
 
 const pico = Command.make("pico").pipe(
   Command.withDescription("Pico host CLI"),
-  Command.withSubcommands([setup, pair, pairCode, serve, doctor, status, install, uninstall, start, stop, resume, logs]),
+  Command.withSubcommands([pair, pairCode, serve, doctor, status, install, uninstall, start, stop, logs]),
 );
 
 const cli = Command.run(pico, {

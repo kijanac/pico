@@ -16,9 +16,6 @@ export const removeQueuedMessage = (sessionId: string, messageId: string) =>
 
 export const listSessionCommands = (sessionId: string) => rpc((c) => c.sessions.commands({ id: sessionId }));
 
-export const moveSessionToBackground = (sessionId: string) =>
-  rpc((c) => c.sessions.background({ id: sessionId }));
-
 export const getSessionSettings = (sessionId: string) => rpc((c) => c.sessions.controls({ id: sessionId }));
 
 export const patchSessionSetting = (sessionId: string, key: string, value: string | boolean) =>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Download, Info, KeyRound, Layers, ListTree, Settings } from "@lucide/svelte";
+  import { Download, Info, KeyRound, ListTree, Settings } from "@lucide/svelte";
   import ActionRow from "@/shared/components/ActionRow.svelte";
 
   let {
@@ -8,44 +8,31 @@
     onSettings,
     onInfo,
     onExport,
-    onBackground,
-    showTree,
-    showSettings,
-    showExport,
-    showBackground,
   }: {
     onAuth: () => void;
     onTree: () => void;
     onSettings: () => void;
     onInfo: () => void;
     onExport: () => void;
-    onBackground: () => void;
-    showTree: boolean;
-    showSettings: boolean;
-    showExport: boolean;
-    showBackground: boolean;
   } = $props();
 </script>
 
 <div class="space-y-1.5 px-3 py-3">
   {@render MenuItem("providers", onAuth, "auth")}
 
-  {#if showTree}
-    <div class="label px-1 pt-2">context</div>
-    {@render MenuItem("conversation tree", onTree, "tree")}
-  {/if}
+  <div class="label px-1 pt-2">context</div>
+  {@render MenuItem("conversation tree", onTree, "tree")}
 
   <div class="label px-1 pt-2">session</div>
-  {#if showBackground}{@render MenuItem("move session to background", onBackground, "background")}{/if}
-  {#if showSettings}{@render MenuItem("settings", onSettings, "settings")}{/if}
-  {#if showExport}{@render MenuItem("export to HTML", onExport, "export")}{/if}
+  {@render MenuItem("settings", onSettings, "settings")}
+  {@render MenuItem("export to HTML", onExport, "export")}
   {@render MenuItem("info", onInfo, "info")}
 </div>
 
-{#snippet MenuItem(title: string, onClick: () => void, icon: "auth" | "tree" | "settings" | "export" | "info" | "background")}
+{#snippet MenuItem(title: string, onClick: () => void, icon: "auth" | "tree" | "settings" | "export" | "info")}
   <ActionRow variant="card" onclick={onClick} class="hairline-b min-h-11 py-2.5">
     <span class="text-[color:var(--color-fg-muted)]">
-      {#if icon === "auth"}<KeyRound class="size-3.5" />{:else if icon === "tree"}<ListTree class="size-3.5" />{:else if icon === "settings"}<Settings class="size-3.5" />{:else if icon === "export"}<Download class="size-3.5" />{:else if icon === "background"}<Layers class="size-3.5" />{:else}<Info class="size-3.5" />{/if}
+      {#if icon === "auth"}<KeyRound class="size-3.5" />{:else if icon === "tree"}<ListTree class="size-3.5" />{:else if icon === "settings"}<Settings class="size-3.5" />{:else if icon === "export"}<Download class="size-3.5" />{:else}<Info class="size-3.5" />{/if}
     </span>
     <span class="type-copy min-w-0 flex-1 truncate font-medium">{title}</span>
   </ActionRow>

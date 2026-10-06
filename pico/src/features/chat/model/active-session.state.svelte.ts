@@ -1,4 +1,4 @@
-import type { ClientEvent, ExtensionUiRequest, SessionCapability, SessionMeta, WireEvent } from "@pico/protocol";
+import type { ClientEvent, ExtensionUiRequest, SessionMeta, WireEvent } from "@pico/protocol";
 import { retryState } from "@/features/chat/model/retry-state.svelte";
 
 export type ConnectionStatus = "offline" | "connecting" | "connected" | "reconnecting" | "gone";
@@ -8,9 +8,6 @@ export type ExtensionUiNotification = Extract<ExtensionUiRequest, { kind: "notif
 let activeHostId = $state<string | null>(null);
 let activeSessionId = $state<string | null>(null);
 let activeStatus = $state<SessionMeta["status"]>("idle");
-let activeCapabilities = $state<readonly SessionCapability[] | undefined>(undefined);
-let activeExecution = $state<SessionMeta["execution"]>(undefined);
-let activeCanBackground = $state(false);
 let connectionStatus = $state<ConnectionStatus>("offline");
 let compacting = $state(false);
 let contextUsageInvalidationVersion = $state(0);
@@ -55,25 +52,12 @@ export const activeSessionState = {
     return activeStatus;
   },
 
-  get execution() {
-    return activeExecution;
-  },
-
-  get canBackground() {
-    return activeCanBackground;
-  },
-
   get connectionStatus() {
     return connectionStatus;
   },
 
   get compacting() {
     return compacting;
-  },
-
-  supports(capability: SessionCapability): boolean {
-    // Older/native hosts omit the field and expose the complete session API.
-    return activeCapabilities === undefined || activeCapabilities.includes(capability);
   },
 
   get contextUsageInvalidationVersion() {
@@ -100,9 +84,6 @@ export const activeSessionState = {
     activeHostId = hostId;
     activeSessionId = sessionId;
     activeStatus = "idle";
-    activeCapabilities = undefined;
-    activeExecution = undefined;
-    activeCanBackground = false;
     compacting = false;
     extensionUiRequests.length = 0;
     clearNotification();
@@ -115,9 +96,6 @@ export const activeSessionState = {
     activeHostId = null;
     activeSessionId = null;
     activeStatus = "idle";
-    activeCapabilities = undefined;
-    activeExecution = undefined;
-    activeCanBackground = false;
     compacting = false;
     extensionUiRequests.length = 0;
     clearNotification();
@@ -132,10 +110,6 @@ export const activeSessionState = {
 
   setStatus(status: SessionMeta["status"]): void {
     activeStatus = status;
-  },
-
-  setExecution(execution: SessionMeta["execution"]): void {
-    activeExecution = execution;
   },
 
   setSend(send: ((event: ClientEvent) => void) | null): void {
@@ -160,9 +134,6 @@ export const activeSessionState = {
     // the old process) doesn't leave the spinner stuck.
     if (event.t === "hello") {
       activeStatus = event.session.status;
-      activeCapabilities = event.session.capabilities;
-      activeExecution = event.session.execution;
-      activeCanBackground = event.session.canBackground === true;
       return;
     }
 

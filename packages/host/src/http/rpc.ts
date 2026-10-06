@@ -13,7 +13,7 @@ import {
 import { authorizeHeaders, claimPicoHostOwner } from "../auth.ts";
 import { HostClaimError, SessionNotFound as InternalSessionNotFound } from "../errors.ts";
 import { listFs } from "../fs.ts";
-import { PiError } from "../session-runtime.ts";
+import { PiError } from "../pi.ts";
 import { ProviderAuth } from "../provider-auth.ts";
 import { SessionManager } from "../session.ts";
 import { hostSystemInfo, readUpdateStatus, requestHostUpdate } from "./system.ts";
@@ -86,7 +86,6 @@ const HandlersLive = PicoRpc.toLayer({
   "sessions.tree": ({ id }) => onSessions((m) => m.getTree(id)),
   "sessions.navigateTree": ({ id, entryId, summarize }) => onSessions((m) => m.navigateTree(id, entryId, summarize)),
   "sessions.commands": ({ id }) => onSessions((m) => m.listCommands(id)),
-  "sessions.background": ({ id }) => onSessions((m) => m.requestBackground(id)),
 
   "auth.providers": () => onProvider((a) => a.listProviders()),
   "auth.startLogin": ({ providerId }) => onProvider((a) => a.startLogin(providerId)),

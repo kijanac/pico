@@ -16,9 +16,6 @@ export {
 export const SessionStatus = Schema.Literal("idle", "thinking", "tool", "waiting", "error");
 export type SessionStatus = typeof SessionStatus.Type;
 
-export const SessionExecution = Schema.Literal("terminal", "transferring", "host");
-export type SessionExecution = typeof SessionExecution.Type;
-
 export const SendMode = Schema.Literal("steer", "follow_up");
 export type SendMode = typeof SendMode.Type;
 
@@ -254,22 +251,6 @@ export const LogPage = Schema.Struct({
 export type LogPage = typeof LogPage.Type;
 
 
-export const SessionCapability = Schema.Literal(
-  "archive",
-  "rename",
-  "images",
-  "interrupt",
-  "settings",
-  "stats",
-  "compact",
-  "queue",
-  "commands",
-  "tree",
-  "export",
-  "extension-ui",
-);
-export type SessionCapability = typeof SessionCapability.Type;
-
 export const SessionMeta = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
@@ -279,14 +260,6 @@ export const SessionMeta = Schema.Struct({
   tokens: Schema.Struct({ in: Schema.Number, out: Schema.Number }),
   costUsd: Schema.Number,
   archived: Schema.Boolean,
-  // Optional for compatibility with hosts predating explicit execution ownership.
-  execution: Schema.optional(SessionExecution),
-  // Kept outside capabilities so older mobile schemas can ignore this additive
-  // field instead of rejecting an unknown capability literal.
-  canBackground: Schema.optional(Schema.Boolean),
-  // Undefined means the full host-owned capability set for compatibility.
-  // Attached sessions declare the smaller set their Pi extension can honor.
-  capabilities: Schema.optional(Schema.Array(SessionCapability)),
 });
 export type SessionMeta = typeof SessionMeta.Type;
 
@@ -554,8 +527,6 @@ export const SystemInfo = Schema.Struct({
   recommendedMobileVersion: Schema.String,
   updateChannel: Schema.String,
   autoUpdate: Schema.Boolean,
-  piVersion: Schema.optional(Schema.String),
-  supportedTerminalPiRange: Schema.optional(Schema.String),
 });
 export type SystemInfo = typeof SystemInfo.Type;
 
@@ -667,178 +638,6 @@ export const WireEvent = Schema.Union(
   }),
 );
 export type WireEvent = typeof WireEvent.Type;
-
-// Local NDJSON channel used by a Pi extension to lend its live session to
-// pico-host. While attached, the terminal remains the sole AgentSession owner.
-// Ownership can move to the host only through the process-exit handoff below.
-export const PICO_ATTACH_PROTOCOL_VERSION = 3 as const;
-
-export const PicoAttachHello = Schema.Struct({
-  t: Schema.Literal("hello"),
-  version: Schema.Literal(1, 2, PICO_ATTACH_PROTOCOL_VERSION),
-  // Protocol 3 always sends this. It remains optional so current hosts can
-  // continue accepting protocol 1/2 for transient terminal presence.
-  piVersion: Schema.optional(Schema.NonEmptyString),
-  reclaimLeaseId: Schema.optional(Schema.NonEmptyString),
-  session: SessionMeta,
-  snapshot: Schema.Array(LogEntry),
-});
-export type PicoAttachHello = typeof PicoAttachHello.Type;
-
-export const PicoAttachEmission = Schema.Union(
-  Schema.Struct({ t: Schema.Literal("user_message"), entry: UserMessage }),
-  Schema.Struct({ t: Schema.Literal("assistant_delta"), id: Schema.String, text: Schema.String }),
-  Schema.Struct({
-    t: Schema.Literal("assistant_end"),
-    id: Schema.String,
-    at: Schema.Number,
-    text: Schema.String,
-    stopReason: Schema.optional(StopReason),
-    errorMessage: Schema.optional(Schema.String),
-    errorCode: Schema.optional(HostErrorCodeSchema),
-    usage: Schema.optional(MessageUsage),
-  }),
-  Schema.Struct({ t: Schema.Literal("tool_call"), entry: ToolCallMessage }),
-  Schema.Struct({
-    t: Schema.Literal("tool_update"),
-    id: Schema.String,
-    result: Schema.String,
-    resultContent: Schema.optional(Schema.Array(ToolResultContent)),
-    details: Schema.optional(Schema.Unknown),
-  }),
-  Schema.Struct({
-    t: Schema.Literal("tool_result"),
-    id: Schema.String,
-    result: Schema.String,
-    resultContent: Schema.optional(Schema.Array(ToolResultContent)),
-    details: Schema.optional(Schema.Unknown),
-    status: Schema.Literal("ok", "error"),
-    durationMs: Schema.Number,
-  }),
-  Schema.Struct({ t: Schema.Literal("compaction"), entry: CompactionEntry }),
-  Schema.Struct({ t: Schema.Literal("status"), status: SessionStatus }),
-  Schema.Struct({
-    t: Schema.Literal("cost"),
-    tokensIn: Schema.Number,
-    tokensOut: Schema.Number,
-    costUsd: Schema.Number,
-  }),
-);
-export type PicoAttachEmission = typeof PicoAttachEmission.Type;
-
-export const PicoAttachEvent = Schema.Struct({
-  t: Schema.Literal("event"),
-  event: PicoAttachEmission,
-});
-export type PicoAttachEvent = typeof PicoAttachEvent.Type;
-
-const PicoAttachRequestBase = {
-  t: Schema.Literal("request"),
-  id: Schema.String,
-};
-
-export const PicoAttachRequest = Schema.Union(
-  Schema.Struct({
-    ...PicoAttachRequestBase,
-    method: Schema.Literal("send"),
-    params: Schema.Struct({
-      text: Schema.String,
-      mode: SendMode,
-      clientId: Schema.String,
-      images: Schema.optional(Schema.Array(ImageContent)),
-    }),
-  }),
-  Schema.Struct({ ...PicoAttachRequestBase, method: Schema.Literal("interrupt") }),
-  Schema.Struct({
-    ...PicoAttachRequestBase,
-    method: Schema.Literal("patchSession"),
-    params: Schema.Struct({ title: Schema.String }),
-  }),
-  Schema.Struct({ ...PicoAttachRequestBase, method: Schema.Literal("getSettings") }),
-  Schema.Struct({
-    ...PicoAttachRequestBase,
-    method: Schema.Literal("patchSetting"),
-    params: Schema.Struct({ key: Schema.String, value: Schema.Union(Schema.String, Schema.Boolean) }),
-  }),
-  Schema.Struct({ ...PicoAttachRequestBase, method: Schema.Literal("getStats") }),
-  Schema.Struct({ ...PicoAttachRequestBase, method: Schema.Literal("background") }),
-);
-export type PicoAttachRequest = typeof PicoAttachRequest.Type;
-
-export const PicoAttachReady = Schema.Struct({
-  t: Schema.Literal("ready"),
-  sessionId: Schema.String,
-  hostPiVersion: Schema.optional(Schema.String),
-  backgroundCompatible: Schema.optional(Schema.Boolean),
-  backgroundIncompatibility: Schema.optional(Schema.String),
-});
-export type PicoAttachReady = typeof PicoAttachReady.Type;
-
-export const PicoAttachError = Schema.Struct({
-  t: Schema.Literal("error"),
-  error: Schema.String,
-});
-export type PicoAttachError = typeof PicoAttachError.Type;
-
-export const PicoAttachResponse = Schema.Union(
-  Schema.Struct({
-    t: Schema.Literal("response"),
-    id: Schema.String,
-    ok: Schema.Literal(true),
-    value: Schema.optional(Schema.Unknown),
-  }),
-  Schema.Struct({
-    t: Schema.Literal("response"),
-    id: Schema.String,
-    ok: Schema.Literal(false),
-    error: Schema.String,
-  }),
-);
-export type PicoAttachResponse = typeof PicoAttachResponse.Type;
-
-// Terminal -> host ownership transfer. The host acknowledges a generation
-// lease before Pi shuts down, then waits for ownerPid to exit before opening
-// the same JSONL through the SDK. This keeps the handoff single-writer.
-export const PicoAttachHandoffRequest = Schema.Struct({
-  t: Schema.Literal("handoff"),
-  id: Schema.NonEmptyString,
-  runtimeSessionId: Schema.NonEmptyString,
-  runtimeSessionFile: Schema.NonEmptyString,
-  ownerPid: Schema.Int.pipe(Schema.between(1, 2_147_483_647)),
-});
-export type PicoAttachHandoffRequest = typeof PicoAttachHandoffRequest.Type;
-
-export const PicoAttachHandoffResponse = Schema.Union(
-  Schema.Struct({
-    t: Schema.Literal("handoff_response"),
-    id: Schema.String,
-    ok: Schema.Literal(true),
-    leaseId: Schema.String,
-  }),
-  Schema.Struct({
-    t: Schema.Literal("handoff_response"),
-    id: Schema.String,
-    ok: Schema.Literal(false),
-    error: Schema.String,
-  }),
-);
-export type PicoAttachHandoffResponse = typeof PicoAttachHandoffResponse.Type;
-
-export const PicoAttachClientMessage = Schema.Union(
-  PicoAttachHello,
-  PicoAttachEvent,
-  PicoAttachResponse,
-  PicoAttachHandoffRequest,
-);
-export type PicoAttachClientMessage = typeof PicoAttachClientMessage.Type;
-
-export const PicoAttachHostMessage = Schema.Union(
-  PicoAttachRequest,
-  PicoAttachReady,
-  PicoAttachError,
-  PicoAttachHandoffResponse,
-);
-export type PicoAttachHostMessage = typeof PicoAttachHostMessage.Type;
 
 
 export const ClientEvent = Schema.Union(

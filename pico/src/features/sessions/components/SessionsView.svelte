@@ -68,10 +68,6 @@
     return status === "thinking" || status === "tool";
   }
 
-  function supports(item: HostSessionMeta, capability: "rename" | "archive"): boolean {
-    return item.session.capabilities === undefined || item.session.capabilities.includes(capability);
-  }
-
   function closeOpenSwipeRow(event: Event): void {
     if (!interactive || !openSwipeSessionId) return;
     const target = event.target;
@@ -197,8 +193,8 @@
 </main>
 
 {#snippet RowActions(item: HostSessionMeta)}
-  {#if supports(item, "rename")}<button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)]" onclick={() => onRename(item)} aria-label="Rename session"><Pencil class="size-4" /></button>{/if}
-  {#if supports(item, "archive")}<button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)]" onclick={() => void onToggleArchive(item)} aria-label={item.session.archived ? "Unarchive session" : "Archive session"}>{#if item.session.archived}<ArchiveRestore class="size-4" />{:else}<Archive class="size-4" />{/if}</button>{/if}
+  <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)]" onclick={() => onRename(item)} aria-label="Rename session"><Pencil class="size-4" /></button>
+  <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)]" onclick={() => void onToggleArchive(item)} aria-label={item.session.archived ? "Unarchive session" : "Archive session"}>{#if item.session.archived}<ArchiveRestore class="size-4" />{:else}<Archive class="size-4" />{/if}</button>
   <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-danger)] text-[color:var(--color-bg)]" onclick={() => onDelete(item)} aria-label="Delete session"><Trash2 class="size-4" /></button>
 {/snippet}
 
@@ -212,13 +208,6 @@
       </div>
       <div class="type-meta flex items-center gap-3 text-[color:var(--color-fg-muted)]">
         <span class="min-w-0 flex-1 truncate">{cwdDisplayName(item.session.cwd)}</span>
-        {#if item.session.execution === "terminal"}
-          <span class="shrink-0 text-[color:var(--color-fg-faint)]">terminal</span>
-        {:else if item.session.execution === "transferring"}
-          <span class="shrink-0 text-[color:var(--color-fg-faint)]">moving…</span>
-        {:else if item.session.execution === "host"}
-          <span class="shrink-0 text-[color:var(--color-fg-faint)]">background</span>
-        {/if}
         <span class="shrink-0 truncate text-[color:var(--color-fg-faint)]">{item.hostName}</span>
         <span class="shrink-0 tabular-nums">{formatCost(item.session.costUsd)}</span>
       </div>

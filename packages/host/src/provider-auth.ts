@@ -3,8 +3,7 @@ import { Context, Effect, Layer } from "effect";
 import type { AuthEvent, AuthInteraction, AuthPrompt } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AuthLoginJob, AuthProvider, AuthProviders } from "@pico/protocol";
-import { getAgentModelRuntime } from "./pi.ts";
-import { PiError } from "./session-runtime.ts";
+import { getAgentModelRuntime, PiError } from "./pi.ts";
 
 interface AuthJobState {
   job: AuthLoginJob;

@@ -11,8 +11,6 @@ const HostSystemInfo = Schema.Struct({
   recommendedMobileVersion: Schema.String,
   updateChannel: Schema.String,
   autoUpdate: Schema.Boolean,
-  piVersion: Schema.optional(Schema.String),
-  supportedTerminalPiRange: Schema.optional(Schema.String),
 });
 
 export const LocalAdminStatus = Schema.Struct({
@@ -36,25 +34,3 @@ export const LocalAdminPairing = Schema.Struct({
   tokenConfigured: Schema.Boolean,
 });
 export type LocalAdminPairingData = typeof LocalAdminPairing.Type;
-
-export const LocalAdminSessionReleaseRequest = Schema.Struct({
-  id: Schema.NonEmptyTrimmedString,
-});
-export type LocalAdminSessionReleaseRequestData = typeof LocalAdminSessionReleaseRequest.Type;
-
-export const LocalAdminSessionRelease = Schema.Union(
-  Schema.Struct({
-    ok: Schema.Literal(true),
-    id: Schema.String,
-    leaseId: Schema.String,
-    runtimeSessionId: Schema.String,
-    runtimeSessionFile: Schema.String,
-    cwd: Schema.String,
-    title: Schema.String,
-  }),
-  Schema.Struct({
-    ok: Schema.Literal(false),
-    error: Schema.String,
-  }),
-);
-export type LocalAdminSessionReleaseData = typeof LocalAdminSessionRelease.Type;

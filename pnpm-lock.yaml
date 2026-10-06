@@ -115,24 +115,6 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
-  packages/pi-extension:
-    devDependencies:
-      '@earendil-works/pi-ai':
-        specifier: ^0.84.3
-        version: 0.84.3(ws@8.21.0)(zod@4.4.3)
-      '@earendil-works/pi-coding-agent':
-        specifier: ^0.84.3
-        version: 0.84.3(ws@8.21.0)(zod@4.4.3)
-      '@pico/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      '@types/node':
-        specifier: ^25.9.1
-        version: 25.9.1(patch_hash=8a8fba69b9c79287eca025d33908156deded3c21f6bfc5de5e63e9bb4716d29c)
-      typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
-
   packages/protocol:
     dependencies:
       '@effect/platform':

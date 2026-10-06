@@ -32,9 +32,6 @@ export const statusCommand = (options: { readonly mode?: ServiceMode; readonly s
         console.log(
           `host:       ${s.hostVersion} (protocol ${s.protocolVersion}, min mobile ${s.minMobileVersion}, channel ${s.updateChannel}, auto-update ${s.autoUpdate ? "on" : "off"})`,
         );
-        if (s.piVersion) {
-          console.log(`pi runtime: ${s.piVersion}${s.supportedTerminalPiRange ? ` (terminal ${s.supportedTerminalPiRange})` : ""}`);
-        }
       }
       if (adminStatus) {
         console.log(`admin:      pid ${adminStatus.pid}, ${adminStatus.claimed ? `claimed by ${adminStatus.owners.join(", ")}` : "unclaimed"}`);

@@ -12,8 +12,6 @@ import { compress } from "./http/compression.ts";
 import { RawRoutesLive } from "./http/routes.ts";
 import { RpcRoutesLive, SessionWsRoutesLive } from "./http/rpc.ts";
 import { ensureLocalAdminToken } from "./local-admin.ts";
-import { startAttachServer, type AttachServerHandle } from "./attach-server.ts";
-import { SessionManager } from "./session.ts";
 import { TracingLive } from "./tracing.ts";
 
 export interface PicoHostOptions {
@@ -71,22 +69,6 @@ export function launchHttpServer(
     // Pre-generate the loopback admin token before the server accepts requests,
     // so the co-located CLI can read it the moment the host reports ready.
     yield* ensureLocalAdminToken();
-    const sessions = yield* SessionManager;
-    const attach = yield* Effect.acquireRelease(
-      Effect.tryPromise({
-        try: () => startAttachServer(sessions),
-        catch: (cause) => new Error(
-          `Pi attach server failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-          { cause },
-        ),
-      }).pipe(
-        Effect.catchAll((error) =>
-          Effect.logWarning(error.message).pipe(Effect.as<AttachServerHandle | undefined>(undefined)),
-        ),
-      ),
-      (handle) => handle ? Effect.promise(() => handle.close()).pipe(Effect.ignore) : Effect.void,
-    );
-    if (attach) yield* Effect.logInfo(`Pi attach socket listening at ${attach.socketPath}`);
     yield* Layer.build(ServerLive);
     yield* Effect.never;
   }).pipe(

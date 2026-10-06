@@ -14,10 +14,6 @@ export class Store extends Context.Tag("Store")<
   Store,
   {
     readonly insertSession: (record: SessionRecord) => Effect.Effect<void>;
-    readonly replaceSessionWithInitialEvent: (
-      record: SessionRecord,
-      event: WireEvent,
-    ) => Effect.Effect<void>;
     readonly getSession: (id: string) => Effect.Effect<Option.Option<SessionRecord>>;
     readonly listSessions: (filter?: { archived?: boolean }) => Effect.Effect<SessionRecord[]>;
     readonly updateSession: (
@@ -25,15 +21,10 @@ export class Store extends Context.Tag("Store")<
       patch: Partial<SessionRecord>,
     ) => Effect.Effect<void>;
     readonly deleteSession: (id: string) => Effect.Effect<void>;
-    readonly deletePresenceSessions: () => Effect.Effect<void>;
 
     readonly appendEvent: (
       sessionId: string,
       event: WireEvent,
-    ) => Effect.Effect<void>;
-    readonly replaceEventJournal: (
-      sessionId: string,
-      reset: Extract<WireEvent, { t: "log_reset" }>,
     ) => Effect.Effect<void>;
 
     readonly loadEventsAfter: (
@@ -61,10 +52,7 @@ const SCHEMA = `
     tokens_out  INTEGER NOT NULL DEFAULT 0,
     cost_usd    REAL    NOT NULL DEFAULT 0,
     created_at  INTEGER NOT NULL,
-    archived    INTEGER NOT NULL DEFAULT 0,
-    lifecycle   TEXT    NOT NULL DEFAULT 'durable' CHECK (lifecycle IN ('durable', 'presence')),
-    runtime_session_id TEXT NOT NULL,
-    runtime_session_file TEXT
+    archived    INTEGER NOT NULL DEFAULT 0
   ) STRICT;
 
   CREATE TABLE IF NOT EXISTS events (
@@ -100,9 +88,6 @@ const SessionRow = Schema.Struct({
   tokens_out: Schema.Number,
   cost_usd: Schema.Number,
   archived: Schema.Int,
-  lifecycle: Schema.Literal("durable", "presence"),
-  runtime_session_id: Schema.String,
-  runtime_session_file: Schema.NullOr(Schema.String),
   created_at: Schema.Number,
 });
 
@@ -119,9 +104,6 @@ const rowToRecord = (raw: unknown): SessionRecord => {
     tokens: { in: r.tokens_in, out: r.tokens_out },
     costUsd: r.cost_usd,
     archived: r.archived === 1,
-    lifecycle: r.lifecycle,
-    runtimeSessionId: r.runtime_session_id,
-    ...(r.runtime_session_file ? { runtimeSessionFile: r.runtime_session_file } : {}),
   };
 };
 
@@ -141,25 +123,6 @@ const make = (dbPath: string) =>
 
       d.exec(SCHEMA);
 
-      // Existing databases predate explicit lifecycle metadata. The prefix
-      // update is a one-way compatibility migration; runtime behavior below
-      // uses the parsed lifecycle field exclusively.
-      const sessionColumns = d.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>;
-      if (!sessionColumns.some((column) => column.name === "lifecycle")) {
-        d.exec("ALTER TABLE sessions ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'durable' CHECK (lifecycle IN ('durable', 'presence'))");
-        // Before lifecycle metadata existed, attached:* rows were necessarily
-        // transient. Run this backfill only once: handed-off durable sessions
-        // intentionally retain that logical id.
-        d.exec("UPDATE sessions SET lifecycle = 'presence' WHERE id LIKE 'attached:%'");
-      }
-      if (!sessionColumns.some((column) => column.name === "runtime_session_id")) {
-        d.exec("ALTER TABLE sessions ADD COLUMN runtime_session_id TEXT");
-      }
-      if (!sessionColumns.some((column) => column.name === "runtime_session_file")) {
-        d.exec("ALTER TABLE sessions ADD COLUMN runtime_session_file TEXT");
-      }
-      d.exec("UPDATE sessions SET runtime_session_id = id WHERE runtime_session_id IS NULL");
-
       // Non-terminal status from a prior (possibly crashed) run is stale at
       // boot; without this reset a session caught mid-turn shows a perpetual
       // "thinking" dot until reopened.
@@ -171,9 +134,8 @@ const make = (dbPath: string) =>
     const stmtUpsertSession: StatementSync = db.prepare(`
       INSERT OR REPLACE INTO sessions
         (id, title, cwd, status, updated_at,
-         tokens_in, tokens_out, cost_usd, created_at, archived, lifecycle,
-         runtime_session_id, runtime_session_file)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         tokens_in, tokens_out, cost_usd, created_at, archived)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const stmtGetSession: StatementSync = db.prepare(
@@ -227,19 +189,6 @@ const make = (dbPath: string) =>
       `DELETE FROM session_prune WHERE session_id = ?`,
     );
 
-    const deletePresenceSessions = () => {
-      db.exec("BEGIN");
-      try {
-        db.exec("DELETE FROM events WHERE session_id IN (SELECT id FROM sessions WHERE lifecycle = 'presence')");
-        db.exec("DELETE FROM session_prune WHERE session_id IN (SELECT id FROM sessions WHERE lifecycle = 'presence')");
-        db.exec("DELETE FROM sessions WHERE lifecycle = 'presence'");
-        db.exec("COMMIT");
-      } catch (error) {
-        db.exec("ROLLBACK");
-        throw error;
-      }
-    };
-
     return Store.of({
       insertSession: (record) =>
         Effect.sync(() => {
@@ -255,41 +204,7 @@ const make = (dbPath: string) =>
             record.costUsd,
             now,
             record.archived ? 1 : 0,
-            record.lifecycle,
-            record.runtimeSessionId,
-            record.runtimeSessionFile ?? null,
           );
-        }),
-
-      replaceSessionWithInitialEvent: (record, event) =>
-        Effect.sync(() => {
-          db.exec("BEGIN");
-          try {
-            stmtDeleteSessionEvents.run(record.id);
-            stmtDeletePrune.run(record.id);
-            stmtDeleteSession.run(record.id);
-            const now = Date.now();
-            stmtUpsertSession.run(
-              record.id,
-              record.title,
-              record.cwd,
-              record.status,
-              record.updatedAtMs,
-              record.tokens.in,
-              record.tokens.out,
-              record.costUsd,
-              now,
-              record.archived ? 1 : 0,
-              record.lifecycle,
-              record.runtimeSessionId,
-              record.runtimeSessionFile ?? null,
-            );
-            stmtInsertEvent.run(record.id, event.seq, event.t, JSON.stringify(event), now);
-            db.exec("COMMIT");
-          } catch (error) {
-            db.exec("ROLLBACK");
-            throw error;
-          }
         }),
 
       getSession: (id) =>
@@ -320,9 +235,6 @@ const make = (dbPath: string) =>
             merged.costUsd,
             existing.created_at,
             merged.archived ? 1 : 0,
-            merged.lifecycle,
-            merged.runtimeSessionId,
-            merged.runtimeSessionFile ?? null,
           );
         }),
 
@@ -340,8 +252,6 @@ const make = (dbPath: string) =>
           }
         }),
 
-      deletePresenceSessions: () => Effect.sync(deletePresenceSessions),
-
       appendEvent: (sessionId, event) =>
         Effect.sync(() => {
           stmtInsertEvent.run(
@@ -355,21 +265,6 @@ const make = (dbPath: string) =>
           if (boundary > 0 && event.seq % PRUNE_EVERY === 0) {
             const result = stmtPruneEvents.run(sessionId, boundary);
             if (result.changes > 0) stmtSetPrunedThrough.run(sessionId, boundary);
-          }
-        }),
-
-      replaceEventJournal: (sessionId, reset) =>
-        Effect.sync(() => {
-          db.exec("BEGIN");
-          try {
-            stmtDeleteSessionEvents.run(sessionId);
-            stmtDeletePrune.run(sessionId);
-            stmtInsertEvent.run(sessionId, reset.seq, reset.t, JSON.stringify(reset), Date.now());
-            if (reset.seq > 1) stmtSetPrunedThrough.run(sessionId, reset.seq - 1);
-            db.exec("COMMIT");
-          } catch (error) {
-            db.exec("ROLLBACK");
-            throw error;
           }
         }),
 

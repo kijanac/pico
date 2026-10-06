@@ -1,4 +1,6 @@
 import {
+  Context,
+  Data,
   Effect,
   Layer,
   Option,
@@ -24,14 +26,22 @@ import { FileSystem } from "@effect/platform";
 import {
   BashToolArgs,
   CustomToolArgs,
+  type Commands,
+  type CompactionEntry as ProtocolCompactionEntry,
   type ImageContent,
   EditToolArgs,
   type LogEntry,
   ReadToolArgs,
   WriteToolArgs,
+  type ExtensionUiRequest,
+  type ExtensionUiResponseValue,
+  type HostErrorCode,
+  type SendMode,
   type SessionControls,
+  type ToolResultContent,
   type SessionMeta,
   type SessionStats,
+  type SessionStatus,
   type SessionTree,
   type StopReason,
   type ToolCallMessage,
@@ -42,15 +52,130 @@ import { emptyLog, reconcileOrphanedToolCalls, reduceLog } from "@pico/protocol/
 import { SessionNotFound } from "./errors.ts";
 import { HOST_DATA_DIR, PI_EPHEMERAL } from "./config.ts";
 import { createMobileExtensionUiChannel } from "./mobile-extension-ui-channel.ts";
-import {
-  DurableRuntimeFactory,
-  PiError,
-  type DurableSessionRuntime,
-  type ExportedHtml,
-  type QueuedSend,
-  type SessionEmission,
-} from "./session-runtime.ts";
 import { projectToolResult, projectToolResultContent, textFromContent } from "./tool-result-projection.ts";
+
+
+export type SdkQueueState = Pick<Extract<AgentSessionEvent, { type: "queue_update" }>, "steering" | "followUp">;
+
+export type PiEmission =
+  | { t: "log_reset"; entries: LogEntry[] }
+  | { t: "assistant_delta"; id: string; text: string }
+  | {
+      t: "assistant_end";
+      id: string;
+      at: number;
+      text: string;
+      stopReason?:
+        | "stop"
+        | "length"
+        | "toolUse"
+        | "error"
+        | "aborted";
+      errorMessage?: string;
+      errorCode?: HostErrorCode;
+      usage?: PiAssistantMessage["usage"];
+    }
+  | { t: "tool_call"; entry: ToolCallMessage }
+  | {
+      t: "tool_update";
+      id: string;
+      result: string;
+      resultContent?: ToolResultContent[];
+      details?: unknown;
+    }
+  | {
+      t: "tool_result";
+      id: string;
+      result: string;
+      resultContent?: ToolResultContent[];
+      details?: unknown;
+      status: "ok" | "error";
+      durationMs: number;
+    }
+  | { t: "compaction"; entry: ProtocolCompactionEntry }
+  | { t: "status"; status: SessionStatus }
+  | ({ t: "queue" } & SdkQueueState)
+  | { t: "cost"; tokensIn: number; tokensOut: number; costUsd: number }
+  | {
+      t: "auto_retry_start";
+      attempt: number;
+      maxAttempts: number;
+      delayMs: number;
+      errorMessage: string;
+    }
+  | {
+      t: "auto_retry_end";
+      success: boolean;
+      attempt: number;
+      finalError?: string;
+    }
+  | { t: "extension_ui_request"; request: ExtensionUiRequest };
+
+export class PiError extends Data.TaggedError("PiError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+export type { SendMode } from "@pico/protocol";
+
+export interface ExportedHtml {
+  readonly stream: Stream.Stream<Uint8Array>;
+  readonly size?: number;
+  readonly filename?: string;
+}
+
+export interface QueuedSend {
+  readonly text: string;
+  readonly mode: SendMode;
+  readonly images?: ImageContent[];
+}
+
+export interface PiSession {
+  readonly meta: SessionMeta;
+  readonly events: Stream.Stream<PiEmission, PiError>;
+  readonly send: (
+    text: string,
+    mode: SendMode,
+    images?: ImageContent[],
+  ) => Effect.Effect<void, PiError>;
+  readonly isCompacting: () => Effect.Effect<boolean, PiError>;
+  readonly flushAfterCompaction: (
+    messages: readonly QueuedSend[],
+    opts?: { willRetry?: boolean },
+  ) => Effect.Effect<void, PiError>;
+  readonly interrupt: () => Effect.Effect<void, PiError>;
+  readonly extensionUiResponse: (
+    id: string,
+    value: ExtensionUiResponseValue,
+  ) => Effect.Effect<void, PiError>;
+  readonly compact: (instructions?: string) => Effect.Effect<void, PiError>;
+  readonly exportHtml: () => Effect.Effect<ExportedHtml, PiError>;
+  readonly listCommands: () => Effect.Effect<Commands, PiError>;
+  readonly getQueue: () => Effect.Effect<SdkQueueState, PiError>;
+  readonly clearQueue: () => Effect.Effect<SdkQueueState, PiError>;
+  readonly getSettings: () => Effect.Effect<SessionControls, PiError>;
+  readonly patchSession: (patch: { title?: string }) => Effect.Effect<void, PiError>;
+  readonly patchSetting: (key: string, value: string | boolean) => Effect.Effect<SessionControls, PiError>;
+  readonly getStats: () => Effect.Effect<SessionStats, PiError>;
+  readonly getLog: () => Effect.Effect<LogEntry[], PiError>;
+  readonly getTree: () => Effect.Effect<SessionTree, PiError>;
+  readonly navigateTree: (entryId: string, summarize?: boolean) => Effect.Effect<void, PiError>;
+  readonly close: () => Effect.Effect<void>;
+}
+
+export class PiClient extends Context.Tag("PiClient")<
+  PiClient,
+  {
+    readonly create: (opts: {
+      cwd: string;
+      title: string;
+    }) => Effect.Effect<PiSession, PiError>;
+    readonly resume: (
+      storedRecord: import("./session-record.ts").SessionRecord,
+    ) => Effect.Effect<PiSession, PiError | SessionNotFound>;
+  }
+>() {}
+
 
 const EXPORT_DIR = join(HOST_DATA_DIR, "exports");
 const EXPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -338,15 +463,14 @@ const sessionStatsWithCwd = (stats: PiSdkSessionStats, cwd: string): SessionStat
   ...(stats.contextUsage ? { contextUsage: stats.contextUsage } : {}),
 });
 
+// Pi also reports in-flight "pending"/"deferred" stops; the wire carries only final ones.
+const finalStopReason = (stopReason: PiAssistantMessage["stopReason"]): { stopReason?: StopReason } =>
+  stopReason === "pending" || stopReason === "deferred" ? {} : { stopReason };
+
 // The finalized SDK branch expressed as the WireEvent sequence that produces it,
 // so the cold-start snapshot folds through the same reducer as the live stream
 // (see reduceLog). Assistants become one self-contained assistant_end; tool
 // calls and their results stay separate events the reducer merges by id.
-const completedStopReason = (
-  value: PiAssistantMessage["stopReason"],
-): StopReason | undefined =>
-  value === "pending" || value === "deferred" ? undefined : value;
-
 const branchToWireEvents = (piSession: AgentSession): WireEvent[] => {
   const events: WireEvent[] = [];
 
@@ -387,9 +511,7 @@ const branchToWireEvents = (piSession: AgentSession): WireEvent[] => {
         id: entry.id,
         at,
         text: assistantText(message.content),
-        ...(completedStopReason(message.stopReason)
-          ? { stopReason: completedStopReason(message.stopReason) }
-          : {}),
+        ...finalStopReason(message.stopReason),
         ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
         ...(message.usage ? { usage: message.usage } : {}),
       });
@@ -438,9 +560,9 @@ const wirePiSession = (
   piSession: AgentSession,
   meta: SessionMeta,
   fs: FileSystem.FileSystem,
-): Effect.Effect<DurableSessionRuntime> =>
+): Effect.Effect<PiSession> =>
   Effect.gen(function* () {
-    const q = yield* Queue.unbounded<SessionEmission>();
+    const q = yield* Queue.unbounded<PiEmission>();
 
     // Coalesce per-token deltas into ~75ms chunks: one persisted event and WS
     // frame per chunk instead of per token. Every other emission flushes first
@@ -459,7 +581,7 @@ const wirePiSession = (
       Queue.unsafeOffer(q, { t: "assistant_delta", id: delta.id, text: delta.text });
     };
 
-    const offer = (emission: SessionEmission) => {
+    const offer = (emission: PiEmission) => {
       if (emission.t === "assistant_delta") {
         if (pendingDelta?.id === emission.id) {
           pendingDelta.text += emission.text;
@@ -526,9 +648,7 @@ const wirePiSession = (
             id,
             at: Date.now(),
             text,
-            ...(completedStopReason(message.stopReason)
-              ? { stopReason: completedStopReason(message.stopReason) }
-              : {}),
+            ...finalStopReason(message.stopReason),
             ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
             ...(message.usage ? { usage: message.usage } : {}),
           });
@@ -691,8 +811,6 @@ const wirePiSession = (
     }).pipe(Effect.catchAll((e) => Effect.logError("[pi] extension bind failed", e)));
 
     return {
-      lifecycle: { kind: "durable" },
-      acceptsImages: true,
       meta,
       events: Stream.fromQueue(q),
       send: (text, mode, images) =>
@@ -879,7 +997,7 @@ const makeLiveSession = (
     title: string;
   },
   fs: FileSystem.FileSystem,
-): Effect.Effect<DurableSessionRuntime, PiError> =>
+): Effect.Effect<PiSession, PiError> =>
   Effect.gen(function* () {
     const piSession = yield* Effect.tryPromise<AgentSession, PiError>({
       try: async () => {
@@ -911,7 +1029,6 @@ const makeLiveSession = (
       tokens: { in: 0, out: 0 },
       costUsd: 0,
       archived: false,
-      execution: "host",
     };
 
     return yield* wirePiSession(piSession, meta, fs);
@@ -921,25 +1038,20 @@ const makeResumedSession = (
   services: AgentSessionServices,
   storedRecord: import("./session-record.ts").SessionRecord,
   fs: FileSystem.FileSystem,
-): Effect.Effect<DurableSessionRuntime, PiError | SessionNotFound> =>
+): Effect.Effect<PiSession, PiError | SessionNotFound> =>
   Effect.gen(function* () {
     const piSession = yield* Effect.tryPromise<
       AgentSession,
       PiError | SessionNotFound
     >({
       try: async () => {
-        let sessionManager: PiSessionManager;
-        if (storedRecord.runtimeSessionFile) {
-          sessionManager = PiSessionManager.open(storedRecord.runtimeSessionFile);
-          if (sessionManager.getSessionId() !== storedRecord.runtimeSessionId) {
-            throw new SessionNotFound({ id: storedRecord.id });
-          }
-        } else {
-          const infos = await PiSessionManager.list(storedRecord.cwd);
-          const found = infos.find((i) => i.id === storedRecord.runtimeSessionId);
-          if (!found) throw new SessionNotFound({ id: storedRecord.id });
-          sessionManager = PiSessionManager.open(found.path);
+        const infos = await PiSessionManager.list(storedRecord.cwd);
+        const found = infos.find((i) => i.id === storedRecord.id);
+        if (!found) {
+          throw new SessionNotFound({ id: storedRecord.id });
         }
+
+        const sessionManager = PiSessionManager.open(found.path);
 
         const { session } = await createAgentSession({
           cwd: storedRecord.cwd,
@@ -964,7 +1076,6 @@ const makeResumedSession = (
       tokens: storedRecord.tokens,
       costUsd: storedRecord.costUsd,
       archived: storedRecord.archived,
-      execution: "host",
     };
 
     return yield* wirePiSession(piSession, meta, fs);
@@ -977,10 +1088,10 @@ const loadServices = (cwd: string) =>
     catch: (e) => new PiError({ message: `createAgentSessionServices failed: ${String(e)}`, cause: e }),
   });
 
-export const DurableRuntimeFactoryLive = Layer.effect(
-  DurableRuntimeFactory,
+export const PiClientLive = Layer.effect(
+  PiClient,
   Effect.map(FileSystem.FileSystem, (fs) =>
-    DurableRuntimeFactory.of({
+    PiClient.of({
       create: (opts) =>
         Effect.flatMap(loadServices(opts.cwd), (services) => makeLiveSession(services, opts, fs)),
       resume: (storedMeta) =>
@@ -988,3 +1099,4 @@ export const DurableRuntimeFactoryLive = Layer.effect(
     }),
   ),
 );
+

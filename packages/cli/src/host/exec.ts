@@ -4,7 +4,6 @@ import { Effect, Stream } from "effect";
 export interface RunOptions {
   readonly cwd?: string;
   readonly timeoutMs?: number;
-  readonly env?: Record<string, string | undefined>;
 }
 
 export interface RunResult {
@@ -14,10 +13,9 @@ export interface RunResult {
   readonly timedOut: boolean;
 }
 
-const make = (command: string, args: readonly string[], options: RunOptions = {}) => {
+const make = (command: string, args: readonly string[], cwd?: string) => {
   const base = Command.make(command, ...args);
-  const inDirectory = options.cwd ? Command.workingDirectory(base, options.cwd) : base;
-  return options.env ? Command.env(inDirectory, options.env) : inDirectory;
+  return cwd ? Command.workingDirectory(base, cwd) : base;
 };
 
 // Total: spawn failure or timeout yields a RunResult (exitCode -1) rather than a
@@ -25,7 +23,7 @@ const make = (command: string, args: readonly string[], options: RunOptions = {}
 export const run = (command: string, args: readonly string[], options: RunOptions = {}) => {
   const captured = Effect.scoped(
     Effect.gen(function* () {
-      const proc = yield* Command.start(make(command, args, options));
+      const proc = yield* Command.start(make(command, args, options.cwd));
       const [exitCode, stdout, stderr] = yield* Effect.all(
         [
           proc.exitCode,
@@ -57,7 +55,7 @@ export const run = (command: string, args: readonly string[], options: RunOption
 };
 
 export const runInherit = (command: string, args: readonly string[], options: RunOptions = {}) => {
-  const cmd = make(command, args, options).pipe(
+  const cmd = make(command, args, options.cwd).pipe(
     Command.stdin("inherit"),
     Command.stdout("inherit"),
     Command.stderr("inherit"),
