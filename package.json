@@ -11,7 +11,7 @@
     "dev:host:mock": "PICO_HOST_DB=data/pico-host.db PICO_WORKSPACES_DIR=. PI_USE_MOCK=1 PICO_HOST_INSECURE_NO_AUTH=1 PICO_HOST_OTEL=1 pnpm --filter @pico/host dev",
     "dev:web": "pnpm --filter pico dev",
     "build": "pnpm --filter @pico/protocol build && pnpm --filter @pico/host build && pnpm --filter pico build",
-    "deploy": "git pull --ff-only && pnpm install --frozen-lockfile && pnpm build && systemctl --user restart pico",
+    "redeploy": "git pull --ff-only && pnpm install --frozen-lockfile && pnpm build && systemctl --user restart pico",
     "typecheck": "pnpm --filter @pico/protocol build && pnpm --filter @pico/host typecheck",
     "check": "pnpm typecheck && pnpm --filter pico build",
     "test": "vitest run",

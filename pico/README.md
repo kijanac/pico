@@ -1,30 +1,18 @@
-# Pico
+# Pico web app
 
-Pico is an independent, unofficial mobile companion for the [Pi](https://pi.dev) coding agent.
+The Svelte 5 + Vite + Tailwind app for the [Pi](https://pi.dev) coding agent. The
+host serves the production build from `dist/`, and the phone runs it as a
+home-screen web app, so the app's own origin is its host.
 
 > Pico is not affiliated with or endorsed by Earendil Inc. or the Pi project.
 
-## Stack
-
-- Svelte 5
-- TypeScript
-- Vite
-- Tailwind CSS
-- Capacitor
-
 ## Development
 
-Run from the workspace root:
+From the workspace root:
 
 ```bash
-pnpm install
-pnpm dev:mobile
+pnpm dev:host:mock   # or pnpm dev:host for live pi
+pnpm dev:web
 ```
 
-For a native iOS shell:
-
-```bash
-pnpm --filter pico build
-pnpm --filter pico exec cap sync ios
-pnpm --filter pico exec cap open ios
-```
+Vite proxies `/rpc`, `/ws`, `/healthz` and `/sessions` to the host on `:7777`.

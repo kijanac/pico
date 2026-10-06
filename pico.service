@@ -1,0 +1,18 @@
+[Unit]
+Description=Pico host
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/work/pico
+ExecStart=%h/.local/share/mise/installs/node/26/bin/node packages/host/dist/main.js
+Restart=on-failure
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=PICO_OWNER=kijanac@github
+Environment=PICO_HOST_DB=%h/.local/share/pico/pico-host.db
+Environment=PICO_WORKSPACES_DIR=%h/work
+# The agent's bash tool inherits this PATH, so include mise's tools.
+Environment=PATH=%h/.local/share/mise/shims:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target
