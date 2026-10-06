@@ -6,11 +6,7 @@ import {
   CompactionEntry,
   ImageContent,
   MessageUsage,
-  MIN_MOBILE_VERSION,
-  PRODUCT_VERSION,
-  PROTOCOL_VERSION,
   QueueState,
-  RECOMMENDED_MOBILE_VERSION,
   SendMode,
   SessionMeta,
   SessionStatus,
@@ -118,30 +114,5 @@ describe("decoding rejects malformed input", () => {
         status: "pending",
       }),
     ).toThrow();
-  });
-});
-
-describe("version constants hold their invariants across releases", () => {
-  const isSemver = (v: string) => /^\d+\.\d+\.\d+$/.test(v);
-  const cmp = (a: string, b: string): number => {
-    const pa = a.split(".").map(Number);
-    const pb = b.split(".").map(Number);
-    for (let i = 0; i < 3; i += 1) if (pa[i] !== pb[i]) return pa[i] - pb[i];
-    return 0;
-  };
-
-  it("PROTOCOL_VERSION is a positive integer", () => {
-    expect(Number.isInteger(PROTOCOL_VERSION)).toBe(true);
-    expect(PROTOCOL_VERSION).toBeGreaterThan(0);
-  });
-
-  it("product and minimum versions are semver, and recommended tracks product", () => {
-    expect(isSemver(PRODUCT_VERSION)).toBe(true);
-    expect(isSemver(MIN_MOBILE_VERSION)).toBe(true);
-    expect(RECOMMENDED_MOBILE_VERSION).toBe(PRODUCT_VERSION);
-  });
-
-  it("the minimum supported mobile version never exceeds the current product", () => {
-    expect(cmp(MIN_MOBILE_VERSION, PRODUCT_VERSION)).toBeLessThanOrEqual(0);
   });
 });

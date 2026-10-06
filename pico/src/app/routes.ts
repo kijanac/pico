@@ -2,8 +2,6 @@ const routes = [
   { id: "sessions", path: "/" },
   { id: "session", path: "/h/:hostId/s/:id" },
   { id: "settings", path: "/settings" },
-  { id: "connect", path: "/connect" },
-  { id: "welcome", path: "/welcome" },
 ] as const;
 
 type RouteDefinition = (typeof routes)[number];
@@ -45,8 +43,6 @@ export const routePaths = {
   sessions: pathFor("sessions"),
   session: (hostId: string, id: string) => pathFor("session", { hostId, id }),
   settings: pathFor("settings"),
-  connect: pathFor("connect"),
-  welcome: pathFor("welcome"),
 } as const;
 
 function pathFor<Id extends AppRouteId>(id: Id, ...args: RoutePathArgs<Id>): string {
@@ -154,26 +150,4 @@ export function navigateTo(path: string, kind: NavKind = "push"): void {
   if (kind === "replace") window.history.replaceState({}, "", path);
   else window.history.pushState({}, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
-}
-
-/** Map an incoming app URL — a `pico://connect` deep link or an in-app `/connect`
- *  path — to an internal route, or null if it isn't one we handle. */
-export function pathFromAppUrl(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol === "pico:" && parsed.hostname === "connect") return `${routePaths.connect}${parsed.search}`;
-    if (parsed.pathname === routePaths.connect) return `${routePaths.connect}${parsed.search}`;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/** Route an incoming app URL into the app — a deep link or a scanned pairing QR.
- *  Returns false if the URL isn't a recognized Pico link. */
-export function openAppUrl(url: string): boolean {
-  const path = pathFromAppUrl(url);
-  if (!path) return false;
-  navigateTo(path, "push");
-  return true;
 }

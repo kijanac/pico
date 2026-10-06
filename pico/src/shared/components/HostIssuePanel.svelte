@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { AlertTriangle, Hourglass, KeyRound, PlugZap, ShieldAlert, WifiOff } from "@lucide/svelte";
+  import { AlertTriangle, Hourglass, PlugZap, ShieldAlert, WifiOff } from "@lucide/svelte";
   import type { HostIssue } from "@/shared/lib/host-issues";
 
   let {
@@ -31,9 +31,7 @@
         <Hourglass class="size-4" />
       {:else if issue.kind === "tailscale-not-connected"}
         <WifiOff class="size-4" />
-      {:else if issue.kind === "pairing-token-invalid"}
-        <KeyRound class="size-4" />
-      {:else if issue.kind === "host-claimed" || issue.kind === "host-unclaimed"}
+      {:else if issue.kind === "not-owner"}
         <ShieldAlert class="size-4" />
       {:else}
         <AlertTriangle class="size-4" />

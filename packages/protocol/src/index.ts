@@ -6,12 +6,7 @@ export {
   isHostErrorCode,
 } from "./errors.ts";
 export type { HostErrorCode, HostErrorPayload } from "./errors.ts";
-export {
-  PRODUCT_VERSION,
-  PROTOCOL_VERSION,
-  MIN_MOBILE_VERSION,
-  RECOMMENDED_MOBILE_VERSION,
-} from "./version.ts";
+export { PRODUCT_VERSION } from "./version.ts";
 
 export const SessionStatus = Schema.Literal("idle", "thinking", "tool", "waiting", "error");
 export type SessionStatus = typeof SessionStatus.Type;
@@ -519,31 +514,6 @@ export const SessionTree = Schema.Struct({
   entries: Schema.Array(TreeEntry),
 });
 export type SessionTree = typeof SessionTree.Type;
-
-export const SystemInfo = Schema.Struct({
-  hostVersion: Schema.String,
-  protocolVersion: Schema.Number,
-  minMobileVersion: Schema.String,
-  recommendedMobileVersion: Schema.String,
-  updateChannel: Schema.String,
-  autoUpdate: Schema.Boolean,
-});
-export type SystemInfo = typeof SystemInfo.Type;
-
-export const HostUpdateStatus = Schema.Struct({
-  currentVersion: Schema.String,
-  autoUpdate: Schema.Boolean,
-  manualUpdate: Schema.Boolean,
-  lastSeenVersion: Schema.optional(Schema.String),
-  requestedAt: Schema.optional(Schema.String),
-  updatedAt: Schema.optional(Schema.String),
-  failure: Schema.optional(Schema.Struct({
-    version: Schema.String,
-    reason: Schema.String,
-    at: Schema.Number,
-  })),
-});
-export type HostUpdateStatus = typeof HostUpdateStatus.Type;
 
 
 const Seq = { seq: Schema.Number };

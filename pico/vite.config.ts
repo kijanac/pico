@@ -11,15 +11,18 @@ export default defineConfig({
     },
   },
   server: {
-    host: true, // expose to LAN so Capacitor live-reload works on a real device
     port: 5173,
+    // In production the host serves this app; in dev, forward its routes so the
+    // app's own origin still reaches the host (pnpm dev:host).
+    proxy: {
+      "/rpc": "http://127.0.0.1:7777",
+      "/healthz": "http://127.0.0.1:7777",
+      "/sessions": "http://127.0.0.1:7777",
+      "/ws": { target: "ws://127.0.0.1:7777", ws: true },
+    },
   },
   build: {
-    // Capacitor means the only runtime is the device's WebKit, so target it
-    // directly instead of generic es2022.
+    // The phone's WebKit is the only runtime, so target it directly.
     target: "safari17",
-    // "hidden": emit .map files for local symbolication but don't reference
-    // them from the bundles; CI strips them from dist before cap sync.
-    sourcemap: "hidden",
   },
 });

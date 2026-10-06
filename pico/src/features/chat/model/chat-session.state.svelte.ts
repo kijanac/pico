@@ -32,7 +32,6 @@ export function createChatSessionState(hostId: string, sessionId: string): ChatS
   async function start(): Promise<void> {
     if (controller) return;
     markSessionOpen(`${hostId}:${sessionId}`, "state-start");
-    if (!hostRegistryState.loaded) await hostRegistryState.load();
     const host = hostRegistryState.getHost(hostId);
     if (!host) throw new Error(`Pico host not found: ${hostId}`);
 

@@ -1,37 +1,17 @@
-import { Capacitor } from "@capacitor/core";
-import { App } from "@capacitor/app";
-
 let installed = false;
 let resumeTick = $state(0);
-let active = $state(true);
 
 export const appLifecycle = {
   get resumeTick() {
     return resumeTick;
   },
 
-  get active() {
-    return active;
-  },
-
+  // iOS suspends a backgrounded home-screen app; becoming visible again is a resume.
   install(): void {
     if (installed) return;
     installed = true;
-
-    if (!Capacitor.isNativePlatform()) return;
-
-    void App.addListener("resume", () => {
-      active = true;
-      resumeTick += 1;
-    });
-
-    void App.addListener("pause", () => {
-      active = false;
-    });
-
-    void App.addListener("appStateChange", (state) => {
-      active = state.isActive;
-      if (state.isActive) resumeTick += 1;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") resumeTick += 1;
     });
   },
 };

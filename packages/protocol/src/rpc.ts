@@ -1,12 +1,11 @@
 import { Rpc, RpcGroup, RpcMiddleware } from "@effect/rpc";
-import { Context, Schema } from "effect";
+import { Schema } from "effect";
 import { HostErrorCodeSchema } from "./errors.ts";
 import {
   AuthLoginJob,
   AuthProviders,
   Commands,
   ExtensionUiResponseValue,
-  HostUpdateStatus,
   ImageContent,
   LogPage,
   QueueState,
@@ -15,21 +14,8 @@ import {
   SessionMeta,
   SessionStats,
   SessionTree,
-  SystemInfo,
   WireEvent,
 } from "./index.ts";
-
-export const HostIdentity = Schema.Struct({
-  user: Schema.optional(Schema.String),
-  claimed: Schema.Boolean,
-});
-export type HostIdentity = typeof HostIdentity.Type;
-
-export const HostClaimResult = Schema.Struct({
-  claimed: Schema.Literal(true),
-  owner: Schema.String,
-});
-export type HostClaimResult = typeof HostClaimResult.Type;
 
 export const FsListing = Schema.Struct({
   path: Schema.String,
@@ -52,13 +38,9 @@ export class RequestError extends Schema.TaggedError<RequestError>()("RequestErr
   message: Schema.String,
 }) {}
 
-// Resolved by the auth middleware from the request's Tailscale headers.
-export class CurrentIdentity extends Context.Tag("CurrentIdentity")<CurrentIdentity, HostIdentity>() {}
-
-// "claimed" enforced except for unclaimed-allowed system.{info,identity,claim} tags.
-// Client needs no implementation: Tailscale Serve injects the identity header at the network layer.
+// Admits only the host owner's Tailscale identity. The client needs no
+// implementation: Tailscale Serve injects the identity header at the network layer.
 export class AuthMiddleware extends RpcMiddleware.Tag<AuthMiddleware>()("AuthMiddleware", {
-  provides: CurrentIdentity,
   failure: HostError,
 }) {}
 
@@ -66,11 +48,6 @@ const SessionFail = Schema.Union(SessionNotFound, RequestError);
 const Trimmed = Schema.NonEmptyTrimmedString;
 
 export const PicoRpc = RpcGroup.make(
-  Rpc.make("system.info", { success: SystemInfo, error: RequestError }),
-  Rpc.make("system.updateStatus", { success: HostUpdateStatus, error: RequestError }),
-  Rpc.make("system.triggerUpdate", { success: HostUpdateStatus, error: RequestError }),
-  Rpc.make("system.identity", { success: HostIdentity, error: HostError }),
-  Rpc.make("system.claim", { payload: { token: Schema.optional(Schema.String) }, success: HostClaimResult, error: Schema.Union(HostError, RequestError) }),
   Rpc.make("sessions.list", { payload: { archived: Schema.optional(Schema.Boolean) }, success: Schema.Array(SessionMeta), error: RequestError }),
   Rpc.make("sessions.create", { payload: { cwd: Trimmed, title: Trimmed }, success: SessionMeta, error: RequestError }),
   Rpc.make("sessions.patch", { payload: { id: Schema.String, title: Schema.optional(Trimmed), archived: Schema.optional(Schema.Boolean) }, success: SessionMeta, error: SessionFail }),

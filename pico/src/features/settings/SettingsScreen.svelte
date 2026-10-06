@@ -1,21 +1,9 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { Plus } from "@lucide/svelte";
   import { navigateTo, routePaths } from "@/app/routes";
-  import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
-  import { settingsState } from "@/features/settings/settings.state.svelte";
   import AppearanceCard from "@/features/settings/components/AppearanceCard.svelte";
-  import AddHostSheet from "@/features/settings/components/AddHostSheet.svelte";
-  import HostStatusCard from "@/features/settings/components/HostStatusCard.svelte";
   import { Button } from "@/shared/ui/button";
   import EdgeSwipeBack from "@/shared/components/EdgeSwipeBack.svelte";
   import HomePreview from "@/features/sessions/components/HomePreview.svelte";
-
-  let addHostOpen = $state(false);
-
-  onMount(() => {
-    void settingsState.load();
-  });
 </script>
 
 <EdgeSwipeBack href="/">
@@ -33,49 +21,17 @@
   </header>
 
   <div class="min-h-0 flex-1 space-y-7 overflow-y-auto px-3 pt-4" style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem)">
-    {#if settingsState.error}
-      <div class="type-meta rounded-[var(--radius-md)] border border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/8 px-3 py-2 text-[color:var(--color-danger)]">
-        {settingsState.error}
+    <AppearanceCard />
+
+    <section class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
+      <div class="mb-2">
+        <h2 class="type-title font-medium text-[color:var(--color-fg)]">Pico</h2>
+        <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">Pi, from your pocket.</p>
       </div>
-    {/if}
-
-    {#if settingsState.loaded}
-      <AppearanceCard />
-
-      <section class="space-y-3">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <h2 class="type-title font-medium text-[color:var(--color-fg)]">hosts</h2>
-            <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">Add every machine you want Pico to control.</p>
-          </div>
-          <Button type="button" variant="outline" size="sm" class="shrink-0" onclick={() => (addHostOpen = true)}>
-            <Plus class="size-3.5" /> add host
-          </Button>
-        </div>
-
-        {#each hostRegistryState.hosts as host (host.id)}
-          <HostStatusCard {host} />
-        {:else}
-          <div class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
-            <p class="type-copy text-[color:var(--color-fg-muted)]">no Pico host connected yet.</p>
-          </div>
-        {/each}
-      </section>
-
-      <AddHostSheet bind:open={addHostOpen} />
-
-      <section class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
-        <div class="mb-2">
-          <h2 class="type-title font-medium text-[color:var(--color-fg)]">Pico</h2>
-          <p class="type-copy mt-1 text-[color:var(--color-fg-muted)]">Pi, from your pocket.</p>
-        </div>
-        <p class="type-meta text-[color:var(--color-fg-muted)]">
-          Pico is an independent, unofficial mobile client built on the Pi coding agent. It is not affiliated with or endorsed by Earendil Inc. or the Pi project.
-        </p>
-      </section>
-    {:else}
-      <div class="type-copy py-8 text-center text-[color:var(--color-fg-muted)]">loading settings…</div>
-    {/if}
+      <p class="type-meta text-[color:var(--color-fg-muted)]">
+        Pico is an independent, unofficial mobile client built on the Pi coding agent. It is not affiliated with or endorsed by Earendil Inc. or the Pi project.
+      </p>
+    </section>
   </div>
 </main>
 </EdgeSwipeBack>

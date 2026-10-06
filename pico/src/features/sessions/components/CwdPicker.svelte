@@ -28,7 +28,6 @@
     const token = listingRequest.begin();
     loading = true;
     error = null;
-    if (!hostRegistryState.loaded) await hostRegistryState.load();
     const host = hostRegistryState.getHost(hostId);
     if (!host) {
       error = "Pico host not found.";

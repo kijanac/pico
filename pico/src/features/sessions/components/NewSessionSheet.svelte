@@ -84,22 +84,24 @@
       {/if}
     {:else}
       <div class="flex-1 space-y-3 overflow-y-auto px-3 pb-3">
-        <div>
-          <div class="label mb-1.5">host</div>
-          <div class="overflow-hidden rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
-            {#each hosts as host (host.id)}
-              <ActionRow disabled={creating} onclick={() => chooseHost(host.id)} class="gap-3 active:bg-[color:var(--color-surface-2)]">
-                <span class="min-w-0 flex-1">
-                  <span class="type-copy block truncate text-[color:var(--color-fg)]">{host.name}</span>
-                  <span class="type-meta mt-0.5 block truncate text-[color:var(--color-fg-muted)]">{host.url}</span>
-                </span>
-                {#if host.id === hostId}<span class="type-meta text-[color:var(--color-accent)]">selected</span>{/if}
-              </ActionRow>
-            {:else}
-              <div class="type-copy px-3 py-3 text-[color:var(--color-fg-muted)]">no hosts connected</div>
-            {/each}
+        {#if hosts.length > 1}
+          <div>
+            <div class="label mb-1.5">host</div>
+            <div class="overflow-hidden rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
+              {#each hosts as host (host.id)}
+                <ActionRow disabled={creating} onclick={() => chooseHost(host.id)} class="gap-3 active:bg-[color:var(--color-surface-2)]">
+                  <span class="min-w-0 flex-1">
+                    <span class="type-copy block truncate text-[color:var(--color-fg)]">{host.name}</span>
+                    <span class="type-meta mt-0.5 block truncate text-[color:var(--color-fg-muted)]">{host.url}</span>
+                  </span>
+                  {#if host.id === hostId}<span class="type-meta text-[color:var(--color-accent)]">selected</span>{/if}
+                </ActionRow>
+              {:else}
+                <div class="type-copy px-3 py-3 text-[color:var(--color-fg-muted)]">no hosts connected</div>
+              {/each}
+            </div>
           </div>
-        </div>
+        {/if}
 
         <label class="block">
           <div class="label mb-1.5">cwd</div>

@@ -3,15 +3,14 @@ import { HttpApiBuilder } from "@effect/platform";
 import { NodeContext, NodeHttpServer } from "@effect/platform-node";
 import { createServer, type Server } from "node:http";
 import { DB_PATH, HOST_INSECURE_NO_AUTH, USE_MOCK } from "./config.ts";
-import { allowedOrigins } from "./auth.ts";
 import { AppLayer } from "./runtime.ts";
 import { PicoHostApi } from "./http/api.ts";
-import { AdminApiLive, SystemApiLive } from "./http/handlers.ts";
+import { SystemApiLive } from "./http/handlers.ts";
 import { authMiddleware } from "./http/middleware.ts";
 import { compress } from "./http/compression.ts";
 import { RawRoutesLive } from "./http/routes.ts";
 import { RpcRoutesLive, SessionWsRoutesLive } from "./http/rpc.ts";
-import { ensureLocalAdminToken } from "./local-admin.ts";
+import { WebRoutesLive } from "./http/web.ts";
 import { TracingLive } from "./tracing.ts";
 
 export interface PicoHostOptions {
@@ -42,33 +41,20 @@ export function launchHttpServer(
   const server = createServer();
   onServer?.(server);
 
-  const ApiLive = HttpApiBuilder.api(PicoHostApi).pipe(
-    Layer.provide(SystemApiLive),
-    Layer.provide(AdminApiLive),
-  );
+  const ApiLive = HttpApiBuilder.api(PicoHostApi).pipe(Layer.provide(SystemApiLive));
 
+  // The app is served from this origin, so there is no CORS to configure.
   const ServerLive = HttpApiBuilder.serve(authMiddleware).pipe(
-    Layer.provide(
-      HttpApiBuilder.middlewareCors({
-        allowedOrigins: HOST_INSECURE_NO_AUTH ? () => true : allowedOrigins(),
-        allowedMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        // The Effect HTTP client attaches trace-propagation headers to every
-        // request; allow them through CORS or the browser blocks the POST.
-        allowedHeaders: ["content-type", "b3", "traceparent", "tracestate"],
-      }),
-    ),
     Layer.provide(HttpApiBuilder.middleware(compress)),
     Layer.provide(RpcRoutesLive),
     Layer.provide(SessionWsRoutesLive),
     Layer.provide(RawRoutesLive),
+    Layer.provide(WebRoutesLive),
     Layer.provide(ApiLive),
     Layer.provide(NodeHttpServer.layer(() => server, { port, host })),
   );
 
   const program = Effect.gen(function* () {
-    // Pre-generate the loopback admin token before the server accepts requests,
-    // so the co-located CLI can read it the moment the host reports ready.
-    yield* ensureLocalAdminToken();
     yield* Layer.build(ServerLive);
     yield* Effect.never;
   }).pipe(
@@ -110,7 +96,7 @@ export function startPicoHost(options: PicoHostOptions = {}): PicoHostHandle {
     Effect.logInfo(
       `Pico host listening on ${url}  ${usingMock ? "(mock pi)" : "(live pi)"}\n` +
         `   db   :  ${DB_PATH}\n` +
-        `   HTTP :  GET    /healthz, /sessions/:id/export.html\n` +
+        `   HTTP :  GET    /healthz, /sessions/:id/export.html, /* (web app)\n` +
         `   RPC  :  POST   /rpc\n` +
         `   WS   :  /ws?session=:id&cursor=:n`,
     ),

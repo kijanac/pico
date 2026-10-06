@@ -1,9 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { App as CapacitorApp } from "@capacitor/app";
-  import { Capacitor } from "@capacitor/core";
   import AppShell from "@/app/shell/AppShell.svelte";
-  import { consumeNavKind, currentPath, resolveRoute, openAppUrl, type RouteMatch } from "@/app/routes";
+  import { consumeNavKind, currentPath, resolveRoute, type RouteMatch } from "@/app/routes";
   import { themeState } from "@/shared/theme/theme.svelte";
 
   // Chunks load from local disk in Capacitor, so lazy routes cost ~nothing.
@@ -22,8 +20,6 @@
   const loadSessions = lazy(() => import("@/routes/sessions/SessionsPage.svelte"));
   const loadSession = lazy(() => import("@/routes/session/SessionPage.svelte"));
   const loadSettings = lazy(() => import("@/routes/settings/SettingsPage.svelte"));
-  const loadConnect = lazy(() => import("@/routes/connect/ConnectPage.svelte"));
-  const loadWelcome = lazy(() => import("@/routes/welcome/WelcomePage.svelte"));
 
   const NAV_TRANSITION_MS = 280;
 
@@ -69,26 +65,12 @@
   }
 
   onMount(() => {
-    let appUrlOpenHandle: { remove: () => Promise<void> } | null = null;
-
     themeState.init();
     void themeState.load();
 
     window.addEventListener("popstate", syncRoute);
-    if (Capacitor.isNativePlatform()) {
-      void CapacitorApp.getLaunchUrl().then((launch) => {
-        if (launch?.url) openAppUrl(launch.url);
-      });
-      void CapacitorApp.addListener("appUrlOpen", ({ url }) => {
-        openAppUrl(url);
-      }).then((handle) => {
-        appUrlOpenHandle = handle;
-      });
-    }
-
     return () => {
       window.removeEventListener("popstate", syncRoute);
-      void appUrlOpenHandle?.remove();
       if (settleTimer) clearTimeout(settleTimer);
     };
   });
@@ -106,14 +88,6 @@
   {:else if route.id === "settings"}
     {#await loadSettings() then { default: SettingsPage }}
       <SettingsPage />
-    {/await}
-  {:else if route.id === "connect"}
-    {#await loadConnect() then { default: ConnectPage }}
-      <ConnectPage />
-    {/await}
-  {:else if route.id === "welcome"}
-    {#await loadWelcome() then { default: WelcomePage }}
-      <WelcomePage />
     {/await}
   {:else}
     <main class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">

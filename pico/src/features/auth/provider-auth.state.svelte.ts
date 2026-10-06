@@ -59,7 +59,6 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   async function loadProviders(): Promise<void> {
     loading = true;
     try {
-      if (!hostRegistryState.loaded) await hostRegistryState.load();
       await run(
         listAuthProviders().pipe(
           Effect.tap((result) => Effect.sync(() => { providers = result.providers; opts.onError(null); })),

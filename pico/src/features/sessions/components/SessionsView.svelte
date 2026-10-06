@@ -17,13 +17,11 @@
     visibleCount,
     creating = false,
     interactive = true,
-    hostConfigured = true,
     openSwipeSessionId = $bindable(null),
     onRefresh = async () => {},
     onRefreshHost = async () => {},
     onToggleArchived = () => {},
     onSettings = () => {},
-    onSetupHost = () => {},
     onNewSession = () => {},
     onOpenSession = () => {},
     onRename = () => {},
@@ -37,13 +35,11 @@
     visibleCount: number;
     creating?: boolean;
     interactive?: boolean;
-    hostConfigured?: boolean;
     openSwipeSessionId?: string | null;
     onRefresh?: () => Promise<void>;
     onRefreshHost?: (hostId: string) => Promise<void>;
     onToggleArchived?: () => void | Promise<void>;
     onSettings?: () => void;
-    onSetupHost?: () => void;
     onNewSession?: () => void;
     onOpenSession?: (session: HostSessionMeta) => void;
     onRename?: (session: HostSessionMeta) => void;
@@ -54,8 +50,7 @@
   type DotTone = "muted" | "accent" | "warn" | "danger";
 
   const SESSION_ACTION_WIDTH = 58;
-  const activeHostIssues = $derived(hostConfigured ? hostIssues : []);
-  const firstHostIssue = $derived(activeHostIssues[0] ?? null);
+  const firstHostIssue = $derived(hostIssues[0] ?? null);
 
   function sessionStatusTone(status: HostSessionMeta["session"]["status"]): DotTone {
     if (status === "thinking" || status === "tool") return "accent";
@@ -99,9 +94,9 @@
     </div>
   </header>
 
-  {#if activeHostIssues.length > 0 && sessions.length > 0}
+  {#if hostIssues.length > 0 && sessions.length > 0}
     <div class="mx-3 mt-4 space-y-2">
-      {#each activeHostIssues as item (item.hostId)}
+      {#each hostIssues as item (item.hostId)}
         <HostIssuePanel issue={item.issue} compact>
           {#snippet action()}
             <button type="button" class="type-meta underline text-[color:var(--color-fg-muted)] active:opacity-70" onclick={() => void onRefreshHost(item.hostId)}>
@@ -119,20 +114,7 @@
     {:else if firstHostIssue && sessions.length === 0}
       <section class="flex min-h-full flex-col items-center justify-center gap-4 px-6 text-center">
         <HostIssuePanel issue={firstHostIssue.issue} class="max-w-sm" />
-        <div class="flex gap-2">
-          <Button type="button" variant="outline" size="sm" onclick={() => void onRefresh()}>retry</Button>
-          <Button type="button" size="sm" onclick={onSettings}>host settings</Button>
-        </div>
-      </section>
-    {:else if sessions.length === 0 && !hostConfigured && !archivedView}
-      <section class="flex min-h-full flex-col items-center justify-center gap-4 px-6 text-center">
-        <div>
-          <p class="type-title font-medium">no Pico host connected</p>
-          <p class="type-copy mt-2 max-w-[34ch] text-[color:var(--color-fg-muted)]">
-            pico drives pi on your machine. connect a Pico host to start your first session.
-          </p>
-        </div>
-        <Button type="button" variant="outline" size="sm" onclick={onSetupHost}>set up Pico host</Button>
+        <Button type="button" variant="outline" size="sm" onclick={() => void onRefresh()}>retry</Button>
       </section>
     {:else if sessions.length === 0}
       <section class="flex min-h-full items-center justify-center px-6 text-center">
@@ -174,21 +156,15 @@
   </PullToRefresh>
 
   <div class="p-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
-    {#if hostConfigured}
-      <Button
-        type="button"
-        class="h-10 w-full"
-        disabled={creating}
-        onclick={onNewSession}
-      >
-        <Plus class="size-3.5" />
-        new session
-      </Button>
-    {:else}
-      <Button type="button" class="h-10 w-full" onclick={onSetupHost}>
-        set up Pico host
-      </Button>
-    {/if}
+    <Button
+      type="button"
+      class="h-10 w-full"
+      disabled={creating}
+      onclick={onNewSession}
+    >
+      <Plus class="size-3.5" />
+      new session
+    </Button>
   </div>
 </main>
 

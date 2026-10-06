@@ -3,40 +3,25 @@ import { RpcSerialization, RpcServer } from "@effect/rpc";
 import { Context, Effect, Layer, Stream } from "effect";
 import {
   AuthMiddleware,
-  CurrentIdentity,
   HostError,
   PicoRpc,
   PicoSessionRpc,
   RequestError,
   SessionNotFound,
 } from "@pico/protocol/rpc";
-import { authorizeHeaders, claimPicoHostOwner } from "../auth.ts";
-import { HostClaimError, SessionNotFound as InternalSessionNotFound } from "../errors.ts";
+import { authorizeHeaders } from "../auth.ts";
+import { SessionNotFound as InternalSessionNotFound } from "../errors.ts";
 import { listFs } from "../fs.ts";
 import { PiError } from "../pi.ts";
 import { ProviderAuth } from "../provider-auth.ts";
 import { SessionManager } from "../session.ts";
-import { hostSystemInfo, readUpdateStatus, requestHostUpdate } from "./system.ts";
-
-// Reachable before the host is claimed; every other procedure requires an owner.
-const UNCLAIMED_ALLOWED = new Set(["system.info", "system.identity", "system.claim"]);
 
 export const AuthLive = Layer.succeed(
   AuthMiddleware,
-  AuthMiddleware.of(({ headers, rpc }) =>
-    Effect.gen(function* () {
-      const result = authorizeHeaders(headers);
-      // system.info is public: surface best-effort identity, never fail.
-      if (rpc._tag === "system.info") {
-        return result.ok ? { user: result.user, claimed: result.claimed } : { claimed: false };
-      }
-      if (!result.ok) return yield* Effect.fail(new HostError({ code: result.error }));
-      if (!result.claimed && !UNCLAIMED_ALLOWED.has(rpc._tag)) {
-        return yield* Effect.fail(new HostError({ code: "pico_host_unclaimed" }));
-      }
-      return { user: result.user, claimed: result.claimed };
-    }),
-  ),
+  AuthMiddleware.of(({ headers }) => {
+    const result = authorizeHeaders(headers);
+    return result.ok ? Effect.void : Effect.fail(new HostError({ code: result.error }));
+  }),
 );
 
 const toRequestError = (error: unknown) =>
@@ -54,23 +39,6 @@ const onProvider = <A>(
 ) => Effect.flatMap(ProviderAuth, f).pipe(Effect.mapError(toRequestError));
 
 const HandlersLive = PicoRpc.toLayer({
-  "system.info": () => Effect.sync(() => hostSystemInfo()),
-  "system.updateStatus": () => readUpdateStatus(),
-  "system.triggerUpdate": () => requestHostUpdate().pipe(Effect.mapError(toRequestError)),
-  "system.identity": () => CurrentIdentity,
-  "system.claim": ({ token }) =>
-    Effect.flatMap(CurrentIdentity, (identity) =>
-      identity.user === undefined
-        ? Effect.fail(new HostError({ code: "missing_tailscale_identity" }))
-        : Effect.try({
-            try: () => claimPicoHostOwner(identity.user!, token),
-            catch: (error) =>
-              error instanceof HostClaimError
-                ? new HostError({ code: error.hostErrorCode })
-                : toRequestError(error),
-          }),
-    ),
-
   "sessions.list": ({ archived }) => Effect.flatMap(SessionManager, (m) => m.list({ archived })),
   "sessions.create": (input) => Effect.flatMap(SessionManager, (m) => m.create(input)).pipe(Effect.mapError(toRequestError)),
   "sessions.patch": ({ id, ...patch }) => onSessions((m) => m.patch(id, patch)),

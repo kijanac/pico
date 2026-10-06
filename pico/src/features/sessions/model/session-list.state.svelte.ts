@@ -139,7 +139,6 @@ export const sessionListState = {
   removeLocal,
 
   async refresh(): Promise<void> {
-    if (!hostRegistryState.loaded) await hostRegistryState.load();
     refreshing = true;
     try {
       await Promise.all(hostRegistryState.hosts.map((host) => refreshHost(host)));

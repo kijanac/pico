@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # `check` = typecheck (builds protocol + host, typechecks cli) + the mobile
+      # `check` = typecheck (builds protocol, typechecks host) + the web app's
       # vite build + svelte-check. One command covers every package.
       - name: Typecheck + build
         run: pnpm check

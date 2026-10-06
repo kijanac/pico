@@ -3,12 +3,8 @@ import { Schema } from "effect";
 const HOST_ERROR_CODE_VALUES = [
   "host_unreachable",
   "missing_tailscale_identity",
-  "invalid_pairing_token",
-  "pico_host_already_claimed",
-  "pico_host_unclaimed",
   "tailscale_user_not_pico_host_owner",
   "provider_auth_missing",
-  "pairing_link_missing_url",
 ] as const;
 
 export const HostErrorCodeSchema = Schema.Literal(...HOST_ERROR_CODE_VALUES);

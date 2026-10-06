@@ -18,7 +18,6 @@
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "build:updater": "tsc -p tsconfig.updater.json",
     "prepack": "pnpm run build",
     "smoke": "tsx scripts/smoke.ts",
     "typecheck": "tsc --noEmit"

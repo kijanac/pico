@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveRoute, pathFromAppUrl, routePaths } from "./routes";
+import { resolveRoute, routePaths } from "./routes";
 
 describe("routes", () => {
   it("builds typed route paths", () => {
@@ -11,7 +11,6 @@ describe("routes", () => {
   it("matches static routes", () => {
     expect(resolveRoute("/")).toEqual({ id: "sessions", params: {} });
     expect(resolveRoute("/settings")).toEqual({ id: "settings", params: {} });
-    expect(resolveRoute("/connect?url=https%3A%2F%2Fexample.ts.net")).toEqual({ id: "connect", params: {} });
   });
 
   it("matches host-qualified sessions", () => {
@@ -35,15 +34,5 @@ describe("routes", () => {
       params: { path: "/h/main-host/s/%E0%A4%A" },
     });
     expect(resolveRoute("/missing")).toEqual({ id: "not-found", params: { path: "/missing" } });
-  });
-
-  it("recognizes app connect URLs", () => {
-    expect(pathFromAppUrl("pico://connect?url=https%3A%2F%2Fhost.ts.net&claim=abc")).toBe(
-      "/connect?url=https%3A%2F%2Fhost.ts.net&claim=abc",
-    );
-    expect(pathFromAppUrl("https://example.com/connect?url=https%3A%2F%2Fhost.ts.net")).toBe(
-      "/connect?url=https%3A%2F%2Fhost.ts.net",
-    );
-    expect(pathFromAppUrl("https://example.com/other")).toBeNull();
   });
 });

@@ -24,6 +24,7 @@ process.env.PI_USE_MOCK = "1";
 process.env.PI_ALLOW_UNSAFE_TEST_CLIENT = "1";
 process.env.PICO_HOST_DB = join(tempRoot, "pico-host.db");
 process.env.PICO_WORKSPACES_DIR = workspaceDir;
+process.env.PICO_OWNER = "smoke@example.test";
 process.env.PI_CODING_AGENT_DIR = join(tempRoot, "agent");
 
 const authHeaders = { "tailscale-user-login": "smoke@example.test" };
@@ -78,17 +79,7 @@ try {
     const client = await clientRuntime.runPromise(Scope.extend(RpcClient.make(PicoRpc), clientScope));
     const call = <A, E>(effect: Effect.Effect<A, E>): Promise<A> => clientRuntime.runPromise(effect);
 
-    const identityBeforeClaim = await call(client.system.identity());
-    assert.equal(identityBeforeClaim.user, "smoke@example.test");
-    assert.equal(identityBeforeClaim.claimed, false);
-
-    const claim = await call(client.system.claim({}));
-    assert.equal(claim.claimed, true);
-    assert.equal(claim.owner, "smoke@example.test");
-
-    const info = await call(client.system.info());
-    assert.equal(typeof info.hostVersion, "string");
-    assert.equal(typeof info.protocolVersion, "number");
+    assert.equal((await fetch(`${baseUrl}/`)).status, 401, "the app requires the owner's Tailscale identity");
 
     const fsListing = await call(client.fs.ls({ path: workspaceDir }));
     assert.equal(fsListing.path, workspaceDir);

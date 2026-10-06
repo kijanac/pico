@@ -1,17 +1,14 @@
-import { Effect, Either } from "effect";
+import { Effect } from "effect";
 import { isHostErrorCode, type HostErrorCode } from "@pico/protocol";
 import { HostError } from "@pico/protocol/rpc";
 import { healthcheckHost, HostNotReady } from "@/shared/lib/host-http";
-import { PicoClient, rpc } from "@/shared/lib/rpc-client";
 
 export type HostIssueKind =
   | "host-unreachable"
   | "host-starting"
   | "tailscale-not-connected"
-  | "pairing-token-invalid"
-  | "host-claimed"
+  | "not-owner"
   | "provider-auth-missing"
-  | "host-unclaimed"
   | "generic";
 
 export interface HostIssue {
@@ -42,7 +39,7 @@ function genericIssue(error: unknown): HostIssue {
     message: errorText(error) || "The Pico host returned an unexpected error.",
     steps: [
       "Try again after checking that the host is running.",
-      "Run `pico doctor` on the host for a more detailed diagnosis.",
+      "On the host, `journalctl --user -u pico` shows the host's log.",
     ],
   };
 }
@@ -54,7 +51,7 @@ function hostStartingIssue(): HostIssue {
     message: "The host isn't responding promptly — it may be starting up, or a fresh tailnet connection is still warming up.",
     steps: [
       "Wait a few seconds and try again; a cold tailnet path can take a moment to connect.",
-      "If it persists, run `pico status` on the host to confirm it is healthy.",
+      "If it persists, run `systemctl --user status pico` on the host to confirm it is running.",
     ],
   };
 }
@@ -75,20 +72,14 @@ export function classifyHostIssue(error: unknown, options: HostIssueOptions = {}
 export function classifyHostFailure(
   error: unknown,
   options: HostIssueOptions = {},
-): Effect.Effect<HostIssue, never, PicoClient> {
+): Effect.Effect<HostIssue> {
   const code = hostErrorCodeOf(error);
   if (code) return Effect.succeed(hostIssueForCode(code, options));
   const url = options.url;
   if (!url) return Effect.succeed(genericIssue(error));
   return Effect.gen(function* () {
     const reachability = yield* healthcheckHost(url);
-    if (reachability !== "healthy") return reachabilityIssue(reachability, options);
-    const probe = yield* Effect.either(rpc((c) => c.system.identity()));
-    if (Either.isLeft(probe)) {
-      const probeCode = hostErrorCodeOf(probe.left);
-      if (probeCode) return hostIssueForCode(probeCode, options);
-    }
-    return genericIssue(error);
+    return reachability === "healthy" ? genericIssue(error) : reachabilityIssue(reachability, options);
   });
 }
 
@@ -106,29 +97,6 @@ export function hostIssueForCode(code: HostErrorCode, options: HostIssueOptions 
   const tailnetUrl = !!url && url.includes(".ts.net");
 
   switch (code) {
-    case "pairing_link_missing_url":
-      return {
-        kind: "generic",
-        title: "pairing link is incomplete",
-        message: "This pairing link is missing the Pico host URL.",
-        steps: [
-          "Run `pico pair` on the host again and scan the full QR code.",
-          "If entering details manually, paste the host URL printed next to the QR code.",
-        ],
-      };
-
-    case "invalid_pairing_token":
-      return {
-        kind: "pairing-token-invalid",
-        title: "pairing token invalid or expired",
-        message: "The Pico host rejected this one-time pairing token.",
-        steps: [
-          "On the host, run `pico pair` again to print a fresh QR/link.",
-          "If a host is already running, run `pico pair-code --rotate` and use the newest token.",
-          "Pairing tokens only protect the first claim; after claim, your Tailscale login is the owner identity.",
-        ],
-      };
-
     case "missing_tailscale_identity":
       return {
         kind: "tailscale-not-connected",
@@ -136,41 +104,19 @@ export function hostIssueForCode(code: HostErrorCode, options: HostIssueOptions 
         message: "The host answered, but Tailscale did not attach your user identity.",
         steps: [
           "Open the Tailscale app on this phone and make sure it is connected.",
-          "Use the `https://…ts.net` URL printed by `pico pair`, not a localhost or raw IP URL.",
-          "On the host, run `pico status` and confirm Tailscale Serve is forwarding to the Pico host port.",
+          "Open Pico through its `https://…ts.net` URL, not a localhost or raw IP URL.",
+          "On the host, `tailscale serve status` should show the Pico host port.",
         ],
       };
 
     case "tailscale_user_not_pico_host_owner":
       return {
-        kind: "host-claimed",
-        title: "claimed by another Tailscale user",
-        message: "This Pico host already has a different owner identity.",
+        kind: "not-owner",
+        title: "not this host's owner",
+        message: "This Pico host only accepts the Tailscale login set as PICO_OWNER.",
         steps: [
-          "Switch this phone to the Tailscale account that claimed the host.",
-          "Or reset/reinstall the host if this machine should be claimed by a new owner.",
-        ],
-      };
-
-    case "pico_host_already_claimed":
-      return {
-        kind: "host-claimed",
-        title: "Pico host already claimed",
-        message: "This host has already completed first-time pairing.",
-        steps: [
-          "Connect with the same Tailscale login that originally claimed it.",
-          "If you are moving ownership, reset the host owner database or reinstall the host.",
-        ],
-      };
-
-    case "pico_host_unclaimed":
-      return {
-        kind: "host-unclaimed",
-        title: "Pico host is not claimed yet",
-        message: "The host is reachable but has not accepted its first owner claim.",
-        steps: [
-          "Run `pico pair` on the host and scan the QR code again.",
-          "If entering details manually, include both the host URL and pairing token.",
+          "Switch this phone to the Tailscale account that owns the host.",
+          "Or change PICO_OWNER in the host's systemd unit and restart it.",
         ],
       };
 
@@ -197,10 +143,10 @@ export function hostIssueForCode(code: HostErrorCode, options: HostIssueOptions 
           tailnetUrl
             ? "Open Tailscale on this phone and confirm it is connected to the same tailnet as the host."
             : "Check that the host URL is correct, including `https://` or `http://`.",
-          "On the host, run `pico status` to confirm the local host is healthy.",
+          "On the host, run `systemctl --user status pico` to confirm it is running.",
           tailnetUrl
             ? "Confirm Tailscale Serve is enabled and points to the Pico host port."
-            : "If this is a phone, prefer the `https://…ts.net` URL from `pico pair`; `localhost` only works on the host itself.",
+            : "From a phone, use the host's `https://…ts.net` URL; `localhost` only works on the host itself.",
         ],
       };
   }

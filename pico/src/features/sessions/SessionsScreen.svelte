@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { navigateTo, routePaths } from "@/app/routes";
-  import { settingsState } from "@/features/settings/settings.state.svelte";
   import { sessionListState, type HostSessionMeta } from "@/features/sessions/model/session-list.state.svelte";
   import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
   import NewSessionSheet from "@/features/sessions/components/NewSessionSheet.svelte";
@@ -18,14 +17,7 @@
   let openSwipeSessionId = $state<string | null>(null);
 
   onMount(() => {
-    void (async () => {
-      if (!settingsState.loaded) await settingsState.load();
-      if (!settingsState.hostUrlConfigured) {
-        if (!settingsState.welcomeSkipped) navigateTo(routePaths.welcome, "replace");
-        return;
-      }
-      await sessionListState.refresh().catch(() => {});
-    })();
+    sessionListState.refresh().catch(() => {});
   });
 
   async function createSession(input: { hostId: string; cwd: string; title: string }): Promise<void> {
@@ -76,8 +68,6 @@
   archivedView={sessionListState.archivedView}
   visibleCount={sessionListState.visibleCount}
   creating={sessionListState.creating}
-  hostConfigured={!settingsState.loaded || settingsState.hostUrlConfigured}
-  onSetupHost={() => navigateTo(routePaths.welcome)}
   bind:openSwipeSessionId
   onRefresh={() => sessionListState.refresh()}
   onRefreshHost={(hostId) => sessionListState.refreshHost(hostId)}
