@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import { isHostErrorCode, type HostErrorCode } from "@pico/protocol";
-import { HostError } from "@pico/protocol/rpc";
 import { healthcheckHost, HostNotReady } from "@/shared/lib/host-http";
 
 export type HostIssueKind =
@@ -23,7 +22,6 @@ export interface HostIssueOptions {
 }
 
 export function hostErrorCodeOf(error: unknown): HostErrorCode | undefined {
-  if (error instanceof HostError) return error.code;
   if (isHostErrorCode(error)) return error;
   if (typeof error === "object" && error !== null && "hostErrorCode" in error) {
     const code = (error as { hostErrorCode: unknown }).hostErrorCode;

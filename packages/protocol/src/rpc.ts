@@ -1,6 +1,5 @@
-import { Rpc, RpcGroup, RpcMiddleware } from "@effect/rpc";
+import { Rpc, RpcGroup } from "@effect/rpc";
 import { Schema } from "effect";
-import { HostErrorCodeSchema } from "./errors.ts";
 import {
   AuthLoginJob,
   AuthProviders,
@@ -26,22 +25,12 @@ export const FsListing = Schema.Struct({
 export type FsListing = typeof FsListing.Type;
 
 // Wire failures; host handlers map their internal errors (PiError / …) onto these.
-export class HostError extends Schema.TaggedError<HostError>()("HostError", {
-  code: HostErrorCodeSchema,
-}) {}
-
 export class SessionNotFound extends Schema.TaggedError<SessionNotFound>()("SessionNotFound", {
   id: Schema.String,
 }) {}
 
 export class RequestError extends Schema.TaggedError<RequestError>()("RequestError", {
   message: Schema.String,
-}) {}
-
-// Admits only the host owner's Tailscale identity. The client needs no
-// implementation: Tailscale Serve injects the identity header at the network layer.
-export class AuthMiddleware extends RpcMiddleware.Tag<AuthMiddleware>()("AuthMiddleware", {
-  failure: HostError,
 }) {}
 
 const SessionFail = Schema.Union(SessionNotFound, RequestError);
@@ -74,7 +63,7 @@ export const PicoRpc = RpcGroup.make(
   Rpc.make("auth.saveApiKey", { payload: { providerId: Schema.String, apiKey: Trimmed }, success: AuthProviders, error: RequestError }),
   Rpc.make("auth.cancelLogin", { payload: { jobId: Schema.String }, error: RequestError }),
   Rpc.make("fs.ls", { payload: { path: Schema.optional(Schema.String) }, success: FsListing, error: RequestError }),
-).middleware(AuthMiddleware);
+);
 
 // The realtime session channel, served over a WebSocket. `events` is the
 // server push stream (resumed from `cursor`); the rest are the live commands a
@@ -101,4 +90,4 @@ export const PicoSessionRpc = RpcGroup.make(
     payload: { id: Schema.String, requestId: Schema.String, value: ExtensionUiResponseValue },
     error: SessionFail,
   }),
-).middleware(AuthMiddleware);
+);

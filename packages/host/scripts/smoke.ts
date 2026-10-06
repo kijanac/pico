@@ -44,8 +44,7 @@ function makeClientRuntime(baseUrl: string) {
 }
 
 // `ws`'s WebSocket satisfies the W3C interface the Socket layer expects; the
-// custom constructor injects the Tailscale header on the upgrade request, which
-// the WS-RPC server forwards into each rpc's headers (so AuthMiddleware sees it).
+// custom constructor injects the Tailscale header on the upgrade request.
 const wsConstructor = Layer.succeed(
   Socket.WebSocketConstructor,
   (url) => new WsWebSocket(url, { headers: authHeaders }) as unknown as globalThis.WebSocket,
@@ -80,6 +79,18 @@ try {
     const call = <A, E>(effect: Effect.Effect<A, E>): Promise<A> => clientRuntime.runPromise(effect);
 
     assert.equal((await fetch(`${baseUrl}/`)).status, 401, "the app requires the owner's Tailscale identity");
+    const spoofed = await fetch(`${baseUrl}/rpc`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify([{
+        _tag: "Request",
+        id: "1",
+        tag: "sessions.list",
+        payload: {},
+        headers: [["tailscale-user-login", "smoke@example.test"]],
+      }]),
+    });
+    assert.equal(spoofed.status, 401, "an identity header inside an RPC message must not authenticate");
 
     const fsListing = await call(client.fs.ls({ path: workspaceDir }));
     assert.equal(fsListing.path, workspaceDir);

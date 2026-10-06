@@ -2,27 +2,16 @@ import { HttpApiBuilder } from "@effect/platform";
 import { RpcSerialization, RpcServer } from "@effect/rpc";
 import { Context, Effect, Layer, Stream } from "effect";
 import {
-  AuthMiddleware,
-  HostError,
   PicoRpc,
   PicoSessionRpc,
   RequestError,
   SessionNotFound,
 } from "@pico/protocol/rpc";
-import { authorizeHeaders } from "../auth.ts";
 import { SessionNotFound as InternalSessionNotFound } from "../errors.ts";
 import { listFs } from "../fs.ts";
 import { PiError } from "../pi.ts";
 import { ProviderAuth } from "../provider-auth.ts";
 import { SessionManager } from "../session.ts";
-
-export const AuthLive = Layer.succeed(
-  AuthMiddleware,
-  AuthMiddleware.of(({ headers }) => {
-    const result = authorizeHeaders(headers);
-    return result.ok ? Effect.void : Effect.fail(new HostError({ code: result.error }));
-  }),
-);
 
 const toRequestError = (error: unknown) =>
   new RequestError({ message: error instanceof Error ? error.message : String(error) });
@@ -72,7 +61,6 @@ export const RpcRoutesLive = HttpApiBuilder.Router.use((router) =>
   }),
 ).pipe(
   Layer.provide(HandlersLive),
-  Layer.provide(AuthLive),
   Layer.provide(RpcSerialization.layerJson),
 );
 
@@ -95,6 +83,5 @@ export const SessionWsRoutesLive = HttpApiBuilder.Router.use((router) =>
   }),
 ).pipe(
   Layer.provide(SessionHandlersLive),
-  Layer.provide(AuthLive),
   Layer.provide(RpcSerialization.layerJson),
 );

@@ -7,15 +7,14 @@ const pathOf = (url: string): string => {
   return query === -1 ? url : url.slice(0, query);
 };
 
-// /rpc and /ws pass through so the RPC AuthMiddleware can answer with a typed
-// HostError; everything else (the app, exports) is gated here.
-export const authMiddleware = (
-  app: HttpApp.Default,
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> =>
+// The one identity gate: only the HTTP request's headers come from Tailscale
+// Serve. (RPC messages carry headers of their own that @effect/rpc merges over
+// the request's, so an RPC-level check could be spoofed.) Covers /rpc and the
+// /ws upgrade.
+export const authMiddleware = (app: HttpApp.Default) =>
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const path = pathOf(request.url);
-    if (path === "/healthz" || path === "/rpc" || path === "/ws") return yield* app;
+    if (pathOf(request.url) === "/healthz") return yield* app;
 
     const result = authorizeHeaders(request.headers);
     if (!result.ok) {
