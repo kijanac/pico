@@ -1,12 +1,3 @@
-import Root from "./carousel.svelte";
-import Content from "./carousel-content.svelte";
-import Item from "./carousel-item.svelte";
-
-export {
-	Root,
-	Content,
-	Item,
-	Root as Carousel,
-	Content as CarouselContent,
-	Item as CarouselItem,
-};
+export { default as Carousel } from "./carousel.svelte";
+export { default as CarouselContent } from "./carousel-content.svelte";
+export { default as CarouselItem } from "./carousel-item.svelte";

@@ -27,6 +27,7 @@ export function createSlashCommandsState(
   sessionId: () => string,
   text: () => string,
   cursor: () => number,
+  enabled: () => boolean = () => true,
 ): SlashCommandsState {
   let commands = $state<Commands | null>(null);
   let loading = $state(false);
@@ -35,7 +36,7 @@ export function createSlashCommandsState(
   const loadRequest = createLatest();
   let selectedIndex = $state(0);
 
-  const query = $derived(slashCommandQuery(text(), cursor()));
+  const query = $derived(enabled() ? slashCommandQuery(text(), cursor()) : null);
   const matches = $derived(matchCommands(commands, query ?? ""));
 
   $effect(() => {

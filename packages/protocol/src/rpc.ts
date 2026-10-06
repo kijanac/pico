@@ -90,6 +90,7 @@ export const PicoRpc = RpcGroup.make(
   Rpc.make("sessions.tree", { payload: { id: Schema.String }, success: SessionTree, error: SessionFail }),
   Rpc.make("sessions.navigateTree", { payload: { id: Schema.String, entryId: Schema.String, summarize: Schema.optional(Schema.Boolean) }, error: SessionFail }),
   Rpc.make("sessions.commands", { payload: { id: Schema.String }, success: Commands, error: SessionFail }),
+  Rpc.make("sessions.background", { payload: { id: Schema.String }, error: SessionFail }),
   Rpc.make("auth.providers", { success: AuthProviders, error: RequestError }),
   Rpc.make("auth.startLogin", { payload: { providerId: Schema.String }, success: AuthLoginJob, error: RequestError }),
   Rpc.make("auth.getLogin", { payload: { jobId: Schema.String }, success: AuthLoginJob, error: RequestError }),

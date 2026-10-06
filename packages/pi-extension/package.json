@@ -1,0 +1,30 @@
+{
+  "name": "@pico/pi-extension",
+  "version": "1.4.6",
+  "type": "module",
+  "description": "Attach or hand off a terminal Pi session to Pico mobile",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=0.84.3 <0.85.0",
+    "@earendil-works/pi-coding-agent": ">=0.84.3 <0.85.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.84.3",
+    "@earendil-works/pi-coding-agent": "^0.84.3",
+    "@pico/protocol": "workspace:*",
+    "@types/node": "^25.9.1",
+    "typescript": "^5.9.0"
+  }
+}

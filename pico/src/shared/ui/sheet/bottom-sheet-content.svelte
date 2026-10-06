@@ -34,7 +34,6 @@
 
 <Content
   bind:ref={sheetRef}
-  side="bottom"
   class={cn(
     "flex flex-col gap-0 overflow-hidden rounded-t-[12px] border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)] p-0 text-[color:var(--color-fg)] shadow-none",
     className,

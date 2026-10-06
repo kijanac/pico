@@ -7,6 +7,7 @@ This is a pnpm monorepo with workspace packages:
 - `packages/host/` (`@pico/host`): Node 26.1+ TypeScript Pico host server (HTTP/RPC/WebSocket, sessions, storage, Pi SDK). Main check: `pnpm --filter @pico/host typecheck`.
 - `packages/cli/` (`@pico/cli`): The `pico` host CLI plus the host control logic it drives (pairing, service install, diagnostics, local admin client). Main check: `pnpm --filter @pico/cli typecheck`.
 - `packages/protocol/` (`@pico/protocol`): Shared RPC/WS Effect Schema definitions and derived TypeScript types.
+- `packages/pi-extension/` (`@pico/pi-extension`): Pi `/pico` and `/rc` extension for attaching or handing off an existing terminal session to the local Pico host. Main check: `pnpm --filter @pico/pi-extension typecheck`.
 - `pico/` (`pico`): Svelte + Capacitor client. Main check: `pnpm --filter pico build`.
 
 Run commands from the repository root.
@@ -15,6 +16,7 @@ Run commands from the repository root.
 
 ```bash
 pnpm install
+pnpm run setup
 pnpm dev:host:mock
 pnpm dev:mobile
 pnpm check

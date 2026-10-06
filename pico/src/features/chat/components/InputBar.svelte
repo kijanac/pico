@@ -71,6 +71,7 @@
     () => sessionId,
     () => value,
     () => cursor,
+    () => activeSessionState.supports("commands"),
   );
   let textBeforeRecording = "";
 
@@ -84,6 +85,12 @@
   });
 
   const busy = $derived(activeSessionState.status === "thinking" || activeSessionState.status === "tool");
+  const supportsImages = $derived(activeSessionState.supports("images"));
+  const supportsQueue = $derived(activeSessionState.supports("queue"));
+  const supportsSettings = $derived(activeSessionState.supports("settings"));
+  const supportsCompact = $derived(activeSessionState.supports("compact"));
+  const supportsInterrupt = $derived(activeSessionState.supports("interrupt"));
+  const supportsCommands = $derived(activeSessionState.supports("commands"));
   const hasText = $derived(value.trim().length > 0);
   const hasSendable = $derived(hasText || images.length > 0);
   const canSend = $derived(activeSessionState.send !== null);
@@ -110,6 +117,10 @@
   }
 
   async function loadControls(): Promise<void> {
+    if (!supportsSettings) {
+      controls = null;
+      return;
+    }
     try {
       controls = await runOnHost(hostId, getSessionSettings(sessionId));
     } catch {
@@ -121,6 +132,7 @@
   $effect(() => {
     hostId;
     sessionId;
+    supportsSettings;
     if (modelOpen) return;
     untrack(() => void loadControls());
   });
@@ -133,10 +145,15 @@
   });
 
   $effect(() => {
+    if (!supportsImages && images.length > 0) images.length = 0;
+  });
+
+  $effect(() => {
     const key = `${hostId}:${sessionId}`;
     untrack(() => {
       void restoreDraft(hostId, sessionId, key);
-      void syncQueue();
+      if (supportsQueue) void syncQueue();
+      else chatQueueState.clear(hostId, sessionId);
     });
   });
 
@@ -342,6 +359,7 @@
   }
 
   function addImages(next: readonly ImageContent[]): void {
+    if (!supportsImages) return;
     const cloned = cloneImageContent(next);
     if (!cloned) return;
     images.push(...cloned);
@@ -360,6 +378,7 @@
   }
 
   async function handlePaste(event: ClipboardEvent): Promise<void> {
+    if (!supportsImages) return;
     const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
     const remaining = MAX_IMAGES - images.length;
     if (files.length === 0 || remaining <= 0) return;
@@ -379,6 +398,7 @@
   }
 
   async function syncQueue(options: { showLoading?: boolean } = {}): Promise<void> {
+    if (!supportsQueue) return;
     const token = queueRequest.begin();
     if (options.showLoading) {
       queueLoading = true;
@@ -424,7 +444,7 @@
     />
   {/if}
 
-  <ImageTray {images} onRemove={removeImage} />
+  {#if supportsImages}<ImageTray {images} onRemove={removeImage} />{/if}
 
   <!--
     One composer card (Claude-style): the textarea on top, a control row beneath
@@ -457,7 +477,7 @@
         }
       }}
       rows="1"
-      placeholder="ask, or / for commands"
+      placeholder={supportsCommands ? "ask, or / for commands" : "ask Pico"}
       class="type-input w-full resize-none bg-transparent px-3 pt-2 pb-1 text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] focus:outline-none"
     ></textarea>
 
@@ -465,7 +485,9 @@
       <div class="relative shrink-0" data-input-actions>
         {#if actionsOpen}
           <div class="absolute bottom-[calc(100%+0.75rem)] left-0 z-40 flex flex-col gap-1.5">
-            {@render ActionFab("Attach image", images.length >= MAX_IMAGES, () => runAction(attachImages), "image")}
+            {#if supportsImages}
+              {@render ActionFab("Attach image", images.length >= MAX_IMAGES, () => runAction(attachImages), "image")}
+            {/if}
             {@render ActionFab("Dictate", stt.available === false, () => runAction(toggleMic), "mic")}
           </div>
         {/if}
@@ -477,7 +499,7 @@
         </Button>
       </div>
 
-      {#if modelLabel}
+      {#if supportsSettings && modelLabel}
         <button
           type="button"
           onpointerdown={(event) => event.preventDefault()}
@@ -491,21 +513,27 @@
       {/if}
 
       {#if contextStats}
-        <button
-          type="button"
-          onpointerdown={(event) => event.preventDefault()}
-          onclick={() => (compactOpen = true)}
-          class="type-meta shrink-0 rounded-[var(--radius-sm)] px-2 py-1.5 tabular-nums text-[color:var(--color-fg-faint)] active:bg-[color:var(--color-surface-2)]"
-          aria-label="Context usage — tap to compact"
-          title="Compact context"
-        >
-          {contextPercent !== null ? `${contextPercent}%` : "—"} · {formatCost(contextStats.cost)}
-        </button>
+        {#if supportsCompact}
+          <button
+            type="button"
+            onpointerdown={(event) => event.preventDefault()}
+            onclick={() => (compactOpen = true)}
+            class="type-meta shrink-0 rounded-[var(--radius-sm)] px-2 py-1.5 tabular-nums text-[color:var(--color-fg-faint)] active:bg-[color:var(--color-surface-2)]"
+            aria-label="Context usage — tap to compact"
+            title="Compact context"
+          >
+            {contextPercent !== null ? `${contextPercent}%` : "—"} · {formatCost(contextStats.cost)}
+          </button>
+        {:else}
+          <span class="type-meta shrink-0 px-2 py-1.5 tabular-nums text-[color:var(--color-fg-faint)]">
+            {contextPercent !== null ? `${contextPercent}%` : "—"} · {formatCost(contextStats.cost)}
+          </span>
+        {/if}
       {/if}
 
       <div class="min-w-0 flex-1"></div>
 
-      {#if queueCount > 0}
+      {#if supportsQueue && queueCount > 0}
         <Button type="button" variant="ghost" size="icon" onclick={() => (queueOpen = true)} class="relative shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Queued messages" title="Queued messages">
           <ListTodo class="size-4" />
           <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-surface)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[0.625rem] font-medium leading-none text-[color:var(--color-bg)]">
@@ -519,7 +547,7 @@
           <MicOff class="size-3.5" />
         </Button>
       {:else}
-        {#if busy}
+        {#if busy && supportsInterrupt}
           <Button type="button" variant="outline" size="icon" onclick={interrupt} aria-label="Stop" title="Stop the current turn" class="shrink-0 rounded-[var(--radius-sm)] active:opacity-80">
             <Square class="size-3" fill="currentColor" />
           </Button>
@@ -541,24 +569,30 @@
     </div>
   </div>
 
-  <CompactContextSheet bind:open={compactOpen} {hostId} {sessionId} />
+  {#if supportsCompact}
+    <CompactContextSheet bind:open={compactOpen} {hostId} {sessionId} />
+  {/if}
 
-  <QueuedMessagesSheet
-    bind:open={queueOpen}
-    {queue}
-    loading={queueLoading}
-    error={queueError}
-    {clearing}
-    onLoad={loadQueue}
-    onClear={clearQueuedMessages}
-  />
+  {#if supportsQueue}
+    <QueuedMessagesSheet
+      bind:open={queueOpen}
+      {queue}
+      loading={queueLoading}
+      error={queueError}
+      {clearing}
+      onLoad={loadQueue}
+      onClear={clearQueuedMessages}
+    />
+  {/if}
 
-  <Sheet.Root bind:open={modelOpen}>
-    <Sheet.BottomContent class="max-h-[82dvh]">
-      <SheetHeader title="model" />
-      <SessionSettingsView {hostId} {sessionId} onError={() => {}} filterKeys={["model"]} />
-    </Sheet.BottomContent>
-  </Sheet.Root>
+  {#if supportsSettings}
+    <Sheet.Root bind:open={modelOpen}>
+      <Sheet.BottomContent class="max-h-[82dvh]">
+        <SheetHeader title="model" />
+        <SessionSettingsView {hostId} {sessionId} onError={() => {}} filterKeys={["model"]} />
+      </Sheet.BottomContent>
+    </Sheet.Root>
+  {/if}
 </div>
 
 {#snippet ActionFab(label: string, disabled: boolean, onClick: () => void | Promise<void>, icon: "image" | "mic")}

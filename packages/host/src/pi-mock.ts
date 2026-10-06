@@ -1,13 +1,12 @@
 import { v7 as randomUUIDv7 } from "uuid";
 import { Effect, Fiber, Layer, Queue, Random, Ref, Stream } from "effect";
 import type { SessionControls, SessionMeta } from "@pico/protocol";
-import { SessionNotFound } from "./errors.ts";
 import {
-  PiClient,
+  DurableRuntimeFactory,
   PiError,
-  type PiEmission,
-  type PiSession,
-} from "./pi.ts";
+  type DurableSessionRuntime,
+  type SessionEmission,
+} from "./session-runtime.ts";
 
 const sleepRand = (minMs: number, spreadMs: number) =>
   Effect.flatMap(Random.next, (r) =>
@@ -61,7 +60,7 @@ const mockSettings = (): SessionControls => ({
   ],
 });
 
-const scriptedFlow = (q: Queue.Queue<PiEmission>) =>
+const scriptedFlow = (q: Queue.Queue<SessionEmission>) =>
   Effect.gen(function* () {
     yield* Queue.offer(q, { t: "status", status: "thinking" });
     yield* Effect.sleep("400 millis");
@@ -133,16 +132,19 @@ const scriptedFlow = (q: Queue.Queue<PiEmission>) =>
 const makeMockSession = (opts: {
   cwd: string;
   title: string;
-}): Effect.Effect<PiSession, PiError> =>
+  id?: string;
+  runtimeSessionId?: string;
+  sessionFile?: string;
+}): Effect.Effect<DurableSessionRuntime, PiError> =>
   Effect.gen(function* () {
-    const q = yield* Queue.unbounded<PiEmission>();
+    const q = yield* Queue.unbounded<SessionEmission>();
     const currentFiber = yield* Ref.make<Fiber.RuntimeFiber<
       void,
       PiError
     > | null>(null);
 
     const meta: SessionMeta = {
-      id: randomUUIDv7(),
+      id: opts.id ?? randomUUIDv7(),
       title: opts.title,
       cwd: opts.cwd,
       status: "idle",
@@ -150,9 +152,12 @@ const makeMockSession = (opts: {
       tokens: { in: 0, out: 0 },
       costUsd: 0,
       archived: false,
+      execution: "host",
     };
 
     return {
+      lifecycle: { kind: "durable" },
+      acceptsImages: true,
       meta,
       events: Stream.fromQueue(q),
       send: () =>
@@ -197,7 +202,8 @@ const makeMockSession = (opts: {
       patchSetting: () => Effect.succeed(mockSettings()),
       getStats: () =>
         Effect.succeed({
-          sessionId: meta.id,
+          ...(opts.sessionFile ? { sessionFile: opts.sessionFile } : {}),
+          sessionId: opts.runtimeSessionId ?? meta.id,
           cwd: meta.cwd,
           userMessages: 0,
           assistantMessages: 0,
@@ -219,8 +225,14 @@ const makeMockSession = (opts: {
     };
   });
 
-export const PiClientMock = Layer.succeed(PiClient, {
+export const DurableRuntimeFactoryMock = Layer.succeed(DurableRuntimeFactory, {
   create: (opts) => makeMockSession(opts),
   resume: (storedMeta) =>
-    Effect.fail(new SessionNotFound({ id: storedMeta.id })),
+    makeMockSession({
+      id: storedMeta.id,
+      cwd: storedMeta.cwd,
+      title: storedMeta.title,
+      runtimeSessionId: storedMeta.runtimeSessionId,
+      sessionFile: storedMeta.runtimeSessionFile,
+    }),
 });

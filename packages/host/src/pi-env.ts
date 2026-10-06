@@ -1,5 +1,5 @@
 import { ALLOW_UNSAFE_TEST_CLIENT, IS_PRODUCTION, USE_MOCK } from "./config.ts";
-import { PiClientLive } from "./pi.ts";
+import { DurableRuntimeFactoryLive } from "./pi.ts";
 
 function assertTestClientAllowed(name: string): void {
   if (!IS_PRODUCTION || ALLOW_UNSAFE_TEST_CLIENT) return;
@@ -9,14 +9,14 @@ function assertTestClientAllowed(name: string): void {
   );
 }
 
-async function selectPiClientLayer() {
+async function selectDurableRuntimeFactoryLayer() {
   if (USE_MOCK) {
     assertTestClientAllowed("PI_USE_MOCK");
-    const { PiClientMock } = await import("./pi-mock.ts");
-    return PiClientMock;
+    const { DurableRuntimeFactoryMock } = await import("./pi-mock.ts");
+    return DurableRuntimeFactoryMock;
   }
 
-  return PiClientLive;
+  return DurableRuntimeFactoryLive;
 }
 
-export const PiClientFromEnv = await selectPiClientLayer();
+export const DurableRuntimeFactoryFromEnv = await selectDurableRuntimeFactoryLayer();

@@ -8,6 +8,7 @@ Pico is an independent, unofficial mobile companion for the Pi coding agent.
 | --- | --- |
 | [`packages/host/`](./packages/host) | Node/TypeScript Pico host server (`@pico/host`): HTTP/RPC/WebSocket server, sessions, storage, Pi SDK integration. |
 | [`packages/cli/`](./packages/cli) | The `pico` host CLI (`pair`, `doctor`, `install`, `status`) plus the host control logic it drives (pairing, service install, diagnostics, local admin client). |
+| [`packages/pi-extension/`](./packages/pi-extension) | Pi extension that attaches or hands off a terminal session to Pico with `/pico` or `/rc`. |
 | [`pico/`](./pico) | Pico Svelte + Capacitor mobile client. |
 | [`packages/protocol/`](./packages/protocol) | Shared Effect Schema definitions and TypeScript types for the RPC/WS protocol. |
 
@@ -92,8 +93,16 @@ pnpm --filter pico exec cap open ios
 
 ## Pico host pairing (experimental)
 
-For a desktop or existing SSH box, run a foreground Pico host as the current
-OS user and pair the phone with a one-time claim token:
+For a desktop or existing SSH box, the guided setup installs the Pi extension,
+starts the user service, configures Tailscale Serve, and prints the phone pairing
+link:
+
+```bash
+pnpm install
+pnpm run setup
+```
+
+For a foreground-only development host instead:
 
 ```bash
 pi --offline --list-models
@@ -105,13 +114,39 @@ This uses your normal Pi environment (`$HOME`, `~/.pi/agent`, git/SSH config)
 and exposes `127.0.0.1:7777` through `tailscale serve`. Open the printed
 `pico://connect?...` link on the phone to save and claim the host.
 
+### Attach an existing terminal Pi session
+
+Pico can also act as a remote-control surface for a Pi session that started in
+the terminal. Build and install the workspace extension once:
+
+```bash
+pnpm run build:runtime
+pnpm run build:extension
+pi install ./packages/pi-extension
+```
+
+Start the regular system Pi in the same OS account as `pico-host`, then run
+`/pico` (or `/rc`). The terminal session appears in Pico and stays synchronized;
+run the command again to detach. Choose **move session to background** on the
+phone—or run `/pico background`—to finish the active turn, exit terminal Pi,
+and continue the same logical session in the background host with full
+capabilities. Return an
+idle host-owned session safely by ID, ID prefix, or exact title with
+`pico resume <session>` (or `pnpm run resume <session>` from this checkout).
+The bridge is a local
+Unix-domain socket with mode `0600`, not a network listener. See
+[`packages/pi-extension/README.md`](./packages/pi-extension/README.md) for the
+handoff safety model and socket override.
+
 Useful host commands:
 
 ```bash
-pnpm run status       # local admin + Tailscale status
+pnpm run setup        # guided extension + service + Tailscale + pairing setup
+pnpm run status       # local admin + Tailscale + Pi compatibility status
 pnpm run pair-code    # reprint the current pairing QR/link
 pnpm run pair-code -- --rotate # rotate the local pairing token, then print a QR/link
 pnpm run serve        # durable foreground host, used by services
+pnpm run resume <id>  # safely return a host-owned session to terminal Pi
 pnpm run install:host # install a LaunchAgent/systemd --user service
 ```
 

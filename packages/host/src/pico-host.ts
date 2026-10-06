@@ -1,4 +1,8 @@
 import { VERSION } from "@earendil-works/pi-coding-agent";
+export {
+  backgroundCompatibility,
+  SUPPORTED_TERMINAL_PI_RANGE,
+} from "./pi-compatibility.ts";
 
 export interface PicoHostHandle {
   readonly host: string;

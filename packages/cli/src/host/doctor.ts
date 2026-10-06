@@ -5,7 +5,11 @@ import { RpcClient } from "@effect/rpc";
 import { Duration, Effect } from "effect";
 import { PicoRpc } from "@pico/protocol/rpc";
 import { picoHttpProtocol } from "@pico/protocol/client";
-import { bundledPiSdkVersion } from "@pico/host";
+import {
+  backgroundCompatibility,
+  bundledPiSdkVersion,
+  SUPPORTED_TERMINAL_PI_RANGE,
+} from "@pico/host";
 import { commandExists, run, runOutput } from "./exec.ts";
 import type { Diagnostic } from "./errors.ts";
 import { healthcheck, portIsOpen } from "./network.ts";
@@ -102,13 +106,20 @@ const sdkVersionChecks = () =>
       { level: "ok", label: "Embedded Pi SDK", detail: bundledVersion },
     ];
 
-    if (cliVersion && bundledVersion !== cliVersion) {
-      checks.push({
-        level: "warn",
-        label: "Pi version skew",
-        detail: `embedded SDK ${bundledVersion} != installed CLI ${cliVersion}`,
-        fix: "Pico uses its embedded SDK but reads the same ~/.pi/agent state. Upgrade Pico if CLI behavior differs.",
-      });
+    if (cliVersion) {
+      const compatibility = backgroundCompatibility(cliVersion);
+      checks.push(compatibility.compatible
+        ? {
+            level: "ok",
+            label: "Pi background compatibility",
+            detail: `installed ${cliVersion}; supported ${SUPPORTED_TERMINAL_PI_RANGE}`,
+          }
+        : {
+            level: "warn",
+            label: "Pi background compatibility",
+            detail: `embedded SDK ${bundledVersion}; installed CLI ${cliVersion}`,
+            fix: compatibility.reason,
+          });
     }
 
     return checks;

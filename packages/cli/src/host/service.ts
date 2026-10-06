@@ -318,6 +318,20 @@ const runSystemctl = (args: readonly string[], allowFailure: boolean) =>
 function macPlist(command: ServiceCommand, paths: PicoHostPaths, logPath: string, errorPath: string): string {
   const args = [command.executable, ...command.args];
   const argXml = args.map((arg) => `    <string>${xmlEscape(arg)}</string>`).join("\n");
+  const servicePath = [...new Set([
+    dirname(command.executable),
+    join(homedir(), ".pi/agent/bin"),
+    join(homedir(), "Library/pnpm"),
+    join(homedir(), ".local/bin"),
+    join(homedir(), ".cargo/bin"),
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+  ])].join(":");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -330,6 +344,7 @@ ${argXml}
   <key>EnvironmentVariables</key>
   <dict>
     <key>NODE_ENV</key><string>production</string>
+    <key>PATH</key><string>${xmlEscape(servicePath)}</string>
     <key>PICO_HOST_DATA_DIR</key><string>${xmlEscape(paths.dataDir)}</string>
     <key>PICO_WORKSPACES_DIR</key><string>${xmlEscape(paths.workspacesDir)}</string>
     <key>PICO_HOST_BIND</key><string>${xmlEscape(paths.host)}</string>

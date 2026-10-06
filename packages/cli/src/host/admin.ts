@@ -1,7 +1,11 @@
 import { join } from "node:path";
 import { FileSystem } from "@effect/platform";
 import { Effect, Schema } from "effect";
-import { LocalAdminPairing, LocalAdminStatus } from "@pico/protocol/admin";
+import {
+  LocalAdminPairing,
+  LocalAdminSessionRelease,
+  LocalAdminStatus,
+} from "@pico/protocol/admin";
 import { type PicoHostPaths, picoHostPathsFromEnv } from "./paths.ts";
 
 export function localAdminTokenPath(dataDir: string): string {
@@ -18,7 +22,11 @@ export const readLocalAdminToken = (dataDir: string) =>
 const localAdminFetch = <A, I>(
   path: string,
   schema: Schema.Schema<A, I>,
-  opts: { readonly paths?: PicoHostPaths; readonly method?: "GET" | "POST" } = {},
+  opts: {
+    readonly paths?: PicoHostPaths;
+    readonly method?: "GET" | "POST";
+    readonly payload?: unknown;
+  } = {},
 ) =>
   Effect.gen(function* () {
     const paths = opts.paths ?? picoHostPathsFromEnv();
@@ -32,8 +40,12 @@ const localAdminFetch = <A, I>(
       try: () =>
         fetch(`http://${paths.host}:${paths.port}${path}`, {
           method: opts.method ?? "GET",
-          headers: { authorization: `Bearer ${token}` },
-          signal: AbortSignal.timeout(5_000),
+          headers: {
+            authorization: `Bearer ${token}`,
+            ...(opts.payload === undefined ? {} : { "content-type": "application/json" }),
+          },
+          ...(opts.payload === undefined ? {} : { body: JSON.stringify(opts.payload) }),
+          signal: AbortSignal.timeout(15_000),
         }),
       catch: toError,
     });
@@ -56,3 +68,14 @@ export const getLocalAdminPairing = (paths?: PicoHostPaths) =>
 
 export const rotateLocalAdminPairingToken = (paths?: PicoHostPaths) =>
   localAdminFetch("/admin/pairing/rotate", LocalAdminPairing, { paths, method: "POST" });
+
+export const releaseLocalAdminSession = (id: string, paths?: PicoHostPaths) =>
+  localAdminFetch("/admin/session/release", LocalAdminSessionRelease, {
+    paths,
+    method: "POST",
+    payload: { id },
+  }).pipe(
+    Effect.flatMap((result) => result.ok
+      ? Effect.succeed(result)
+      : Effect.fail(new Error(result.error))),
+  );

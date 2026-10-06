@@ -9,6 +9,7 @@ import {
   type HostUpdateStatus,
 } from "@pico/protocol";
 import { AUTO_UPDATE, UPDATE_REQUEST_PATH, UPDATE_STATE_PATH } from "../config.ts";
+import { EMBEDDED_PI_VERSION, SUPPORTED_TERMINAL_PI_RANGE } from "../pi-compatibility.ts";
 
 const UPDATE_CHANNEL = "stable";
 
@@ -49,6 +50,8 @@ export function hostSystemInfo() {
     recommendedMobileVersion: RECOMMENDED_MOBILE_VERSION,
     updateChannel: UPDATE_CHANNEL,
     autoUpdate: AUTO_UPDATE,
+    piVersion: EMBEDDED_PI_VERSION,
+    supportedTerminalPiRange: SUPPORTED_TERMINAL_PI_RANGE,
   };
 }
 

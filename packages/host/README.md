@@ -53,52 +53,62 @@ node --experimental-strip-types smoke.ts   # in another
 
 ## Architecture
 
+```text
+HTTP/RPC client ─┐
+                 ├──▶ SessionManager ──▶ SessionRuntime
+mobile WebSocket ┘          │              ├── durable: embedded Pi SDK
+                            │              └── presence: attached terminal Pi
+                            └── SQLite event journal + live PubSub
 ```
-HTTP client ─┐
-             ├──▶ Hono on @hono/node-server ──┐
-mobile WS ──▶ Node http upgrade ──▶ ws ───────┴──▶ SessionManager ──▶ PiClient
-                              │                            │
-                              └─── one Fiber per conn ◀────┴── PubSub + capped log
-                                   • outgoing: Stream<WireEvent> → ws.send
-                                   • incoming: Queue<ClientEvent> → mgr.send / interrupt / approve
-```
+
+`src/session-runtime.ts` is the execution boundary. Both runtime variants
+produce the same `SessionEmission` stream and implement the operations they
+support. `SessionManager` owns logical sessions, journaling, replay, and mobile
+submission deduplication; it branches only on explicit lifecycle semantics
+(`durable` or `presence`), never on the transport or UI that created a runtime.
+Public capabilities are derived from runtime operations rather than authored as
+a second source of truth.
+
+The phone's **move session to background** action and `/pico background` swap a terminal
+runtime for a host runtime without changing the logical Pico session ID.
+`SessionManager` grants an idle-boundary
+generation lease, blocks further operations on that generation, and waits for
+the terminal owner PID to exit before committing durable ownership. The
+persisted `runtime_session_id` and `runtime_session_file` then bind the logical
+session to Pi's original JSONL. Old event pumps cannot emit after the lease, so terminal Pi and the SDK
+never write the file concurrently. `pico resume <session-id>` performs the safe
+reverse: local admin closes the SDK runtime and removes its durable registration
+before ordinary system Pi opens the exact JSONL; a one-time reclaim lease lets
+the extension preserve Pico's logical ID when it reconnects.
+
+Foreground `pico serve` and a launchd/systemd-managed host use this same runtime;
+the service manager is only a process supervisor, not a separate daemon mode.
+
+Attach protocol 3 reports the terminal Pi version. The host allows transient
+remote control across protocol-compatible clients, but grants background only
+when terminal Pi is in the embedded SDK's tested minor range and the JSONL
+header uses the current session format. `pico doctor` and `pico status` surface
+the same compatibility policy.
 
 ## Migrations and protocol boundaries
 
-SQLite schema changes run at startup. Runtime-only host fields stay inside
-host record types; public protocol responses should expose only the mobile
-contract. Upstream pi event/tool payloads are parsed into canonical shared
-protocol shapes at the `src/pi.ts` adapter boundary.
+SQLite schema changes run at startup. Runtime lifecycle is persisted internally
+so transient presence rows can be removed after a crash without relying on
+session ID conventions. Runtime-only fields stay inside host record types;
+public protocol responses expose only the mobile contract. Upstream Pi SDK
+events are normalized in `src/pi.ts`, while the local extension transport is
+normalized in `src/attached-pi-session.ts`.
 
-## Wiring real pi
+## Runtime adapters
 
-The default is already the real pi. `src/pi.ts` exports two Layers:
+- `DurableRuntimeFactoryLive` in `src/pi.ts` wraps `createAgentSession()` and
+  maps Pi `AgentSessionEvent`s into `SessionEmission`s.
+- `DurableRuntimeFactoryMock` provides the scripted development runtime.
+- `src/attached-pi-session.ts` adapts a same-user Unix-socket extension peer
+  into a transient presence runtime.
 
-- `PiClientLive` — wraps `createAgentSession()`. Pi's `AgentSessionEvent`s
-  are mapped into our `PiEmission` shape in `mapEvent()`. The full set of
-  event types we handle:
-  - `message_update` → `assistant_delta` (when nested type is `text_delta`)
-  - `message_end` → `assistant_end`
-  - `tool_execution_start` → `tool_call`
-  - `tool_execution_end` → `tool_result`
-  - `turn_start` / `turn_end` → `status` updates + `cost` when usage is present
-- `PiClientMock` — the scripted demo flow, no API needed
-
-The active pick is `PiClientFromEnv`: live by default, or scripted mock when `$PI_USE_MOCK=1`.
-
-### Known gaps in v0 live integration
-
-- **Permission gates skipped.** Pi's permission system is an extension, not
-  a core event. Need to register a small extension that forwards pi's
-  permission asks to our wire protocol's `permission` event. Until then,
-  live pi runs with whatever default policy is configured for the agent.
-- **`session.interrupt()` is a no-op.** `AgentSession` doesn't expose a
-  public interrupt at the time of writing; we emit a status change but
-  pi keeps generating until the turn ends.
-- **Tool input/output narrowing uses `@ts-expect-error`.** Pi's tool event
-  shapes (`toolCallId`, `input`, `output`, `error`, `isError`) aren't in
-  the exported union narrowing — we know them by convention. Tighten when
-  pi exports proper discriminators.
+`DurableRuntimeFactoryFromEnv` selects the live factory by default or the mock
+factory when `PI_USE_MOCK=1`.
 
 ## Pico host state vs. pi state
 
@@ -109,17 +119,14 @@ Two layers of persistence:
 | Pi conversation log (messages, tool calls) | `~/.pi/agent/sessions/<id>.jsonl` (pi's own store) | yes |
 | Pico host session registry         | SQLite `sessions` table                 | yes |
 | Pico host event log (for cursor replay) | SQLite `events` table               | yes |
-| Live PubSub fan-out + active fibers | in-memory                              | no (re-attach is a future feature) |
+| Live PubSub fan-out + active runtimes | in-memory                           | durable sessions resume lazily; presence does not |
 | Push notification device tokens    | not yet — small JSON file when added    | n/a yet |
 
-`GET /sessions` survives restart and lists every session ever created. The
-event log is unbounded — clients can `resume` from any cursor and the Pico host
-will replay from disk. The one thing that does NOT survive restart is the
-live attachment to pi: after restart, calling `WS /ws?session=<old-id>`
-returns `session_not_found` because there's no `AgentSession` running for
-that id in this host process. Re-attaching to a dormant session (via pi's
-`SessionManager.open()` or `continueRecent()`) is the next obvious feature
-and slots into `SessionManager.create()` cleanly.
+Durable session records survive restart and lazily reopen their bound Pi session
+file when a client subscribes or sends. The SQLite event journal retains a bounded
+replay window; clients behind its prune boundary receive an authoritative
+`log_reset`. Presence sessions exist only while their external owner remains
+connected and are removed on disconnect or the next host startup.
 
 ## Configuration
 

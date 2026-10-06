@@ -80,7 +80,7 @@ Principled direction:
 
 ## 6. Add Pico host idle eviction and backpressure
 
-**Status:** partial. A coarse idle-session eviction pass is implemented locally: when a managed session has no subscribers, no pending sends, is not compacting, and is idle/error for 15 minutes, the host closes the `PiSession` and removes it from the in-memory session map. Reopening the session resumes it from disk.
+**Status:** partial. A coarse idle-session eviction pass is implemented locally: when a managed session has no subscribers, no pending sends, is not compacting, and is idle/error for 15 minutes, the host closes the durable `SessionRuntime` and removes it from the in-memory session map. Reopening the session resumes it from disk.
 
 **Likely high-impact scenarios:** host running for days or weeks, many historical sessions, slow or unstable clients, multiple reconnecting mobile devices.
 

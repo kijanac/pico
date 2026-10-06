@@ -20,7 +20,7 @@ ARTIFACT="pico-host-$VERSION.tar.gz"
 rm -rf "$OUT_DIR/stage"
 mkdir -p "$STAGE" "$OUT_DIR"
 
-# Build everything the release ships: protocol/host/cli dist + the compiled
+# Build everything the release ships: protocol/host/extension/cli dist + the compiled
 # updater. The tarball carries prebuilt dist (the box has no TS toolchain); the
 # box only runs `pnpm install --prod` against the bundled lockfile.
 (cd "$ROOT" && pnpm run build:cli && pnpm --filter @pico/host build:updater)
