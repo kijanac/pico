@@ -50,6 +50,12 @@ interface ManagedSessionState {
   readonly idleEvictionTimer: Ref.Ref<ReturnType<typeof setTimeout> | null>;
   readonly pendingSends: Ref.Ref<PendingSend[]>;
   readonly compacting: Ref.Ref<boolean>;
+  /**
+   * Serializes queue decisions and edits that span pi calls (send, compaction
+   * start/end and its flush, clear/remove), so none of them reads pendingSends
+   * or the compacting flag while another is midway.
+   */
+  readonly queueLock: Effect.Semaphore;
   readonly queueEventsToIgnore: Ref.Ref<number>;
   /** Newest last; retries with a seen id are dropped. */
   readonly seenClientIds: Ref.Ref<string[]>;
@@ -369,10 +375,12 @@ const make = Effect.gen(function* () {
       yield* Ref.set(ms.idleEvictionTimer, null);
       if (!(yield* isEvictable(ms))) return;
 
+      // Unpublish before closing, so a concurrent lookup reattaches a fresh
+      // session instead of getting this one mid-close.
+      yield* Ref.update(sessions, (m) => HashMap.remove(m, sessionId));
       yield* Effect.logInfo(`[session] evict idle session=${sessionId}`);
       yield* Fiber.interrupt(ms.pumpFiber);
       yield* ms.pi.close();
-      yield* Ref.update(sessions, (m) => HashMap.remove(m, sessionId));
     });
 
   const scheduleIdleEviction = (sessionId: string, ms: ManagedSessionState): Effect.Effect<void> =>
@@ -452,11 +460,14 @@ const make = Effect.gen(function* () {
 
           if (event.t === "compaction") {
             if (event.entry.status === "running") {
-              yield* Ref.set(ms.compacting, true);
+              yield* ms.queueLock.withPermits(1)(Ref.set(ms.compacting, true));
               yield* clearIdleEviction(ms);
             } else {
-              yield* Ref.set(ms.compacting, false);
-              yield* flushCompactionQueue(ms, sessionId, { willRetry: event.entry.willRetry });
+              yield* ms.queueLock.withPermits(1)(
+                Ref.set(ms.compacting, false).pipe(
+                  Effect.andThen(flushCompactionQueue(ms, sessionId, { willRetry: event.entry.willRetry })),
+                ),
+              );
               yield* scheduleIdleEviction(sessionId, ms);
             }
           } else if (event.t === "status" && (event.status === "idle" || event.status === "error")) {
@@ -482,6 +493,7 @@ const make = Effect.gen(function* () {
         idleEvictionTimer: yield* Ref.make<ReturnType<typeof setTimeout> | null>(null),
         pendingSends: yield* Ref.make<PendingSend[]>([]),
         compacting: yield* Ref.make(false),
+        queueLock: yield* Effect.makeSemaphore(1),
         queueEventsToIgnore: yield* Ref.make(0),
         seenClientIds: yield* Ref.make<string[]>([]),
       };
@@ -561,7 +573,10 @@ const make = Effect.gen(function* () {
 
       if (leader !== ours) return yield* Deferred.await(leader);
 
-      return yield* reattachOne(id).pipe(
+      // Another leader may have finished between our lookup and the claim.
+      const attached = HashMap.get(yield* Ref.get(sessions), id);
+      const reattach = Option.isSome(attached) ? Effect.succeed(attached.value) : reattachOne(id);
+      return yield* reattach.pipe(
         Effect.onExit((exit) =>
           Ref.update(reattachInFlight, HashMap.remove(id)).pipe(
             Effect.andThen(Deferred.done(ours, exit)),
@@ -578,6 +593,12 @@ const make = Effect.gen(function* () {
     Stream.unwrapScoped(
       Effect.gen(function* () {
         const ms = yield* lookupOrReattach(id);
+        // Count the subscriber before anything else, so an idle eviction can't
+        // close the session while this stream is being set up.
+        yield* Effect.acquireRelease(
+          clearIdleEviction(ms).pipe(Effect.andThen(Ref.update(ms.subscribers, (n) => n + 1))),
+          () => Ref.update(ms.subscribers, (n) => Math.max(0, n - 1)).pipe(Effect.andThen(scheduleIdleEviction(id, ms))),
+        );
         const liveQueue = yield* PubSub.subscribe(ms.pubsub);
         const currentMeta = yield* Ref.get(ms.meta);
         const cursorAtSubscribe = yield* Ref.get(ms.seq);
@@ -611,17 +632,9 @@ const make = Effect.gen(function* () {
           Stream.filter((e) => e.seq > cursorAtSubscribe),
         );
 
-        yield* clearIdleEviction(ms);
-        yield* Ref.update(ms.subscribers, (n) => n + 1);
-
         return pipe(
           Stream.fromIterable<WireEvent>([helloEvent, ...replayEvents, queueSnapshotEvent]),
           Stream.concat(liveStream),
-          Stream.ensuring(
-            Ref.update(ms.subscribers, (n) => Math.max(0, n - 1)).pipe(
-              Effect.andThen(scheduleIdleEviction(id, ms)),
-            ),
-          ),
         );
       }),
     );
@@ -648,6 +661,21 @@ const make = Effect.gen(function* () {
       );
       if (duplicate) return;
       const releaseClaim = Ref.update(ms.seenClientIds, (seen) => seen.filter((c) => c !== clientId));
+      yield* ms.queueLock.withPermits(1)(enqueueSend(ms, id, text, mode, images, clientId, releaseClaim));
+    });
+
+  // Where a message goes (held for compaction, queued behind a turn, or sent
+  // now) depends on state a compaction ending also changes; runs under queueLock.
+  const enqueueSend = (
+    ms: ManagedSession,
+    id: string,
+    text: string,
+    mode: SendMode,
+    images: ImageContent[] | undefined,
+    clientId: string,
+    releaseClaim: Effect.Effect<void>,
+  ) =>
+    Effect.gen(function* () {
       const currentMeta = yield* Ref.get(ms.meta);
       const compacting = (yield* Ref.get(ms.compacting)) || (yield* ms.pi.isCompacting());
       const queued = compacting || currentMeta.status === "thinking" || currentMeta.status === "tool";
@@ -725,8 +753,9 @@ const make = Effect.gen(function* () {
   const compact = (id: string, instructions?: string) =>
     Effect.gen(function* () {
       const ms = yield* lookupOrReattach(id);
-      if ((yield* Ref.get(ms.compacting)) || (yield* ms.pi.isCompacting())) return;
-      yield* Ref.set(ms.compacting, true);
+      if (yield* ms.pi.isCompacting()) return;
+      // Claim atomically so two concurrent requests can't both start one.
+      if (yield* ms.queueLock.withPermits(1)(Ref.getAndSet(ms.compacting, true))) return;
       yield* ms.pi.compact(instructions).pipe(
         Effect.onExit(() =>
           Ref.get(ms.compacting).pipe(
@@ -751,27 +780,34 @@ const make = Effect.gen(function* () {
   const clearQueue = (id: string) =>
     Effect.gen(function* () {
       const ms = yield* lookupOrReattach(id);
-      const pending = yield* Ref.get(ms.pendingSends);
-      yield* Ref.set(ms.pendingSends, []);
-      yield* ms.pi.clearQueue();
-      for (const message of pending) yield* publishUserMessageRemoved(ms, id, message.id);
-      yield* publishQueueSnapshot(ms, id);
-      return { queued: [] };
+      return yield* ms.queueLock.withPermits(1)(
+        Effect.gen(function* () {
+          const pending = yield* Ref.getAndSet(ms.pendingSends, []);
+          yield* ms.pi.clearQueue();
+          for (const message of pending) yield* publishUserMessageRemoved(ms, id, message.id);
+          yield* publishQueueSnapshot(ms, id);
+          return { queued: [] };
+        }),
+      );
     });
 
   const removeQueued = (id: string, messageId: string) =>
     Effect.gen(function* () {
       const ms = yield* lookupOrReattach(id);
-      const pending = yield* Ref.get(ms.pendingSends);
-      const removed = pending.find((message) => message.id === messageId);
-      if (!removed) return projectQueue(pending);
+      return yield* ms.queueLock.withPermits(1)(
+        Effect.gen(function* () {
+          const pending = yield* Ref.get(ms.pendingSends);
+          const removed = pending.find((message) => message.id === messageId);
+          if (!removed) return projectQueue(pending);
 
-      const next = pending.filter((message) => message.id !== messageId);
-      yield* Ref.set(ms.pendingSends, next);
-      if (removed.phase === "sdk_queue") yield* resyncSdkQueue(ms, next);
-      yield* publishUserMessageRemoved(ms, id, messageId);
-      yield* publishQueueSnapshot(ms, id);
-      return projectQueue(next);
+          const next = pending.filter((message) => message.id !== messageId);
+          yield* Ref.set(ms.pendingSends, next);
+          if (removed.phase === "sdk_queue") yield* resyncSdkQueue(ms, next);
+          yield* publishUserMessageRemoved(ms, id, messageId);
+          yield* publishQueueSnapshot(ms, id);
+          return projectQueue(next);
+        }),
+      );
     });
 
   const getSettings = (id: string) =>
@@ -816,22 +852,24 @@ const make = Effect.gen(function* () {
       if (Option.isNone(existing))
         return yield* Effect.fail(new SessionNotFound({ id }));
 
-      const nextRecord = {
-        ...existing.value,
+      // Write and merge only the changed fields: a live session's pump may have
+      // moved status or cost on since the read above.
+      const changes = {
         ...(p.title !== undefined ? { title: p.title } : {}),
         ...(p.archived !== undefined ? { archived: p.archived } : {}),
-        updatedAtMs: Date.now(),
       };
-      const next = toSessionMeta(nextRecord);
-      yield* store.updateSession(id, nextRecord);
+      const updatedAtMs = Date.now();
+      yield* store.updateSession(id, { ...changes, updatedAtMs });
 
-      const map = yield* Ref.get(sessions);
-      const live = HashMap.get(map, id);
-      if (Option.isSome(live)) {
-        yield* Ref.set(live.value.meta, next);
-        if (p.title !== undefined) {
-          yield* Effect.ignoreLogged(live.value.pi.patchSession({ title: p.title }));
-        }
+      const live = HashMap.get(yield* Ref.get(sessions), id);
+      if (Option.isNone(live)) return toSessionMeta({ ...existing.value, ...changes, updatedAtMs });
+      const next = yield* Ref.updateAndGet(live.value.meta, (meta) => ({
+        ...meta,
+        ...changes,
+        updatedAt: new Date(updatedAtMs).toISOString(),
+      }));
+      if (p.title !== undefined) {
+        yield* Effect.ignoreLogged(live.value.pi.patchSession({ title: p.title }));
       }
       return next;
     });

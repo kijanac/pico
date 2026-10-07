@@ -22,7 +22,7 @@ export class Store extends Context.Tag("Store")<
     readonly listSessions: (filter?: { archived?: boolean }) => Effect.Effect<SessionRecord[]>;
     readonly updateSession: (
       id: string,
-      patch: Partial<SessionRecord>,
+      patch: Partial<Pick<SessionRecord, "title" | "status" | "updatedAtMs" | "tokens" | "costUsd" | "archived">>,
     ) => Effect.Effect<void>;
     readonly deleteSession: (id: string) => Effect.Effect<void>;
 
@@ -133,11 +133,25 @@ const make = (dbPath: string) =>
       return d;
     }), (d) => Effect.sync(() => d.close()));
 
-    const stmtUpsertSession: StatementSync = db.prepare(`
-      INSERT OR REPLACE INTO sessions
+    const stmtInsertSession: StatementSync = db.prepare(`
+      INSERT INTO sessions
         (id, title, cwd, status, updated_at,
          tokens_in, tokens_out, cost_usd, created_at, archived)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    // Writes only the given columns (NULL keeps the current value), so
+    // concurrent updates of different fields can't overwrite each other.
+    const stmtUpdateSession: StatementSync = db.prepare(`
+      UPDATE sessions SET
+        title = COALESCE(?, title),
+        status = COALESCE(?, status),
+        updated_at = COALESCE(?, updated_at),
+        tokens_in = COALESCE(?, tokens_in),
+        tokens_out = COALESCE(?, tokens_out),
+        cost_usd = COALESCE(?, cost_usd),
+        archived = COALESCE(?, archived)
+      WHERE id = ?
     `);
 
     const stmtGetSession: StatementSync = db.prepare(
@@ -195,7 +209,7 @@ const make = (dbPath: string) =>
       insertSession: (record) =>
         Effect.sync(() => {
           const now = Date.now();
-          stmtUpsertSession.run(
+          stmtInsertSession.run(
             record.id,
             record.title,
             record.cwd,
@@ -223,20 +237,15 @@ const make = (dbPath: string) =>
 
       updateSession: (id, patch) =>
         Effect.sync(() => {
-          const existing = stmtGetSession.get(id);
-          if (!existing) return;
-          const merged = { ...rowToRecord(existing), ...patch };
-          stmtUpsertSession.run(
-            merged.id,
-            merged.title,
-            merged.cwd,
-            merged.status,
-            merged.updatedAtMs,
-            merged.tokens.in,
-            merged.tokens.out,
-            merged.costUsd,
-            existing.created_at,
-            merged.archived ? 1 : 0,
+          stmtUpdateSession.run(
+            patch.title ?? null,
+            patch.status ?? null,
+            patch.updatedAtMs ?? null,
+            patch.tokens?.in ?? null,
+            patch.tokens?.out ?? null,
+            patch.costUsd ?? null,
+            patch.archived === undefined ? null : patch.archived ? 1 : 0,
+            id,
           );
         }),
 
