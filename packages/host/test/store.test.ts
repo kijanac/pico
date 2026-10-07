@@ -31,6 +31,7 @@ const record = {
   tokens: { in: 10, out: 20 },
   costUsd: 0.5,
   archived: false,
+  path: null,
 };
 
 describe("session updates write only the fields they name", () => {

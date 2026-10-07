@@ -1,6 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -22,7 +23,7 @@ import type {
   SessionTree,
 } from "@pico/protocol";
 import { Store } from "./store.ts";
-import { toSessionMeta } from "./session-record.ts";
+import { toSessionMeta, type SessionFile } from "./session-record.ts";
 import { SessionNotFound } from "./errors.ts";
 
 interface ManagedSession {
@@ -42,7 +43,7 @@ export class SessionManager extends Context.Tag("SessionManager")<
   {
     readonly create: (opts: {
       cwd: string;
-      title: string;
+      title?: string;
     }) => Effect.Effect<SessionMeta, PiError>;
     readonly list: (filter?: { archived?: boolean }) => Effect.Effect<SessionMeta[]>;
     readonly subscribe: (
@@ -85,10 +86,10 @@ export class SessionManager extends Context.Tag("SessionManager")<
     readonly patch: (
       id: string,
       patch: { title?: string; archived?: boolean },
-    ) => Effect.Effect<SessionMeta, SessionNotFound>;
+    ) => Effect.Effect<SessionMeta, PiError | SessionNotFound>;
     readonly remove: (
       id: string,
-    ) => Effect.Effect<void, SessionNotFound>;
+    ) => Effect.Effect<void, PiError | SessionNotFound>;
     readonly closeAll: () => Effect.Effect<void>;
   }
 >() {}
@@ -146,7 +147,7 @@ const make = Effect.gen(function* () {
   });
   yield* evictIdle.pipe(Effect.repeat(Schedule.spaced("1 minute")), Effect.forkScoped);
 
-  const create = (opts: { cwd: string; title: string }) =>
+  const create = (opts: { cwd: string; title?: string }) =>
     Effect.gen(function* () {
       const piSession = yield* pi.create(opts, hooks);
       const meta = piSession.live.meta;
@@ -160,6 +161,7 @@ const make = Effect.gen(function* () {
         tokens: meta.tokens,
         costUsd: meta.costUsd,
         archived: meta.archived,
+        path: null,
       });
 
       yield* Ref.update(sessions, HashMap.set(meta.id, { pi: piSession, lastUsed: Date.now() }));
@@ -182,7 +184,6 @@ const make = Effect.gen(function* () {
         yield* piSession.close();
         return yield* Effect.fail(new PiError({ message: "The host is restarting; try again in a moment." }));
       }
-      yield* Effect.ignoreLogged(piSession.patchSession({ title: storedRecord.title }));
       const ms: ManagedSession = { pi: piSession, lastUsed: Date.now() };
       yield* Ref.update(sessions, HashMap.set(id, ms));
       return ms;
@@ -224,8 +225,48 @@ const make = Effect.gen(function* () {
       );
     });
 
+  // The list is pi's session files, including sessions started in pi itself.
+  // Each scan re-reads only the files pi wrote to since the last one.
+  const indexLock = yield* Effect.makeSemaphore(1);
+  const indexOne = (file: SessionFile) =>
+    Effect.gen(function* () {
+      const session = yield* pi.readSessionFile(file.path);
+      if (Option.isNone(session)) return;
+      yield* store.indexFile(file, session.value);
+      // An open session's title follows its name or first message.
+      const open = HashMap.get(yield* Ref.get(sessions), session.value.id);
+      if (Option.isSome(open) && open.value.pi.live.meta.title !== session.value.title) {
+        open.value.pi.live.patchMeta({ title: session.value.title });
+      }
+    });
+  const index = Effect.gen(function* () {
+    const unseen = new Map((yield* store.indexedFiles()).map((file) => [file.path, file]));
+    let read = 0;
+    for (const file of yield* pi.sessionFiles()) {
+      const indexed = unseen.get(file.path);
+      unseen.delete(file.path);
+      if (indexed?.stamp === file.stamp) continue;
+      read++;
+      yield* indexOne(file).pipe(
+        Effect.catchAllCause((cause) => Effect.logWarning("session_index_failed", cause).pipe(Effect.annotateLogs({ path: file.path }))),
+      );
+    }
+    // Files deleted outside Pico.
+    for (const file of unseen.values()) yield* store.deleteSession(file.id);
+    return { read, removed: unseen.size };
+  }).pipe(indexLock.withPermits(1));
+
+  // The first scan reads every file, so it starts with the host.
+  yield* index.pipe(
+    Effect.timed,
+    Effect.tap(([duration, { read, removed }]) =>
+      Effect.logInfo("sessions_indexed").pipe(Effect.annotateLogs({ read, removed, duration_ms: Math.round(Duration.toMillis(duration)) })),
+    ),
+    Effect.forkScoped,
+  );
+
   const list = (filter?: { archived?: boolean }) =>
-    Effect.map(store.listSessions(filter), (records) => records.map(toSessionMeta));
+    Effect.zipRight(index, Effect.map(store.listSessions(filter), (records) => records.map(toSessionMeta)));
 
   const subscribe = (id: string, head: string | null, cids: readonly string[]) =>
     Stream.unwrapScoped(
@@ -302,8 +343,10 @@ const make = Effect.gen(function* () {
   const patch = (
     id: string,
     p: { title?: string; archived?: boolean },
-  ): Effect.Effect<SessionMeta, SessionNotFound> =>
+  ): Effect.Effect<SessionMeta, PiError | SessionNotFound> =>
     Effect.gen(function* () {
+      // Indexed first, so a file pi saved since the last scan has its path.
+      yield* index;
       const existing = yield* store.getSession(id);
       if (Option.isNone(existing))
         return yield* Effect.fail(new SessionNotFound({ id }));
@@ -314,10 +357,14 @@ const make = Effect.gen(function* () {
         ...(p.title !== undefined ? { title: p.title } : {}),
         ...(p.archived !== undefined ? { archived: p.archived } : {}),
       };
+      const live = HashMap.get(yield* Ref.get(sessions), id);
+      // The title is pi's session name, named first so a failure changes nothing.
+      if (p.title !== undefined && Option.isNone(live) && existing.value.path) {
+        yield* pi.nameSessionFile(existing.value.path, p.title);
+      }
       const updatedAtMs = Date.now();
       yield* store.updateSession(id, { ...changes, updatedAtMs });
 
-      const live = HashMap.get(yield* Ref.get(sessions), id);
       if (Option.isNone(live)) return toSessionMeta({ ...existing.value, ...changes, updatedAtMs });
       live.value.pi.live.patchMeta(changes);
       if (p.title !== undefined) {
@@ -326,8 +373,9 @@ const make = Effect.gen(function* () {
       return live.value.pi.live.meta;
     });
 
-  const remove = (id: string): Effect.Effect<void, SessionNotFound> =>
+  const remove = (id: string): Effect.Effect<void, PiError | SessionNotFound> =>
     Effect.gen(function* () {
+      yield* index;
       const existing = yield* store.getSession(id);
       if (Option.isNone(existing))
         return yield* Effect.fail(new SessionNotFound({ id }));
@@ -338,6 +386,8 @@ const make = Effect.gen(function* () {
         // Also ends open streams, so viewers don't wait on a deleted session.
         yield* live.value.pi.close();
       }
+      // Otherwise the next scan would list it again.
+      if (existing.value.path) yield* pi.deleteSessionFile(existing.value.path);
       yield* store.deleteSession(id);
     });
 

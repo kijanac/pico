@@ -6,7 +6,8 @@ export interface LoadSessionListOptions {
 
 export interface CreateSessionInput {
   cwd: string;
-  title: string;
+  // pi's session name; unnamed sessions show their first message.
+  title?: string;
 }
 
 export const loadSessionList = (opts?: LoadSessionListOptions) =>

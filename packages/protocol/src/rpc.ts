@@ -39,7 +39,7 @@ const Trimmed = Schema.NonEmptyTrimmedString;
 
 export const PicoRpc = RpcGroup.make(
   Rpc.make("sessions.list", { payload: { archived: Schema.optional(Schema.Boolean) }, success: Schema.Array(SessionMeta), error: RequestError }),
-  Rpc.make("sessions.create", { payload: { cwd: Trimmed, title: Trimmed }, success: SessionMeta, error: RequestError }),
+  Rpc.make("sessions.create", { payload: { cwd: Trimmed, title: Schema.optional(Trimmed) }, success: SessionMeta, error: RequestError }),
   Rpc.make("sessions.patch", { payload: { id: Schema.String, title: Schema.optional(Trimmed), archived: Schema.optional(Schema.Boolean) }, success: SessionMeta, error: SessionFail }),
   Rpc.make("sessions.remove", { payload: { id: Schema.String }, error: SessionFail }),
   Rpc.make("sessions.controls", { payload: { id: Schema.String }, success: SessionControls, error: SessionFail }),

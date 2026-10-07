@@ -10,11 +10,14 @@ import {
   createCodemodeExtension,
   createMcpExtension,
   createToolSearchExtension,
+  getAgentDir,
   ModelRuntime,
+  parseSessionEntries,
   SessionManager as PiSessionManager,
   type AgentSession,
   type AgentSessionEvent,
   type InlineExtension,
+  type SessionHeader,
   type SessionEntry,
   type SessionStats as PiSdkSessionStats,
 } from "@earendil-works/pi-coding-agent";
@@ -26,6 +29,8 @@ import type {
   TextContent,
 } from "@earendil-works/pi-ai";
 import { randomUUIDv7 } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { createInterface } from "node:readline";
 import { join } from "node:path";
 import * as FileSystem from "@effect/platform/FileSystem";
 import type {
@@ -52,7 +57,7 @@ import { applyLiveEvent, emptyLive, endLiveItem, textChange } from "@pico/protoc
 import { SessionNotFound } from "./errors.ts";
 import { HOST_DATA_DIR, PI_EPHEMERAL } from "./config.ts";
 import { createMobileExtensionUiChannel } from "./mobile-extension-ui-channel.ts";
-import type { SessionRecord } from "./session-record.ts";
+import type { FileSession, SessionFile, SessionRecord } from "./session-record.ts";
 import { textFromContent, toolResultFields } from "./tool-result-projection.ts";
 
 export class PiError extends Data.TaggedError("PiError")<{
@@ -86,8 +91,14 @@ export interface PiSession {
 export class PiClient extends Context.Tag("PiClient")<
   PiClient,
   {
-    readonly create: (opts: { cwd: string; title: string }, hooks: LiveHooks) => Effect.Effect<PiSession, PiError>;
+    readonly create: (opts: { cwd: string; title?: string }, hooks: LiveHooks) => Effect.Effect<PiSession, PiError>;
     readonly resume: (record: SessionRecord, hooks: LiveHooks) => Effect.Effect<PiSession, PiError | SessionNotFound>;
+    // pi's session files, for the session list.
+    readonly sessionFiles: () => Effect.Effect<SessionFile[]>;
+    readonly readSessionFile: (path: string) => Effect.Effect<Option.Option<FileSession>, PiError>;
+    // For sessions Pico doesn't have open.
+    readonly nameSessionFile: (path: string, name: string) => Effect.Effect<void, PiError>;
+    readonly deleteSessionFile: (path: string) => Effect.Effect<void, PiError>;
   }
 >() {}
 
@@ -1041,7 +1052,7 @@ const wirePiSession = (
 const makeLiveSession = (
   opts: {
     cwd: string;
-    title: string;
+    title?: string;
   },
   hooks: LiveHooks,
   fs: FileSystem.FileSystem,
@@ -1052,14 +1063,16 @@ const makeLiveSession = (
         const sessionManager = PI_EPHEMERAL
           ? PiSessionManager.inMemory(opts.cwd)
           : PiSessionManager.create(opts.cwd);
-        return openAgentSession(opts.cwd, sessionManager, "startup");
+        const session = await openAgentSession(opts.cwd, sessionManager, "startup");
+        if (opts.title) session.setSessionName(opts.title);
+        return session;
       },
       catch: (e) => new PiError({ message: `create session failed: ${String(e)}`, cause: e }),
     });
 
     const meta: SessionMeta = {
       id: piSession.sessionId,
-      title: opts.title,
+      title: opts.title ?? UNTITLED,
       cwd: opts.cwd,
       status: "idle",
       updatedAt: new Date().toISOString(),
@@ -1082,8 +1095,8 @@ const makeResumedSession = (
       PiError | SessionNotFound
     >({
       try: async () => {
-        // findById only reads headers; list() parses every transcript in the cwd.
-        const path = PiSessionManager.findById(storedRecord.cwd, storedRecord.id);
+        // findById, for a session not indexed yet, only reads headers.
+        const path = storedRecord.path ?? PiSessionManager.findById(storedRecord.cwd, storedRecord.id);
         if (!path) throw new SessionNotFound({ id: storedRecord.id });
         return openAgentSession(storedRecord.cwd, PiSessionManager.open(path), "resume");
       },
@@ -1107,6 +1120,85 @@ const makeResumedSession = (
     return yield* wirePiSession(piSession, meta, hooks, fs);
   });
 
+// A session with no name and no message yet.
+const UNTITLED = "new session";
+
+// Every file in pi's sessions folder (a folder per cwd), as pi's /resume lists them.
+const sessionFiles = (fs: FileSystem.FileSystem) =>
+  Effect.gen(function* () {
+    const root = join(getAgentDir(), "sessions");
+    const names = yield* fs.readDirectory(root, { recursive: true }).pipe(Effect.orElseSucceed((): string[] => []));
+    const files = yield* Effect.forEach(
+      names.filter((name) => name.endsWith(".jsonl")),
+      (name) =>
+        fs.stat(join(root, name)).pipe(
+          Effect.map((info) => ({ path: join(root, name), stamp: `${info.size}:${Option.getOrUndefined(info.mtime)?.getTime()}` })),
+          Effect.option,
+        ),
+      { concurrency: 32 },
+    );
+    return files.flatMap(Option.toArray);
+  });
+
+// A session as pi's /resume shows it (its name, else its first message), and
+// its cost, summed as pi's session stats do. Read line by line, as pi does:
+// files with images run to tens of megabytes.
+const readSessionFile = (path: string) =>
+  Effect.tryPromise({
+    try: async (): Promise<Option.Option<FileSession>> => {
+      let header: SessionHeader | undefined;
+      let name: string | undefined;
+      let firstMessage = "";
+      let updatedAtMs = 0;
+      const tokens = { in: 0, out: 0 };
+      let costUsd = 0;
+      for await (const line of createInterface({ input: createReadStream(path), crlfDelay: Infinity })) {
+        const [entry] = parseSessionEntries(line);
+        if (!entry) continue;
+        if (!header) {
+          if (entry.type !== "session") return Option.none();
+          header = entry;
+          continue;
+        }
+        if (entry.type === "session_info") name = entry.name?.trim() || undefined;
+        const usage = entry.type === "message" ? ("usage" in entry.message ? entry.message.usage : undefined) : "usage" in entry ? entry.usage : undefined;
+        if (usage) {
+          tokens.in += usage.input;
+          tokens.out += usage.output;
+          costUsd += usage.cost.total;
+        }
+        if (entry.type !== "message") continue;
+        const { message } = entry;
+        // Activity is what pi sorts /resume by: the last user or assistant message.
+        if (message.role !== "user" && message.role !== "assistant") continue;
+        updatedAtMs = Math.max(updatedAtMs, typeof message.timestamp === "number" ? message.timestamp : Date.parse(entry.timestamp));
+        if (!firstMessage && message.role === "user") {
+          firstMessage = userText(message.content).replace(/\s+/g, " ").trim().slice(0, 200);
+        }
+      }
+      if (!header) return Option.none();
+      return Option.some({
+        id: header.id,
+        cwd: header.cwd,
+        title: name ?? (firstMessage || UNTITLED),
+        updatedAtMs: updatedAtMs || Date.parse(header.timestamp),
+        tokens,
+        costUsd,
+      });
+    },
+    catch: (e) => new PiError({ message: `read failed: ${String(e)}`, cause: e }),
+  });
+
+const nameSessionFile = (path: string, name: string) =>
+  Effect.try({
+    try: () => void PiSessionManager.open(path).appendSessionInfo(name),
+    catch: (e) => new PiError({ message: `rename failed: ${String(e)}`, cause: e }),
+  });
+
+const deleteSessionFile = (fs: FileSystem.FileSystem, path: string) =>
+  fs.remove(path, { force: true }).pipe(
+    Effect.mapError((e) => new PiError({ message: `delete failed: ${e.message}`, cause: e })),
+  );
 
 export const PiClientLive = Layer.effect(
   PiClient,
@@ -1114,6 +1206,10 @@ export const PiClientLive = Layer.effect(
     PiClient.of({
       create: (opts, hooks) => makeLiveSession(opts, hooks, fs),
       resume: (storedRecord, hooks) => makeResumedSession(storedRecord, hooks, fs),
+      sessionFiles: () => sessionFiles(fs),
+      readSessionFile,
+      nameSessionFile,
+      deleteSessionFile: (path) => deleteSessionFile(fs, path),
     }),
   ),
 );

@@ -33,6 +33,12 @@ Tailscale Serve injects to match `PICO_OWNER`.
 and `SessionManager`, so the host shares the box user's `~/.pi/agent` (logins,
 settings, session files) with terminal pi.
 
+The session list is every session in pi's sessions folder, including ones
+started in the terminal, titled as pi's `/resume` shows them (the name, else
+the first message). The host indexes the files in SQLite and re-reads only the
+ones pi wrote to since the last scan. Renaming sets pi's session name; deleting
+deletes pi's file.
+
 `PI_EPHEMERAL=1` keeps new sessions in memory.
 
 The smoke test runs the host over pi-ai's scripted model, in a temporary pi
@@ -43,7 +49,7 @@ directory.
 | State | Where |
 | --- | --- |
 | Pi conversation (messages, tool calls) | `~/.pi/agent/sessions/` (pi's own store) |
-| Pico session list (title, cost, archived) | SQLite at `PICO_HOST_DB` |
+| Session list: pi's session files indexed (title, cost), plus Pico's archived flag | SQLite at `PICO_HOST_DB` |
 | Live fan-out and running sessions | in memory; sessions reopen lazily after a restart |
 
 Phones catch up from pi's own entries, using the last entry id they have.
