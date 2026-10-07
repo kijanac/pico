@@ -105,28 +105,30 @@
   {/snippet}
 
 <main class="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-  <header class="flex items-center justify-between gap-3 border-b border-[color:var(--color-border)] px-3 py-[calc(env(safe-area-inset-top)+12px)] pb-3">
-    <Button type="button" variant="ghost" size="icon-sm" aria-label="Sessions" title="Sessions" onclick={() => navigateTo(routePaths.sessions, "pop")}>
-      <Home class="size-3.5" />
-    </Button>
-    <div class="min-w-0 flex-1">
-      {#if session}
-        <div class="flex min-w-0 items-center gap-2">
-          <StatusDot tone={statusDotTone} active={statusDotActive} label={activeSessionState.status} />
-          <div class="min-w-0 flex-1">
-            <div class="type-title font-prose truncate font-medium">{session.title}</div>
-            <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">
-              {cwdDisplayName(session.cwd)}
+  <header class="border-b border-[color:var(--color-border)]">
+    <div class="column flex items-center justify-between gap-3 px-3 py-[calc(env(safe-area-inset-top)+12px)] pb-3">
+      <Button type="button" variant="ghost" size="icon-sm" aria-label="Sessions" title="Sessions" onclick={() => navigateTo(routePaths.sessions, "pop")}>
+        <Home class="size-3.5" />
+      </Button>
+      <div class="min-w-0 flex-1">
+        {#if session}
+          <div class="flex min-w-0 items-center gap-2">
+            <StatusDot tone={statusDotTone} active={statusDotActive} label={activeSessionState.status} />
+            <div class="min-w-0 flex-1">
+              <div class="type-title font-prose truncate font-medium">{session.title}</div>
+              <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">
+                {cwdDisplayName(session.cwd)}
+              </div>
             </div>
           </div>
-        </div>
-      {:else}
-        <div class="type-title font-prose truncate font-medium">session</div>
-        <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">{activeSessionState.connectionStatus}</div>
-      {/if}
-    </div>
-    <div class="flex w-12 justify-end">
-      <SessionAgentActions {sessionId} />
+        {:else}
+          <div class="type-title font-prose truncate font-medium">session</div>
+          <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">{activeSessionState.connectionStatus}</div>
+        {/if}
+      </div>
+      <div class="flex w-12 justify-end">
+        <SessionAgentActions {sessionId} />
+      </div>
     </div>
   </header>
 
@@ -147,7 +149,7 @@
         style={`height: ${composerHeight}px`}
         aria-hidden="true"
       ></div>
-      <div bind:clientHeight={composerHeight} class="pointer-events-none absolute inset-x-0 bottom-0 z-30">
+      <div bind:clientHeight={composerHeight} class="column pointer-events-none absolute inset-x-0 bottom-0 z-30">
         <ExtensionNotifications />
         <InputBar {sessionId} {contextStats} />
       </div>

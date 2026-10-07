@@ -71,7 +71,7 @@
   class="flex min-h-0 flex-1 flex-col pt-[calc(env(safe-area-inset-top)+16px)]"
   ontouchstart={closeOpenSwipeRow}
 >
-  <header class="flex items-center justify-between gap-3 px-3">
+  <header class="column flex items-center justify-between gap-3 px-3">
     <div class="flex items-baseline gap-2">
       <h1 class="type-title font-prose font-medium">{archivedView ? "archived" : "sessions"}</h1>
       <span class="type-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">{sessions.length}</span>
@@ -91,7 +91,7 @@
   </header>
 
   {#if error && sessions.length > 0}
-    <div class="mx-3 mt-4">
+    <div class="column mt-4 px-3">
       <HostIssuePanel issue={error} compact>
         {#snippet action()}
           <button type="button" class="type-meta underline text-[color:var(--color-fg-muted)] active:opacity-70" onclick={() => void onRefresh()}>
@@ -119,7 +119,7 @@
         </p>
       </section>
     {:else}
-      <section class="flex min-h-full flex-col">
+      <section class="column flex min-h-full flex-col">
         {#each sessions as item (item.id)}
           {#if interactive}
             <SwipeActionRow
@@ -149,7 +149,7 @@
     {/if}
   </PullToRefresh>
 
-  <div class="p-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
+  <div class="column p-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
     <Button
       type="button"
       class="h-10 w-full"

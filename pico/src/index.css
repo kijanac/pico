@@ -34,6 +34,8 @@
 
   --spacing-turn: 1.5rem;
   --spacing-step: 0.5rem;
+  /* The content column: a readable line length on wide screens. */
+  --container-column: 48rem;
 
   /* Warm paper and terracotta / near-black and acid lime. */
   --color-bg: light-dark(#fbf3ea, #0a0a0a);
@@ -90,6 +92,14 @@
     calc(var(--radius) * 2.2);
   --radius-4xl:
     calc(var(--radius) * 2.6);
+}
+
+/* Full width on phones; centered and capped on wider screens. Scroll areas,
+   bars and their borders stay full width, with this inside them. */
+@utility column {
+  width: 100%;
+  max-width: var(--container-column);
+  margin-inline: auto;
 }
 
 :root {
