@@ -5,16 +5,15 @@ import {
   AuthLoginJob,
   CompactionEntry,
   ImageContent,
+  Entry,
   MessageUsage,
-  QueueState,
   SendMode,
+  ServerMessage,
   SessionMeta,
   SessionStatus,
   ToolCallMessage,
   UserMessage,
-  WireEvent,
 } from "../src/index.ts";
-import { emptyLog, reduceLog } from "../src/log.ts";
 
 // Representative messages spanning literals, structs, and unions.
 const WIRE_SCHEMAS: ReadonlyArray<readonly [string, Schema.Schema<any>]> = [
@@ -27,6 +26,7 @@ const WIRE_SCHEMAS: ReadonlyArray<readonly [string, Schema.Schema<any>]> = [
   ["ToolCallMessage", ToolCallMessage],
   ["CompactionEntry", CompactionEntry],
   ["SessionMeta", SessionMeta],
+  ["Entry", Entry],
 ];
 
 describe("wire messages survive an encode/decode round-trip", () => {
@@ -57,27 +57,13 @@ describe("decoding rejects malformed input", () => {
     expect(() => Schema.decodeUnknownSync(ImageContent)({ data: "abc", mimeType: "image/png" })).toThrow();
   });
 
-  it("requires queued user messages to carry a mode", () => {
-    expect(() =>
-      Schema.decodeUnknownSync(UserMessage)({ kind: "user", id: "u1", at: 1, text: "queued", queued: true }),
-    ).toThrow();
-
-    expect(
-      Schema.decodeUnknownSync(UserMessage)({ kind: "user", id: "u1", at: 1, text: "queued", queued: true, mode: "follow_up" }),
-    ).toMatchObject({ queued: true, mode: "follow_up" });
-  });
-
-  it("preserves images on user_message wire events", () => {
-    const event = {
-      t: "user_message",
-      seq: 1,
-      entry: { kind: "user", id: "u1", at: 1, text: "look", images: [{ type: "image", data: "abc", mimeType: "image/png" }] },
+  it("preserves images on user entries", () => {
+    const message = {
+      t: "entries",
+      leaf: "u1",
+      entries: [{ type: "user", id: "u1", at: 1, text: "look", images: [{ type: "image", data: "abc", mimeType: "image/png" }] }],
     } as const;
-    expect(Schema.decodeUnknownSync(WireEvent)(event)).toStrictEqual(event);
-
-    const log = emptyLog();
-    reduceLog(log, event, 1);
-    expect(log.entries[0]).toMatchObject({ kind: "user", text: "look", images: event.entry.images });
+    expect(Schema.decodeUnknownSync(ServerMessage)(message)).toStrictEqual(message);
   });
 
   it("preserves provider auth select jobs", () => {
@@ -90,13 +76,6 @@ describe("decoding rejects malformed input", () => {
       selectOptions: [{ id: "device_code", label: "Device code login" }],
     } as const;
     expect(Schema.decodeUnknownSync(AuthLoginJob)(job)).toStrictEqual(job);
-  });
-
-  it("preserves images on queue snapshots", () => {
-    const queue = {
-      queued: [{ id: "q1", text: "later", mode: "steer", images: [{ type: "image", data: "abc", mimeType: "image/png" }] }],
-    } as const;
-    expect(Schema.decodeUnknownSync(QueueState)(queue)).toStrictEqual(queue);
   });
 
   it("rejects prototype-polluting custom tool args", () => {

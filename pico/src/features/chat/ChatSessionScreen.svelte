@@ -60,7 +60,7 @@
   onMount(() => {
     markSessionOpen(timingId, "route-mounted");
     const session = createChatSessionState(hostId, sessionId);
-    void session.start();
+    session.start();
     warmHighlighter();
     return () => session.stop();
   });

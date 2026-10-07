@@ -16,7 +16,8 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import type { WireEvent } from "@pico/protocol";
+import type { Entry, ServerMessage } from "@pico/protocol";
+import { applyEntry, emptyLog } from "@pico/protocol/log";
 import { picoHttpProtocol, picoSocketProtocol } from "@pico/protocol/client";
 import { PicoRpc, PicoSessionRpc } from "@pico/protocol/rpc";
 import { WebSocket as WsWebSocket } from "ws";
@@ -108,7 +109,6 @@ try {
     assert.equal(patched.title, "Smoke session renamed");
 
     await call(client.sessions.controls({ id: session.id }));
-    await call(client.sessions.queue({ id: session.id }));
     await call(client.sessions.stats({ id: session.id }));
     await call(client.sessions.tree({ id: session.id }));
     await call(client.sessions.commands({ id: session.id }));
@@ -129,33 +129,60 @@ try {
     assert.match(exportRes.headers.get("content-type") ?? "", /^text\/html/);
     assert.match(await exportRes.text(), /<!doctype html>/i);
 
-    // Realtime channel over WS-RPC: subscribe to the event stream, drive a turn
-    // via a command rpc, and confirm the journal replays from a fresh cursor.
+    // The live channel: a sync from the phone's bookmark, then changes. Sends go
+    // over HTTP and are safe to repeat.
     const sessionRuntime = makeSessionRuntime(baseUrl);
     const sessionScope = await sessionRuntime.runPromise(Scope.make());
     const sessionClient = await sessionRuntime.runPromise(Scope.extend(RpcClient.make(PicoSessionRpc), sessionScope));
 
-    const eventsUntil = (cursor: number, done: (event: WireEvent) => boolean): Promise<readonly WireEvent[]> =>
+    const liveUntil = (head: string | null, done: (message: ServerMessage) => boolean): Promise<readonly ServerMessage[]> =>
       sessionRuntime.runPromise(
-        sessionClient.session.events({ id: session.id, cursor }).pipe(
+        sessionClient.session.live({ id: session.id, head, cids: [] }).pipe(
           Stream.takeUntil(done),
           Stream.runCollect,
-          Effect.timeout(Duration.seconds(10)),
+          Effect.timeout(Duration.seconds(20)),
           Effect.map(Chunk.toReadonlyArray),
         ),
       );
+    const entriesOf = (messages: readonly ServerMessage[]): Entry[] =>
+      messages.flatMap((message) => (message.t === "sync" || message.t === "entries" ? message.entries : []));
 
-    const hello = await eventsUntil(0, (event) => event.t === "hello");
-    const first = hello[0];
-    assert(first?.t === "hello", "first event should be hello");
-    assert.equal(first.session.id, session.id);
+    const [empty] = await liveUntil(null, () => true);
+    assert(empty?.t === "sync" && empty.reset && empty.entries.length === 0, "a new session syncs empty");
+    assert.equal(empty.session.id, session.id);
 
-    await sessionRuntime.runPromise(sessionClient.session.send({ id: session.id, text: "smoke prompt", mode: "steer", clientId: randomUUIDv7() }));
+    const turn = liveUntil(null, (message) => message.t === "run" && !message.running);
+    // Let the subscription attach before the run starts.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const send = (cid: string, text: string, opts: { base?: string | null; retry?: boolean } = {}) =>
+      call(client.sessions.send({ id: session.id, cid, text, mode: "steer", base: opts.base ?? null, retry: opts.retry ?? false }));
+    const promptCid = randomUUIDv7();
+    assert.equal((await send(promptCid, "smoke prompt")).state, "started");
+    assert.notEqual((await send(promptCid, "smoke prompt")).state, "failed", "a repeated cid is the same send");
+    const steerCid = randomUUIDv7();
+    assert.equal((await send(steerCid, "smoke steer")).state, "queued", "a send during a run is queued");
+    const messages = await turn;
 
-    const replay = await eventsUntil(0, (event) => event.t === "assistant_end");
-    assert.equal(replay[0]?.t, "hello");
-    assert(replay.some((event) => event.t === "user_message"), "replay should include journaled user message");
-    assert(replay.some((event) => event.t === "assistant_end"), "replay should include journaled assistant end");
+    const rows = emptyLog();
+    for (const entry of entriesOf(messages)) applyEntry(rows, entry);
+    const users = rows.entries.filter((row) => row.kind === "user");
+    assert.deepEqual(users.map((row) => [row.text, row.cid]), [["smoke prompt", promptCid], ["smoke steer", steerCid]], "each send became one entry, linked by cid");
+    assert(rows.entries.some((row) => row.kind === "tool_call" && row.tool === "bash" && row.status === "ok"), "tool rows complete from their results");
+    assert(messages.some((message) => message.t === "out"), "tool output streams live");
+    assert(messages.some((message) => message.t === "d"), "reply text streams live");
+
+    const leaf = [...messages].reverse().find((message) => message.t === "entries")?.leaf ?? null;
+    const [caughtUp] = await liveUntil(leaf, () => true);
+    assert(caughtUp?.t === "sync" && !caughtUp.reset && caughtUp.entries.length === 0, "a current phone gets nothing to catch up");
+    const firstUser = users[0]?.id ?? null;
+    const [behind] = await liveUntil(firstUser, () => true);
+    assert(behind?.t === "sync" && !behind.reset && behind.entries.length > 0 && behind.entries[0]?.id !== firstUser, "a phone behind gets the entries after its bookmark");
+
+    const page = await call(client.sessions.history({ id: session.id, before: users[1]!.id }));
+    assert(page.entries.some((entry) => entry.type === "user" && entry.cid === promptCid), "history pages back from an entry");
+
+    const again = await send(randomUUIDv7(), "smoke prompt", { base: null, retry: true });
+    assert.equal(again.state, "delivered", "a retry pi already saved isn't sent twice");
 
     await sessionRuntime.runPromise(Scope.close(sessionScope, Exit.void));
     await sessionRuntime.dispose();

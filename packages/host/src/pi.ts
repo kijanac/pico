@@ -3,8 +3,6 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Queue from "effect/Queue";
-import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import {
   createAgentSessionFromServices,
@@ -16,53 +14,47 @@ import {
   type SessionEntry,
   type SessionStats as PiSdkSessionStats,
 } from "@earendil-works/pi-coding-agent";
-import type { Api, AssistantMessage as PiAssistantMessage, ImageContent as PiImageContent, Model, TextContent } from "@earendil-works/pi-ai";
+import type {
+  Api,
+  AssistantMessage as PiAssistantMessage,
+  ImageContent as PiImageContent,
+  Model,
+  TextContent,
+} from "@earendil-works/pi-ai";
 import { randomUUIDv7 } from "node:crypto";
 import { join } from "node:path";
 import * as FileSystem from "@effect/platform/FileSystem";
-import {
-  BashToolArgs,
-  CustomToolArgs,
-  type Commands,
-  type ImageContent,
-  EditToolArgs,
-  type LogEntry,
-  ReadToolArgs,
-  WriteToolArgs,
-  type ExtensionUiResponseValue,
-  type SendMode,
-  type SessionControls,
-  type SessionMeta,
-  type SessionStats,
-  type SessionTree,
-  type StopReason,
-  type ToolCallMessage,
-  type TreeEntry,
-  type WireEvent,
+import type {
+  Commands,
+  Entry,
+  ExtensionUiRequest,
+  ExtensionUiResponseValue,
+  HistoryPage,
+  ImageContent,
+  LiveEvent,
+  QueueItem,
+  SendMode,
+  SendState,
+  SendStatus,
+  ServerMessage,
+  SessionControls,
+  SessionMeta,
+  SessionStats,
+  SessionTree,
+  StopReason,
+  TreeEntry,
 } from "@pico/protocol";
-import { emptyLog, reconcileOrphanedToolCalls, reduceLog } from "@pico/protocol/log";
+import { applyLiveEvent, emptyLive, endLiveItem, textChange } from "@pico/protocol/log";
 import { SessionNotFound } from "./errors.ts";
 import { HOST_DATA_DIR, PI_EPHEMERAL } from "./config.ts";
 import { createMobileExtensionUiChannel } from "./mobile-extension-ui-channel.ts";
+import type { SessionRecord } from "./session-record.ts";
 import { textFromContent, toolResultFields } from "./tool-result-projection.ts";
-
-
-export type SdkQueueState = Pick<Extract<AgentSessionEvent, { type: "queue_update" }>, "steering" | "followUp">;
-
-type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
-
-// The wire events this adapter emits, before the session journal assigns seq.
-// The session itself produces hello and user messages; queue carries pi's raw state.
-export type PiEmission =
-  | DistributiveOmit<Exclude<WireEvent, { t: "hello" | "user_message" | "user_message_removed" | "queue" }>, "seq">
-  | ({ t: "queue" } & SdkQueueState);
 
 export class PiError extends Data.TaggedError("PiError")<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
-
-export type { SendMode } from "@pico/protocol";
 
 export interface ExportedHtml {
   readonly stream: Stream.Stream<Uint8Array>;
@@ -70,39 +62,18 @@ export interface ExportedHtml {
   readonly filename?: string;
 }
 
-export interface QueuedSend {
-  readonly text: string;
-  readonly mode: SendMode;
-  readonly images?: ImageContent[];
-}
-
 export interface PiSession {
-  readonly meta: SessionMeta;
-  readonly events: Stream.Stream<PiEmission, PiError>;
-  readonly send: (
-    text: string,
-    mode: SendMode,
-    images?: ImageContent[],
-  ) => Effect.Effect<void, PiError>;
-  readonly isCompacting: () => Effect.Effect<boolean, PiError>;
-  readonly flushAfterCompaction: (
-    messages: readonly QueuedSend[],
-    opts?: { willRetry?: boolean },
-  ) => Effect.Effect<void, PiError>;
+  // Entries, the live mirror, sends and subscribers (live.ts).
+  readonly live: LiveSession;
   readonly interrupt: () => Effect.Effect<void, PiError>;
-  readonly extensionUiResponse: (
-    id: string,
-    value: ExtensionUiResponseValue,
-  ) => Effect.Effect<void, PiError>;
+  readonly extensionUiResponse: (id: string, value: ExtensionUiResponseValue) => Effect.Effect<void>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiError>;
   readonly exportHtml: () => Effect.Effect<ExportedHtml, PiError>;
   readonly listCommands: () => Effect.Effect<Commands, PiError>;
-  readonly clearQueue: () => Effect.Effect<SdkQueueState, PiError>;
   readonly getSettings: () => Effect.Effect<SessionControls, PiError>;
   readonly patchSession: (patch: { title?: string }) => Effect.Effect<void, PiError>;
   readonly patchSetting: (key: string, value: string | boolean) => Effect.Effect<SessionControls, PiError>;
   readonly getStats: () => Effect.Effect<SessionStats, PiError>;
-  readonly getLog: () => Effect.Effect<LogEntry[], PiError>;
   readonly getTree: () => Effect.Effect<SessionTree, PiError>;
   readonly navigateTree: (entryId: string, summarize?: boolean) => Effect.Effect<void, PiError>;
   readonly close: () => Effect.Effect<void>;
@@ -111,16 +82,10 @@ export interface PiSession {
 export class PiClient extends Context.Tag("PiClient")<
   PiClient,
   {
-    readonly create: (opts: {
-      cwd: string;
-      title: string;
-    }) => Effect.Effect<PiSession, PiError>;
-    readonly resume: (
-      storedRecord: import("./session-record.ts").SessionRecord,
-    ) => Effect.Effect<PiSession, PiError | SessionNotFound>;
+    readonly create: (opts: { cwd: string; title: string }, hooks: LiveHooks) => Effect.Effect<PiSession, PiError>;
+    readonly resume: (record: SessionRecord, hooks: LiveHooks) => Effect.Effect<PiSession, PiError | SessionNotFound>;
   }
 >() {}
-
 
 const EXPORT_DIR = join(HOST_DATA_DIR, "exports");
 const EXPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -168,11 +133,6 @@ const queueModeOptions = [
   { value: "one-at-a-time", label: "one-at-a-time" },
   { value: "all", label: "all" },
 ];
-
-const toPiImages = (images?: readonly ImageContent[]) =>
-  images && images.length > 0
-    ? images.map((i) => ({ type: "image" as const, data: i.data, mimeType: i.mimeType }))
-    : undefined;
 
 const modelControlValue = (model: Model<Api>): string => `${model.provider}/${model.id}`;
 
@@ -327,64 +287,12 @@ const flattenSessionTree = (piSession: AgentSession): SessionTree => {
   return { currentId, entries };
 };
 
-const toolCallBase = (id: string) => ({
-  kind: "tool_call" as const,
-  id,
-  at: Date.now(),
-  status: "running" as const,
-});
-
-// Degrade an unmodeled shape to a custom tool-call rather than throwing: a
-// throw here would fail the live turn and make the session unreplayable.
-const normalizeToolCall = (
-  id: string,
-  toolName: string,
-  rawArgs: unknown,
-): ToolCallMessage => {
-  const base = toolCallBase(id);
-
-  switch (toolName) {
-    case "read": {
-      const r = Schema.decodeUnknownOption(ReadToolArgs)(rawArgs);
-      if (Option.isSome(r)) return { ...base, toolKind: "builtin", tool: "read", args: r.value };
-      break;
-    }
-    case "write": {
-      const r = Schema.decodeUnknownOption(WriteToolArgs)(rawArgs);
-      if (Option.isSome(r)) return { ...base, toolKind: "builtin", tool: "write", args: r.value };
-      break;
-    }
-    case "edit": {
-      const r = Schema.decodeUnknownOption(EditToolArgs)(rawArgs);
-      if (Option.isSome(r)) return { ...base, toolKind: "builtin", tool: "edit", args: r.value };
-      break;
-    }
-    case "bash": {
-      const r = Schema.decodeUnknownOption(BashToolArgs)(rawArgs);
-      if (Option.isSome(r)) return { ...base, toolKind: "builtin", tool: "bash", args: r.value };
-      break;
-    }
-  }
-
-  const custom = Schema.decodeUnknownOption(CustomToolArgs)(rawArgs);
-  return { ...base, toolKind: "custom", tool: toolName, args: Option.getOrElse(custom, (): CustomToolArgs => ({})) };
-};
-
-const assistantText = (content: PiAssistantMessage["content"]): string =>
-  content
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("");
-
 type PiUserContent = string | readonly (TextContent | PiImageContent)[];
 
 const userText = (content: PiUserContent): string =>
   typeof content === "string"
     ? content
-    : content
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("");
+    : content.filter((part) => part.type === "text").map((part) => part.text).join("");
 
 const userImages = (content: PiUserContent): ImageContent[] | undefined => {
   if (typeof content === "string") return undefined;
@@ -392,6 +300,65 @@ const userImages = (content: PiUserContent): ImageContent[] | undefined => {
     .filter((part): part is PiImageContent => part.type === "image")
     .map((part) => ({ type: "image" as const, data: part.data, mimeType: part.mimeType }));
   return images.length > 0 ? images : undefined;
+};
+
+const assistantText = (content: PiAssistantMessage["content"]): string =>
+  content.filter((part) => part.type === "text").map((part) => part.text).join("");
+
+// pi also reports in-flight "pending"/"deferred" stops; only final ones are shown.
+const finalStopReason = (stopReason: PiAssistantMessage["stopReason"]): { stopReason?: StopReason } =>
+  stopReason === "pending" || stopReason === "deferred" ? {} : { stopReason };
+
+// One of pi's entries as the phone shows it, or undefined for entries it
+// doesn't show (model and thinking-level changes, labels, usage, …).
+const toEntry = (entry: SessionEntry): Entry | undefined => {
+  const at = Date.parse(entry.timestamp);
+  switch (entry.type) {
+    case "compaction":
+      return { type: "compaction", id: entry.id, at, summary: entry.summary, tokensBefore: entry.tokensBefore };
+    case "branch_summary":
+      return { type: "note", id: entry.id, at, label: "branch summary", text: entry.summary };
+    case "custom_message":
+      return entry.display
+        ? { type: "note", id: entry.id, at, label: entry.customType, text: textFromContent(entry.content) }
+        : undefined;
+    case "message":
+      break;
+    default:
+      return undefined;
+  }
+
+  const message = entry.message;
+  switch (message.role) {
+    case "user": {
+      const images = userImages(message.content);
+      return { type: "user", id: entry.id, at, text: userText(message.content), ...(images ? { images } : {}) };
+    }
+    case "assistant":
+      return {
+        type: "assistant",
+        id: entry.id,
+        at,
+        text: assistantText(message.content),
+        tools: message.content.flatMap((part) =>
+          part.type === "toolCall" ? [{ id: part.id, name: part.name, args: part.arguments }] : [],
+        ),
+        ...finalStopReason(message.stopReason),
+        ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
+        ...(message.usage ? { usage: message.usage } : {}),
+      };
+    case "toolResult":
+      return {
+        type: "tool_result",
+        id: entry.id,
+        at,
+        toolCallId: message.toolCallId,
+        isError: message.isError,
+        ...toolResultFields(message.content, message.details),
+      };
+    default:
+      return undefined;
+  }
 };
 
 const sessionStatsWithCwd = (stats: PiSdkSessionStats, cwd: string): SessionStats => ({
@@ -408,433 +375,550 @@ const sessionStatsWithCwd = (stats: PiSdkSessionStats, cwd: string): SessionStat
   ...(stats.contextUsage ? { contextUsage: stats.contextUsage } : {}),
 });
 
-// Pi also reports in-flight "pending"/"deferred" stops; the wire carries only final ones.
-const finalStopReason = (stopReason: PiAssistantMessage["stopReason"]): { stopReason?: StopReason } =>
-  stopReason === "pending" || stopReason === "deferred" ? {} : { stopReason };
 
-// The finalized SDK branch expressed as the WireEvent sequence that produces it,
-// so the cold-start snapshot folds through the same reducer as the live stream
-// (see reduceLog). Assistants become one self-contained assistant_end; tool
-// calls and their results stay separate events the reducer merges by id.
-const branchToWireEvents = (piSession: AgentSession): WireEvent[] => {
-  const events: WireEvent[] = [];
+// What the live session needs from pi's AgentSession; the mock implements the same.
+export type PiCore = Pick<AgentSession, "subscribe" | "prompt" | "abort" | "clearQueue" | "isStreaming" | "getSessionStats"> & {
+  readonly sessionManager: Pick<PiSessionManager, "getLeafId" | "getEntry">;
+};
 
-  for (const entry of piSession.sessionManager.getBranch()) {
-    const at = new Date(entry.timestamp).getTime();
+export interface Subscriber {
+  // False when it is too far behind; it is then ended and the phone reconnects.
+  push(message: ServerMessage): boolean;
+  end(): void;
+}
 
-    if (entry.type === "compaction") {
-      events.push({
-        t: "compaction",
-        seq: 0,
-        entry: { kind: "compaction", id: entry.id, at, status: "success", summary: entry.summary, tokensBefore: entry.tokensBefore },
-      });
-      continue;
+export interface LiveHooks {
+  // Status or usage changed; the session list keeps a copy.
+  persist(meta: SessionMeta): void;
+  log(event: string, fields: Record<string, unknown>): void;
+}
+
+export type LiveSession = ReturnType<typeof makeLive>;
+
+const TEXT_COALESCE_MS = 50;
+const OUTPUT_COALESCE_MS = 250;
+// A phone further behind than this gets the newest page instead of a catch-up.
+const MAX_CATCHUP_ENTRIES = 400;
+const PAGE_ENTRIES = 100;
+const MAX_REMEMBERED_SENDS = 100;
+// pi defers a prompt sent while it notifies agent_settled and reports it later;
+// this bounds the wait in case it never does.
+const DEFERRED_PROMPT_TIMEOUT_MS = 30_000;
+
+interface SendRecord {
+  readonly cid: string;
+  readonly text: string;
+  readonly mode: SendMode;
+  readonly images?: readonly ImageContent[];
+  // Unset until pi reports where the send went; `result` settles then.
+  status?: SendStatus;
+  result?: Promise<SendStatus>;
+  // The text pi will save: what it queued (templates expanded), or what was sent.
+  matchText?: string;
+}
+
+const isIn = (record: SendRecord, ...states: SendState[]) => record.status !== undefined && states.includes(record.status.state);
+
+// One open pi session as phones see it: pi's saved entries, published as they
+// appear, plus a mirror of what pi doesn't save, built from the events the host
+// forwarded. It all runs synchronously with pi's notifications, so a
+// subscriber's sync and the changes after it can't interleave.
+export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHooks) => {
+  const sm = core.sessionManager;
+  const mirror = emptyLive();
+  const subscribers = new Set<Subscriber>();
+  const sends = new Map<string, SendRecord>();
+  const cidByEntry = new Map<string, string>();
+  const held: SendRecord[] = [];
+  const runningTools = new Set<string>();
+  let meta = initialMeta;
+  let piQueue: { steering: readonly string[]; followUp: readonly string[] } = { steering: [], followUp: [] };
+  let publishedLeaf = sm.getLeafId();
+  let sendChain: Promise<unknown> = Promise.resolve();
+  let queueing: SendRecord | null = null;
+  let stopping = false;
+  let closed = false;
+
+  const broadcast = (message: ServerMessage) => {
+    for (const subscriber of subscribers) {
+      if (subscriber.push(message)) continue;
+      subscribers.delete(subscriber);
+      subscriber.end();
+      hooks.log("subscriber_dropped", { session_id: meta.id, reason: "behind" });
     }
+  };
 
-    if (entry.type !== "message") continue;
-    const message = entry.message;
+  const emit = (event: LiveEvent) => {
+    applyLiveEvent(mirror, event);
+    broadcast(event);
+  };
 
-    if (message.role === "user") {
-      events.push({
-        t: "user_message",
-        seq: 0,
-        entry: {
-          kind: "user",
-          id: entry.id,
-          at,
-          text: userText(message.content),
-          images: userImages(message.content),
-        },
-      });
-      continue;
+  const setMeta = (patch: Partial<SessionMeta>) => {
+    meta = { ...meta, ...patch, updatedAt: new Date().toISOString() };
+    hooks.persist(meta);
+    broadcast({ t: "meta", session: meta });
+  };
+
+  const updateStatus = () => {
+    const status = mirror.running || mirror.compacting ? (runningTools.size > 0 ? "tool" : "thinking") : "idle";
+    if (status !== meta.status) setMeta({ status });
+  };
+
+  // Reply text goes out every 50 ms; a running tool's output, and the
+  // arguments of tool calls the model is writing, every 250 ms.
+  let pendingText = "";
+  const pendingOutput = new Map<string, { text: string; details?: unknown }>();
+  // The streaming message, and which of its tool calls grew (by content index).
+  let pendingCalls: { message: PiAssistantMessage; indexes: Set<number> } | undefined;
+  let textTimer: ReturnType<typeof setTimeout> | undefined;
+  let outputTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const flush = () => {
+    clearTimeout(textTimer);
+    clearTimeout(outputTimer);
+    textTimer = outputTimer = undefined;
+    if (pendingText) emit({ t: "d", s: pendingText });
+    pendingText = "";
+    // pi parses the arguments as they stream; their JSON goes out as changes.
+    for (const index of pendingCalls?.indexes ?? []) {
+      const part = pendingCalls?.message.content[index];
+      if (part?.type !== "toolCall") continue;
+      const before = mirror.msg?.calls.find((call) => call.id === part.id)?.args ?? "";
+      emit({ t: "call", id: part.id, name: part.name, ...textChange(before, JSON.stringify(part.arguments ?? {})) });
     }
-
-    if (message.role === "assistant") {
-      events.push({
-        t: "assistant_end",
-        seq: 0,
-        id: entry.id,
-        at,
-        text: assistantText(message.content),
-        ...finalStopReason(message.stopReason),
-        ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
-        ...(message.usage ? { usage: message.usage } : {}),
-      });
-
-      for (const part of message.content) {
-        if (part.type !== "toolCall") continue;
-        events.push({ t: "tool_call", seq: 0, entry: normalizeToolCall(part.id, part.name, part.arguments) });
-      }
-      continue;
+    pendingCalls = undefined;
+    for (const [id, { text, details }] of pendingOutput) {
+      const before = mirror.tools.find((tool) => tool.id === id)?.text ?? "";
+      emit({ t: "out", id, ...textChange(before, text), ...(details !== undefined ? { details } : {}) });
     }
+    pendingOutput.clear();
+  };
 
-    if (message.role === "toolResult") {
-      events.push({
-        t: "tool_result",
-        seq: 0,
-        id: message.toolCallId,
-        ...toolResultFields(message.content, "details" in message ? message.details : undefined),
-        status: message.isError ? "error" : "ok",
-        durationMs: 0,
-      });
-    }
+  // pi's entries from `id` back to the root, newest first.
+  function* branchFrom(id: string | null) {
+    for (let entry = id ? sm.getEntry(id) : undefined; entry; entry = entry.parentId ? sm.getEntry(entry.parentId) : undefined) yield entry;
   }
 
-  return events;
+  const project = (entries: readonly SessionEntry[]): Entry[] =>
+    entries.flatMap((saved) => {
+      const entry = toEntry(saved);
+      const cid = entry?.type === "user" ? cidByEntry.get(entry.id) : undefined;
+      return entry ? [cid ? { ...entry, cid } : entry] : [];
+    });
+
+  // A user entry belongs to the oldest pending send pi would save with that
+  // text (pi matches its queue the same way), else to the send that started
+  // the run (templates may have expanded its text).
+  const link = (entryId: string, text: string) => {
+    const pending = [...sends.values()].filter((record) => record === queueing || isIn(record, "started", "queued"));
+    const record = pending.find((r) => r.matchText === text) ?? pending.find((r) => isIn(r, "started"));
+    if (!record) return;
+    record.status = { cid: record.cid, state: "delivered" };
+    cidByEntry.set(entryId, record.cid);
+  };
+
+  // Entries ending at `fromId`, `limit` shown ones or so, starting at a user
+  // message or compaction so a tool call isn't split from its result.
+  const pageEndingAt = (fromId: string | null, limit: number): HistoryPage => {
+    const walked: SessionEntry[] = [];
+    let shown = 0;
+    for (const entry of branchFrom(fromId)) {
+      walked.push(entry);
+      const projected = toEntry(entry);
+      if (projected) shown += 1;
+      if ((shown >= limit && (projected?.type === "user" || projected?.type === "compaction")) || shown >= limit * 3) break;
+    }
+    const oldest = walked.at(-1);
+    return { entries: project(walked.reverse()), ...(oldest?.parentId ? { more: oldest.id } : {}) };
+  };
+
+  // The entries after `head` on the published branch; undefined when it isn't
+  // there or is too far back.
+  const entriesAfter = (head: string): SessionEntry[] | undefined => {
+    const walked: SessionEntry[] = [];
+    for (const entry of branchFrom(publishedLeaf)) {
+      if (entry.id === head) return walked.reverse();
+      if (walked.push(entry) > MAX_CATCHUP_ENTRIES) return undefined;
+    }
+    return undefined;
+  };
+
+  const syncMessage = (head: string | null, cids: readonly string[]): ServerMessage => {
+    const after = head === null ? undefined : entriesAfter(head);
+    return {
+      t: "sync",
+      reset: after === undefined,
+      leaf: publishedLeaf,
+      ...(after ? { entries: project(after) } : pageEndingAt(publishedLeaf, PAGE_ENTRIES)),
+      // Encoded after later events change the mirror, so it is copied.
+      live: structuredClone(mirror),
+      session: meta,
+      sends: cids.flatMap((cid) => sends.get(cid)?.status ?? []),
+    };
+  };
+
+  // pi notifies message_end before it saves the message, and most saves have
+  // no event of their own, so after every pi event and host command the leaf
+  // (which every save moves) is compared with what was last published.
+  const pump = () => {
+    const leaf = sm.getLeafId();
+    if (leaf === publishedLeaf) return;
+    const fresh: SessionEntry[] = [];
+    let continues = publishedLeaf === null;
+    for (const entry of branchFrom(leaf)) {
+      if (entry.id === publishedLeaf) {
+        continues = true;
+        break;
+      }
+      fresh.push(entry);
+    }
+    publishedLeaf = leaf;
+    flush();
+    if (!continues) {
+      // The leaf moved to another branch (tree navigation): every phone starts over.
+      hooks.log("branch_switched", { session_id: meta.id, leaf });
+      broadcast(syncMessage(null, [...sends.keys()]));
+      return;
+    }
+    for (const saved of fresh) {
+      if (saved.type === "message" && saved.message.role === "user") link(saved.id, userText(saved.message.content));
+    }
+    const entries = project(fresh.reverse());
+    for (const entry of entries) endLiveItem(mirror, entry);
+    broadcast({ t: "entries", leaf, entries });
+    if (entries.some((entry) => entry.type === "assistant")) {
+      const stats = core.getSessionStats();
+      setMeta({ tokens: { in: stats.tokens.input, out: stats.tokens.output }, costUsd: stats.cost });
+    }
+  };
+
+  let pumpQueued = false;
+  const pumpSoon = () => {
+    if (pumpQueued) return;
+    pumpQueued = true;
+    queueMicrotask(() => {
+      pumpQueued = false;
+      pump();
+    });
+  };
+
+  // Sends held for a compaction, then pi's own queue.
+  const emitQueue = () => {
+    const claimed = new Set<SendRecord>();
+    const item = (text: string, mode: SendMode): QueueItem => {
+      // The send being queued right now has no status yet.
+      const record = [...sends.values()].find(
+        (r) => (r === queueing || isIn(r, "queued")) && r.mode === mode && r.matchText === text && !claimed.has(r),
+      );
+      if (!record) return { text, mode };
+      claimed.add(record);
+      return { text, mode, cid: record.cid };
+    };
+    emit({
+      t: "queue",
+      queue: [
+        ...held.map(({ text, mode, cid }) => ({ text, mode, cid })),
+        ...piQueue.steering.map((text) => item(text, "steer")),
+        ...piQueue.followUp.map((text) => item(text, "follow_up")),
+      ],
+    });
+  };
+
+  const setRun = (patch: { running?: boolean; compacting?: boolean; retry?: typeof mirror.retry | null }) => {
+    const retry = patch.retry === null ? undefined : (patch.retry ?? mirror.retry);
+    flush();
+    emit({ t: "run", running: patch.running ?? mirror.running, compacting: patch.compacting ?? mirror.compacting, ...(retry ? { retry } : {}) });
+    updateStatus();
+  };
+
+  const remember = (record: SendRecord) => {
+    sends.set(record.cid, record);
+    for (const [cid, old] of sends) {
+      if (sends.size <= MAX_REMEMBERED_SENDS) break;
+      if (isIn(old, "delivered", "handled", "cleared")) sends.delete(cid);
+    }
+  };
+
+  // Hands a send to pi and settles with how pi took it. Never rejects: a
+  // refused send is forgotten, so the phone can try it again.
+  const dispatch = (record: SendRecord): Promise<SendStatus> => {
+    if (mirror.compacting) {
+      // pi refuses prompts during a manual compaction, and its TUI holds input
+      // during any compaction; hold them until it ends.
+      record.status = { cid: record.cid, state: "held" };
+      held.push(record);
+      emitQueue();
+      return Promise.resolve(record.status);
+    }
+    return new Promise((resolve) => {
+      let reported = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const settle = (state: SendState, error?: string) => {
+        clearTimeout(timer);
+        if (queueing === record) queueing = null;
+        // pi can deliver a queued send before it reports it: keep "delivered".
+        const status = record.status?.state === "delivered" ? record.status : { cid: record.cid, state, ...(error ? { error } : {}) };
+        record.status = status;
+        if (state === "started") record.matchText = record.text;
+        // A report that comes after the timeout below corrects it.
+        if (reported) broadcast({ t: "send", ...status });
+        else resolve(status);
+        reported = true;
+      };
+      queueing = record;
+      core
+        .prompt(record.text, {
+          images: record.images?.map((image) => ({ ...image })),
+          streamingBehavior: record.mode === "follow_up" ? "followUp" : "steer",
+          preflightResult: settle,
+        })
+        .then(() => {
+          // Deferred; the cid stays known in case pi still runs it.
+          if (!reported) timer = setTimeout(() => settle("failed", "pi didn't take the message"), DEFERRED_PROMPT_TIMEOUT_MS).unref();
+        })
+        .catch((error: unknown) => {
+          if (reported) return hooks.log("prompt_failed", { session_id: meta.id, cid: record.cid, error: String(error) });
+          sends.delete(record.cid);
+          hooks.log("send_failed", { session_id: meta.id, cid: record.cid, error: String(error) });
+          settle("failed", error instanceof Error ? error.message : String(error));
+        });
+      pumpSoon();
+    });
+  };
+
+  // Sends wait for each other only until pi reports where each went.
+  const enqueue = (record: SendRecord, then: (status: SendStatus) => void) => {
+    delete record.status;
+    const result = sendChain.then(() => dispatch(record)).then((status) => {
+      then(status);
+      return status;
+    });
+    sendChain = record.result = result;
+    return result;
+  };
+
+  // After a host restart a retried send's cid is unknown, so pi's file decides
+  // whether it already arrived.
+  const sentAfter = (base: string | null, text: string): string | undefined => {
+    let steps = 0;
+    for (const entry of branchFrom(publishedLeaf)) {
+      if (entry.id === base || ++steps > MAX_CATCHUP_ENTRIES) return undefined;
+      if (entry.type === "message" && entry.message.role === "user") {
+        // pi appends notes on attached images after the text.
+        const saved = userText(entry.message.content);
+        if (saved === text || saved.startsWith(`${text}\n\n`)) return entry.id;
+      }
+    }
+    return undefined;
+  };
+
+  const send = async (input: {
+    cid: string;
+    text: string;
+    mode: SendMode;
+    images?: readonly ImageContent[];
+    base: string | null;
+    retry: boolean;
+  }): Promise<SendStatus> => {
+    if (stopping) throw new Error("The host is restarting; try again in a moment.");
+    const known = sends.get(input.cid);
+    if (known) {
+      // A held send's status is cleared while it is handed to pi again.
+      while (!known.status) await known.result;
+      return known.status;
+    }
+    pump();
+    const delivered = input.retry ? sentAfter(input.base, input.text) : undefined;
+    const record: SendRecord = { cid: input.cid, text: input.text, mode: input.mode, images: input.images };
+    // Recorded before anything awaits, so a racing retry finds it.
+    remember(record);
+    if (delivered) {
+      record.status = { cid: input.cid, state: "delivered" };
+      cidByEntry.set(delivered, input.cid);
+      hooks.log("send_already_delivered", { session_id: meta.id, cid: input.cid, entry_id: delivered });
+      return record.status;
+    }
+    return enqueue(record, (status) =>
+      hooks.log("send_received", { session_id: meta.id, cid: record.cid, mode: record.mode, state: status.state }),
+    );
+  };
+
+  const onEvent = (event: AgentSessionEvent) => {
+    // Entries pi saved since its last notification come before this one.
+    pump();
+    switch (event.type) {
+      case "message_start":
+        if (event.message.role === "assistant") {
+          flush();
+          emit({ t: "msg", at: Date.now() });
+        }
+        break;
+      case "message_update": {
+        const update = event.assistantMessageEvent;
+        if (update.type === "text_delta") {
+          pendingText += update.delta;
+          textTimer ??= setTimeout(flush, TEXT_COALESCE_MS).unref();
+        } else if ((update.type === "toolcall_start" || update.type === "toolcall_delta") && event.message.role === "assistant") {
+          pendingCalls ??= { message: event.message, indexes: new Set() };
+          pendingCalls.message = event.message;
+          pendingCalls.indexes.add(update.contentIndex);
+          outputTimer ??= setTimeout(flush, OUTPUT_COALESCE_MS).unref();
+        }
+        break;
+      }
+      case "tool_execution_start":
+        runningTools.add(event.toolCallId);
+        updateStatus();
+        break;
+      case "tool_execution_update": {
+        const { content, details } = event.partialResult;
+        pendingOutput.set(event.toolCallId, { text: textFromContent(content), ...(details !== undefined ? { details } : {}) });
+        outputTimer ??= setTimeout(flush, OUTPUT_COALESCE_MS).unref();
+        break;
+      }
+      case "tool_execution_end":
+        runningTools.delete(event.toolCallId);
+        pendingOutput.delete(event.toolCallId);
+        updateStatus();
+        break;
+      case "queue_update": {
+        // A send being queued right now: note the text pi queued for it.
+        const lane = queueing?.mode === "follow_up" ? "followUp" : "steering";
+        if (queueing && event[lane].length > piQueue[lane].length) queueing.matchText = event[lane].at(-1);
+        piQueue = { steering: event.steering, followUp: event.followUp };
+        emitQueue();
+        break;
+      }
+      case "agent_start":
+        if (!mirror.running) setRun({ running: true });
+        break;
+      case "agent_settled":
+        runningTools.clear();
+        setRun({ running: false, retry: null });
+        break;
+      case "compaction_start":
+        setRun({ compacting: true });
+        break;
+      case "compaction_end":
+        setRun({ compacting: false });
+        // pi saves only a successful compaction; a failure shows like an extension notice.
+        if (event.errorMessage) emit({ t: "ui", request: { kind: "notify", id: randomUUIDv7(), message: event.errorMessage, level: "error" } });
+        // Not while shutting down: stop() aborting a compaction ends up here too.
+        if (stopping) break;
+        for (const record of held.splice(0)) enqueue(record, (status) => broadcast({ t: "send", ...status }));
+        emitQueue();
+        break;
+      case "auto_retry_start":
+        setRun({ retry: { attempt: event.attempt, maxAttempts: event.maxAttempts, delayMs: event.delayMs, errorMessage: event.errorMessage } });
+        break;
+      case "auto_retry_end":
+        setRun({ retry: null });
+        break;
+    }
+    pumpSoon();
+  };
+
+  const unsubscribe = core.subscribe(onEvent);
+
+  return {
+    get meta() {
+      return meta;
+    },
+    patchMeta: (patch: Partial<Pick<SessionMeta, "title" | "archived">>) => setMeta(patch),
+    // Nothing running, held or queued, and no one watching: safe to close.
+    get idle() {
+      return subscribers.size === 0 && !mirror.running && !mirror.compacting && mirror.queue.length === 0;
+    },
+    // The sync, then every later change, in one synchronous step.
+    attach(head: string | null, cids: readonly string[], subscriber: Subscriber): () => void {
+      // Closed between the viewer's lookup and now (evicted or deleted).
+      if (closed) {
+        subscriber.end();
+        return () => {};
+      }
+      flush();
+      pump();
+      subscriber.push(syncMessage(head, cids));
+      subscribers.add(subscriber);
+      return () => subscribers.delete(subscriber);
+    },
+    send,
+    history(before: string, limit = PAGE_ENTRIES): HistoryPage {
+      const parentId = sm.getEntry(before)?.parentId;
+      return parentId ? pageEndingAt(parentId, Math.min(Math.max(1, limit), PAGE_ENTRIES * 2)) : { entries: [] };
+    },
+    // Empties the queue and returns it for the composer, like pi's dequeue.
+    clearQueue(): { steering: string[]; followUp: string[] } {
+      const fromHeld = held.splice(0);
+      const fromPi = core.clearQueue();
+      for (const record of sends.values()) {
+        if (!isIn(record, "queued", "held")) continue;
+        record.status = { cid: record.cid, state: "cleared" };
+        broadcast({ t: "send", ...record.status });
+      }
+      emitQueue();
+      const heldText = (mode: SendMode) => fromHeld.filter((r) => r.mode === mode).map((r) => r.text);
+      return { steering: [...heldText("steer"), ...fromPi.steering], followUp: [...heldText("follow_up"), ...fromPi.followUp] };
+    },
+    ui: (request: ExtensionUiRequest) => emit({ t: "ui", request }),
+    uiDone: (id: string) => emit({ t: "ui_done", id }),
+    // After a host command that may have saved entries or moved the leaf.
+    pump,
+    // Graceful shutdown: refuse new sends and stop the turn, so pi saves the
+    // partial reply and tool results.
+    async stop(): Promise<void> {
+      stopping = true;
+      if (core.isStreaming || mirror.compacting) {
+        hooks.log("turn_aborted_for_shutdown", { session_id: meta.id });
+        await core.abort();
+      }
+    },
+    close() {
+      closed = true;
+      flush();
+      unsubscribe();
+      for (const subscriber of subscribers) subscriber.end();
+      subscribers.clear();
+    },
+  };
 };
-
-const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
-  const log = emptyLog();
-  for (const event of branchToWireEvents(piSession)) reduceLog(log, event, 0);
-
-  // With no turn live (e.g. resumed after the host was killed mid-command), a
-  // lingering "running" tool is an orphan — mark it interrupted so the log
-  // doesn't replay a spinner that never resolves. isStreaming spans the whole
-  // turn including tool execution, so this never touches an in-flight tool.
-  if (!piSession.isStreaming) reconcileOrphanedToolCalls(log);
-
-  return log.entries;
-};
-
-const DELTA_COALESCE_MS = 75;
-const TOOL_UPDATE_COALESCE_MS = 250;
 
 const wirePiSession = (
   piSession: AgentSession,
   meta: SessionMeta,
+  hooks: LiveHooks,
   fs: FileSystem.FileSystem,
 ): Effect.Effect<PiSession> =>
   Effect.gen(function* () {
-    const q = yield* Queue.unbounded<PiEmission>();
-
-    // Coalesce streaming emissions: per-token deltas into ~75ms chunks, and tool
-    // updates (each carries the whole output so far) to the newest every
-    // ~250ms. One persisted event and WS frame per chunk; every other emission
-    // flushes first to preserve log order.
-    type Coalesced = Extract<PiEmission, { t: "assistant_delta" | "tool_update" }>;
-    let pending: Coalesced | null = null;
-    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const flushPending = () => {
-      if (pendingTimer) {
-        clearTimeout(pendingTimer);
-        pendingTimer = null;
-      }
-      if (pending) Queue.unsafeOffer(q, pending);
-      pending = null;
-    };
-
-    const offer = (emission: PiEmission) => {
-      if (emission.t !== "assistant_delta" && emission.t !== "tool_update") {
-        flushPending();
-        Queue.unsafeOffer(q, emission);
-        return;
-      }
-      if (pending?.t !== emission.t || pending.id !== emission.id) {
-        flushPending();
-        pending = emission;
-      } else if (pending.t === "assistant_delta" && emission.t === "assistant_delta") {
-        pending = { ...pending, text: pending.text + emission.text };
-      } else {
-        pending = emission;
-      }
-      pendingTimer ??= setTimeout(
-        flushPending,
-        emission.t === "assistant_delta" ? DELTA_COALESCE_MS : TOOL_UPDATE_COALESCE_MS,
-      ).unref();
-    };
-
-    const extensionUi = createMobileExtensionUiChannel((request) => {
-      offer({ t: "extension_ui_request", request });
-    });
-
-    let assistantId: string | null = null;
-    let compactionId: string | null = null;
-    let turnSerial = 0;
-    const toolStarts = new Map<string, { startedAt: number }>();
-
-    const emitProviderAuthMissing = (): boolean => {
-      if (piSession.modelRuntime.getAvailableSnapshot().length > 0) return false;
-      offer({
-        t: "assistant_end",
-        id: randomUUIDv7(),
-        at: Date.now(),
-        text: "",
-        stopReason: "error",
-        errorMessage: "No model provider is signed in or configured yet.",
-        errorCode: "provider_auth_missing",
-      });
-      offer({ t: "status", status: "error" });
-      return true;
-    };
-
-    const mapEvent = (event: AgentSessionEvent): void => {
-      switch (event.type) {
-        case "message_update": {
-          const inner = event.assistantMessageEvent;
-          if (inner?.type !== "text_delta") return;
-          const id = assistantId ?? randomUUIDv7();
-          assistantId = id;
-          offer({
-            t: "assistant_delta",
-            id,
-            text: inner.delta,
-          });
-          return;
-        }
-
-        case "message_end": {
-          const message = event.message;
-          if (message.role !== "assistant") return;
-
-          const id = assistantId ?? randomUUIDv7();
-          const text = assistantText(message.content);
-          if (!assistantId && text.length > 0) offer({ t: "assistant_delta", id, text });
-
-          offer({
-            t: "assistant_end",
-            id,
-            at: Date.now(),
-            text,
-            ...finalStopReason(message.stopReason),
-            ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
-            ...(message.usage ? { usage: message.usage } : {}),
-          });
-          assistantId = null;
-
-          const stats = piSession.getSessionStats();
-          offer({
-            t: "cost",
-            tokensIn: stats.tokens.input,
-            tokensOut: stats.tokens.output,
-            costUsd: stats.cost,
-          });
-          return;
-        }
-
-        case "tool_execution_start": {
-          const id = event.toolCallId;
-          toolStarts.set(id, { startedAt: Date.now() });
-
-          offer({
-            t: "tool_call",
-            entry: normalizeToolCall(id, event.toolName, event.args),
-          });
-          return;
-        }
-
-        case "tool_execution_update": {
-          offer({
-            t: "tool_update",
-            id: event.toolCallId,
-            ...toolResultFields(event.partialResult.content, event.partialResult.details),
-          });
-          return;
-        }
-
-        case "tool_execution_end": {
-          const start = toolStarts.get(event.toolCallId);
-          toolStarts.delete(event.toolCallId);
-
-          offer({
-            t: "tool_result",
-            id: event.toolCallId,
-            ...toolResultFields(event.result.content, event.result.details),
-            status: event.isError ? "error" : "ok",
-            durationMs: start ? Date.now() - start.startedAt : 0,
-          });
-          return;
-        }
-
-        case "queue_update":
-          offer({
-            t: "queue",
-            steering: [...event.steering],
-            followUp: [...event.followUp],
-          });
-          return;
-
-        case "compaction_start": {
-          const id = randomUUIDv7();
-          compactionId = id;
-          offer({
-            t: "compaction",
-            entry: {
-              kind: "compaction",
-              id,
-              at: Date.now(),
-              status: "running",
-              reason: event.reason,
-            },
-          });
-          return;
-        }
-
-        case "compaction_end": {
-          const id = compactionId ?? randomUUIDv7();
-          compactionId = null;
-          offer({
-            t: "compaction",
-            entry: {
-              kind: "compaction",
-              id,
-              at: Date.now(),
-              status: event.aborted ? "aborted" : event.errorMessage ? "error" : "success",
-              reason: event.reason,
-              ...(event.result?.summary ? { summary: event.result.summary } : {}),
-              ...(event.result?.tokensBefore !== undefined ? { tokensBefore: event.result.tokensBefore } : {}),
-              ...(event.errorMessage ? { errorMessage: event.errorMessage } : {}),
-              ...(event.willRetry ? { willRetry: true } : {}),
-            },
-          });
-          return;
-        }
-
-        case "agent_start":
-          offer({ t: "status", status: "thinking" });
-          return;
-
-        case "agent_end":
-          offer({ t: "status", status: "idle" });
-          return;
-
-        case "turn_start":
-          turnSerial += 1;
-          offer({ t: "status", status: "thinking" });
-          return;
-
-        case "turn_end":
-          return;
-
-        case "auto_retry_start":
-          offer({
-            t: "auto_retry_start",
-            attempt: event.attempt,
-            maxAttempts: event.maxAttempts,
-            delayMs: event.delayMs,
-            errorMessage: event.errorMessage,
-          });
-          return;
-
-        case "auto_retry_end":
-          offer({
-            t: "auto_retry_end",
-            success: event.success,
-            attempt: event.attempt,
-            ...(event.finalError ? { finalError: event.finalError } : {}),
-          });
-          return;
-
-        default:
-          return;
-      }
-    };
-
-    const unsub = piSession.subscribe(mapEvent);
+    const live = makeLive(piSession, meta, hooks);
+    const extensionUi = createMobileExtensionUiChannel(live.ui, live.uiDone);
 
     yield* Effect.tryPromise({
       try: () => piSession.bindExtensions({
         uiContext: extensionUi.uiContext,
-        onError: (error) => {
-          offer({
-            t: "extension_ui_request",
-            request: {
-              kind: "notify",
-              id: randomUUIDv7(),
-              message: error instanceof Error ? error.message : String(error),
-              level: "error",
-            },
-          });
-        },
+        onError: (error) =>
+          live.ui({ kind: "notify", id: randomUUIDv7(), message: error instanceof Error ? error.message : String(error), level: "error" }),
       }),
       catch: (e) => new PiError({ message: `bindExtensions failed: ${String(e)}`, cause: e }),
-    }).pipe(Effect.catchAll((e) => Effect.logError("[pi] extension bind failed", e)));
+    }).pipe(
+      Effect.catchAll((e) =>
+        Effect.logError("extension_bind_failed").pipe(Effect.annotateLogs({ session_id: meta.id, error: e.message })),
+      ),
+    );
 
     return {
-      meta,
-      events: Stream.fromQueue(q),
-      send: (text, mode, images) =>
-        Effect.gen(function* () {
-          if (emitProviderAuthMissing()) return;
-          yield* Queue.offer(q, { t: "status", status: "thinking" });
-
-          const isStreaming = piSession.isStreaming;
-          const piImages = toPiImages(images);
-
-          if (!isStreaming) {
-            yield* Effect.forkDaemon(
-              Effect.tryPromise({
-                try: async () => {
-                  const turnSerialBeforePrompt = turnSerial;
-                  await piSession.prompt(text, piImages ? { images: piImages } : undefined);
-                  if (turnSerial === turnSerialBeforePrompt) offer({ t: "status", status: "idle" });
-                },
-                catch: (e) =>
-                  new PiError({ message: `prompt failed: ${String(e)}`, cause: e }),
-              }).pipe(
-                Effect.tapError((e) =>
-                  Effect.logError("[pi] prompt error", e),
-                ),
-              ),
-            );
-            return;
-          }
-
-          const useFollowUp = mode === "follow_up";
-          yield* Effect.tryPromise({
-            try: async () => {
-              if (useFollowUp) {
-                await piSession.followUp(text, piImages);
-              } else {
-                await piSession.steer(text, piImages);
-              }
-            },
-            catch: (e) =>
-              new PiError({ message: `${useFollowUp ? "followUp" : "steer"} failed: ${String(e)}`, cause: e }),
-          });
-        }),
-      isCompacting: () => Effect.sync(() => piSession.isCompacting),
-      flushAfterCompaction: (messages, opts) =>
-        Effect.tryPromise({
-          try: async () => {
-            if (messages.length === 0) return;
-
-            const queueIntoTurn = async (message: QueuedSend) => {
-              const images = toPiImages(message.images);
-              if (message.mode === "follow_up") await piSession.followUp(message.text, images);
-              else await piSession.steer(message.text, images);
-            };
-
-            if (opts?.willRetry) {
-              for (const message of messages) await queueIntoTurn(message);
-              return;
-            }
-
-            const [first, ...rest] = messages;
-            if (!first) return;
-            const firstImages = toPiImages(first.images);
-            offer({ t: "status", status: "thinking" });
-            const prompt = piSession.prompt(first.text, firstImages ? { images: firstImages } : undefined);
-            for (const message of rest) await queueIntoTurn(message);
-            void prompt.catch((error) => console.error("[pi] queued post-compaction prompt failed:", error));
-          },
-          catch: (e) => new PiError({ message: `flushAfterCompaction failed: ${String(e)}`, cause: e }),
-        }),
+      live,
       interrupt: () =>
-        Effect.gen(function* () {
-          yield* Effect.tryPromise({
-            try: () => piSession.abort(),
-            catch: (e) => new PiError({ message: `abort failed: ${String(e)}`, cause: e }),
-          });
-          yield* Queue.offer(q, { t: "status", status: "idle" });
+        Effect.tryPromise({
+          try: () => piSession.abort(),
+          catch: (e) => new PiError({ message: `abort failed: ${String(e)}`, cause: e }),
         }),
-      extensionUiResponse: (id, value) =>
-        Effect.sync(() => {
-          extensionUi.respond(id, value);
-        }),
+      extensionUiResponse: (id, value) => Effect.sync(() => extensionUi.respond(id, value)),
       compact: (instructions) =>
         Effect.tryPromise({
           try: async () => {
+            // A second compact would abort the first one (compact() aborts first).
+            if (piSession.isCompacting) return;
             await piSession.compact(instructions?.trim() || undefined);
           },
           catch: (e) => new PiError({ message: `compact failed: ${String(e)}`, cause: e }),
@@ -893,7 +977,6 @@ const wirePiSession = (
             takesArgs: true,
           })),
         })),
-      clearQueue: () => Effect.sync(() => piSession.clearQueue()),
       getSettings: () => Effect.sync(() => sessionSettings(piSession)),
       patchSession: (patch) =>
         Effect.sync(() => {
@@ -905,21 +988,19 @@ const wirePiSession = (
           catch: (e) => e instanceof PiError ? e : new PiError({ message: `patchSetting failed: ${String(e)}`, cause: e }),
         }),
       getStats: () => Effect.sync(() => sessionStatsWithCwd(piSession.getSessionStats(), meta.cwd)),
-      getLog: () => Effect.sync(() => logEntriesFromCurrentBranch(piSession)),
       getTree: () => Effect.sync(() => flattenSessionTree(piSession)),
       navigateTree: (entryId, summarize) =>
         Effect.tryPromise({
           try: async () => {
             await piSession.navigateTree(entryId, { summarize });
-            offer({ t: "log_reset", entries: logEntriesFromCurrentBranch(piSession) });
+            live.pump();
           },
           catch: (e) => new PiError({ message: `navigateTree failed: ${String(e)}`, cause: e }),
         }),
       close: () =>
         Effect.sync(() => {
-          flushPending();
+          live.close();
           extensionUi.close();
-          unsub();
           piSession.dispose();
         }),
     };
@@ -930,6 +1011,7 @@ const makeLiveSession = (
     cwd: string;
     title: string;
   },
+  hooks: LiveHooks,
   fs: FileSystem.FileSystem,
 ): Effect.Effect<PiSession, PiError> =>
   Effect.gen(function* () {
@@ -954,11 +1036,12 @@ const makeLiveSession = (
       archived: false,
     };
 
-    return yield* wirePiSession(piSession, meta, fs);
+    return yield* wirePiSession(piSession, meta, hooks, fs);
   });
 
 const makeResumedSession = (
-  storedRecord: import("./session-record.ts").SessionRecord,
+  storedRecord: SessionRecord,
+  hooks: LiveHooks,
   fs: FileSystem.FileSystem,
 ): Effect.Effect<PiSession, PiError | SessionNotFound> =>
   Effect.gen(function* () {
@@ -989,7 +1072,7 @@ const makeResumedSession = (
       archived: storedRecord.archived,
     };
 
-    return yield* wirePiSession(piSession, meta, fs);
+    return yield* wirePiSession(piSession, meta, hooks, fs);
   });
 
 
@@ -997,8 +1080,8 @@ export const PiClientLive = Layer.effect(
   PiClient,
   Effect.map(FileSystem.FileSystem, (fs) =>
     PiClient.of({
-      create: (opts) => makeLiveSession(opts, fs),
-      resume: (storedRecord) => makeResumedSession(storedRecord, fs),
+      create: (opts, hooks) => makeLiveSession(opts, hooks, fs),
+      resume: (storedRecord, hooks) => makeResumedSession(storedRecord, hooks, fs),
     }),
   ),
 );

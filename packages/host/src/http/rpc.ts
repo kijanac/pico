@@ -39,11 +39,13 @@ const HandlersLive = PicoRpc.toLayer({
   "sessions.controls": ({ id }) => onSessions((m) => m.getSettings(id)),
   "sessions.patchControl": ({ id, key, value }) => onSessions((m) => m.patchSetting(id, key, value)),
   "sessions.compact": ({ id, instructions }) => onSessions((m) => m.compact(id, instructions)),
-  "sessions.queue": ({ id }) => onSessions((m) => m.getQueue(id)),
+  "sessions.send": ({ id, images, ...input }) =>
+    onSessions((m) => m.send(id, { ...input, ...(images ? { images } : {}) })),
+  "sessions.interrupt": ({ id }) => onSessions((m) => m.interrupt(id)),
+  "sessions.uiResponse": ({ id, requestId, value }) => onSessions((m) => m.extensionUiResponse(id, requestId, value)),
   "sessions.clearQueue": ({ id }) => onSessions((m) => m.clearQueue(id)),
-  "sessions.removeQueued": ({ id, messageId }) => onSessions((m) => m.removeQueued(id, messageId)),
   "sessions.stats": ({ id }) => onSessions((m) => m.getStats(id)),
-  "sessions.logBefore": ({ id, beforeId, limit }) => onSessions((m) => m.getLogBefore(id, beforeId, limit)),
+  "sessions.history": ({ id, before, limit }) => onSessions((m) => m.history(id, before, limit)),
   "sessions.tree": ({ id }) => onSessions((m) => m.getTree(id)),
   "sessions.navigateTree": ({ id, entryId, summarize }) => onSessions((m) => m.navigateTree(id, entryId, summarize)),
   "sessions.commands": ({ id }) => onSessions((m) => m.listCommands(id)),
@@ -69,12 +71,8 @@ export const RpcRoutesLive = HttpApiBuilder.Router.use((router) =>
 );
 
 const SessionHandlersLive = PicoSessionRpc.toLayer({
-  "session.events": ({ id, cursor }) =>
-    Effect.map(SessionManager, (m) => m.subscribe(id, cursor)).pipe(Stream.unwrap, Stream.mapError(toSessionFail)),
-  "session.send": ({ id, text, mode, images, clientId }) =>
-    onSessions((m) => m.send(id, text, mode, images ? [...images] : undefined, clientId)),
-  "session.interrupt": ({ id }) => onSessions((m) => m.interrupt(id)),
-  "session.extensionUiResponse": ({ id, requestId, value }) => onSessions((m) => m.extensionUiResponse(id, requestId, value)),
+  "session.live": ({ id, head, cids }) =>
+    Effect.map(SessionManager, (m) => m.subscribe(id, head, cids)).pipe(Stream.unwrap, Stream.mapError(toSessionFail)),
 });
 
 // The realtime channel rides a WebSocket: toHttpAppWebsocket upgrades the

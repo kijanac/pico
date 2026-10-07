@@ -4,7 +4,7 @@ export type SessionOpenPhase =
   | "state-start"
   | "stream-start"
   | "ws-connected"
-  | "hello"
+  | "sync"
   | "first-render";
 
 export interface SessionOpenReport {
@@ -20,7 +20,7 @@ const phaseOrder: SessionOpenPhase[] = [
   "state-start",
   "stream-start",
   "ws-connected",
-  "hello",
+  "sync",
   "first-render",
 ];
 
@@ -94,10 +94,10 @@ export function markSessionOpen(sessionId: string, phase: SessionOpenPhase): voi
   record.marks[phase] = now;
   performance.mark(`pico.session-open.${phase}.${sessionId}`);
 
-  const complete = record.marks.hello !== undefined && record.marks["first-render"] !== undefined;
+  const complete = record.marks.sync !== undefined && record.marks["first-render"] !== undefined;
   record.complete = complete;
   const report = publish(record, complete);
-  if (complete || phase === "hello") {
+  if (complete || phase === "sync") {
     console.info(`[pico] session open ${sessionId.slice(0, 8)}`, report);
   }
 }

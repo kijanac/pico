@@ -1,5 +1,4 @@
 import * as Schema from "effect/Schema";
-import { HostErrorCodeSchema } from "./errors.ts";
 export { HostErrorCodeSchema, isHostErrorCode } from "./errors.ts";
 export type { HostErrorCode } from "./errors.ts";
 export { PRODUCT_VERSION } from "./version.ts";
@@ -22,29 +21,14 @@ const Base = {
   at: Schema.Number,
 };
 
-const UserMessageBase = {
+export const UserMessage = Schema.Struct({
   kind: Schema.Literal("user"),
   ...Base,
   text: Schema.String,
   images: Schema.optional(Schema.Array(ImageContent)),
-  // Echoed from the send event so the sender reconciles its optimistic echo and retries stay idempotent.
-  clientId: Schema.optional(Schema.String),
-};
-
-export const SentUserMessage = Schema.Struct({
-  ...UserMessageBase,
-  queued: Schema.optional(Schema.Literal(false)),
+  // The sender's message id, linking its outbox item to the entry pi saved.
+  cid: Schema.optional(Schema.String),
 });
-export type SentUserMessage = typeof SentUserMessage.Type;
-
-export const QueuedUserMessage = Schema.Struct({
-  ...UserMessageBase,
-  queued: Schema.Literal(true),
-  mode: SendMode,
-});
-export type QueuedUserMessage = typeof QueuedUserMessage.Type;
-
-export const UserMessage = Schema.Union(SentUserMessage, QueuedUserMessage);
 export type UserMessage = typeof UserMessage.Type;
 
 export const StopReason = Schema.Literal("stop", "length", "toolUse", "error", "aborted");
@@ -73,7 +57,6 @@ export const AssistantMessage = Schema.Struct({
   streaming: Schema.optional(Schema.Boolean),
   stopReason: Schema.optional(StopReason),
   errorMessage: Schema.optional(Schema.String),
-  errorCode: Schema.optional(HostErrorCodeSchema),
   usage: Schema.optional(MessageUsage),
 });
 export type AssistantMessage = typeof AssistantMessage.Type;
@@ -209,37 +192,39 @@ export function hasToolDetails(details: unknown): boolean {
   return typeof details !== "object" || Object.keys(details).length > 0;
 }
 
-export const CompactionReason = Schema.Literal("manual", "threshold", "overflow");
-export type CompactionReason = typeof CompactionReason.Type;
-
-export const CompactionStatus = Schema.Literal("running", "success", "error", "aborted");
+// pi saves only a finished compaction; "running" is the phone's own row while
+// one is in progress (a failure shows as a notice).
+export const CompactionStatus = Schema.Literal("running", "success");
 export type CompactionStatus = typeof CompactionStatus.Type;
 
 export const CompactionEntry = Schema.Struct({
   kind: Schema.Literal("compaction"),
   ...Base,
   status: CompactionStatus,
-  reason: Schema.optional(CompactionReason),
   summary: Schema.optional(Schema.String),
   tokensBefore: Schema.optional(Schema.Number),
-  errorMessage: Schema.optional(Schema.String),
-  willRetry: Schema.optional(Schema.Boolean),
 });
 export type CompactionEntry = typeof CompactionEntry.Type;
 
+// A message pi shows that the model didn't write: one an extension added
+// (pi.sendMessage with display on) or a branch summary.
+export const NoteEntry = Schema.Struct({
+  kind: Schema.Literal("note"),
+  ...Base,
+  label: Schema.String,
+  text: Schema.String,
+});
+export type NoteEntry = typeof NoteEntry.Type;
+
+// A row on the phone's screen, folded from pi's entries (see log.ts).
 export const LogEntry = Schema.Union(
   UserMessage,
   AssistantMessage,
   ToolCallMessage,
   CompactionEntry,
+  NoteEntry,
 );
 export type LogEntry = typeof LogEntry.Type;
-
-export const LogPage = Schema.Struct({
-  entries: Schema.Array(LogEntry),
-  hasMoreBefore: Schema.Boolean,
-});
-export type LogPage = typeof LogPage.Type;
 
 
 export const SessionMeta = Schema.Struct({
@@ -430,19 +415,6 @@ export const Commands = Schema.Struct({
 });
 export type Commands = typeof Commands.Type;
 
-export const QueuedMessage = Schema.Struct({
-  id: Schema.String,
-  text: Schema.String,
-  images: Schema.optional(Schema.Array(ImageContent)),
-  mode: SendMode,
-});
-export type QueuedMessage = typeof QueuedMessage.Type;
-
-export const QueueState = Schema.Struct({
-  queued: Schema.Array(QueuedMessage),
-});
-export type QueueState = typeof QueueState.Type;
-
 const ExtensionUiBase = {
   id: Schema.String,
   title: Schema.String,
@@ -512,118 +484,181 @@ export const SessionTree = Schema.Struct({
 export type SessionTree = typeof SessionTree.Type;
 
 
-const Seq = { seq: Schema.Number };
+// ---------------------------------------------------------------------------
+// Sync. The phone's bookmark is the id of the newest pi entry it has. What pi
+// doesn't save (the reply being streamed, running tools' output, the queue,
+// run state, open dialogs) comes from the host's live mirror.
 
-export const WireEvent = Schema.Union(
+// A tool call as pi saved it. The phone narrows `args` to a builtin tool's
+// shape when they match (see log.ts).
+export const ToolCall = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  args: Schema.Unknown,
+});
+export type ToolCall = typeof ToolCall.Type;
+
+// One of pi's saved entries, projected for display. Entry types the phone
+// doesn't show (model changes, labels, …) aren't sent; the `leaf` beside a
+// batch is the newest entry id of any type.
+export const Entry = Schema.Union(
   Schema.Struct({
-    t: Schema.Literal("hello"),
-    ...Seq,
-    session: SessionMeta,
-    cursor: Schema.Number,
-  }),
-  Schema.Struct({ t: Schema.Literal("user_message"), ...Seq, entry: UserMessage }),
-  Schema.Struct({ t: Schema.Literal("user_message_removed"), ...Seq, id: Schema.String }),
-  Schema.Struct({
-    t: Schema.Literal("log_reset"),
-    ...Seq,
-    entries: Schema.Array(LogEntry),
-    hasMoreBefore: Schema.optional(Schema.Boolean),
-  }),
-  Schema.Struct({
-    t: Schema.Literal("assistant_delta"),
-    ...Seq,
-    id: Schema.String,
+    type: Schema.Literal("user"),
+    ...Base,
     text: Schema.String,
+    images: Schema.optional(Schema.Array(ImageContent)),
+    cid: Schema.optional(Schema.String),
   }),
-  // Self-contained: carries the finalized text + timestamp so a snapshot can
-  // emit one of these per assistant message and a client that missed deltas
-  // (mid-stream join) still ends holding the complete message.
   Schema.Struct({
-    t: Schema.Literal("assistant_end"),
-    ...Seq,
-    id: Schema.String,
-    at: Schema.Number,
+    type: Schema.Literal("assistant"),
+    ...Base,
     text: Schema.String,
+    tools: Schema.Array(ToolCall),
     stopReason: Schema.optional(StopReason),
     errorMessage: Schema.optional(Schema.String),
-    errorCode: Schema.optional(HostErrorCodeSchema),
     usage: Schema.optional(MessageUsage),
   }),
-  Schema.Struct({ t: Schema.Literal("tool_call"), ...Seq, entry: ToolCallMessage }),
   Schema.Struct({
-    t: Schema.Literal("tool_update"),
-    ...Seq,
-    id: Schema.String,
+    type: Schema.Literal("tool_result"),
+    ...Base,
+    toolCallId: Schema.String,
+    isError: Schema.Boolean,
     result: Schema.optional(Schema.String),
     resultContent: Schema.optional(Schema.Array(ToolResultContent)),
     details: Schema.optional(Schema.Unknown),
   }),
   Schema.Struct({
-    t: Schema.Literal("tool_result"),
-    ...Seq,
-    id: Schema.String,
-    result: Schema.optional(Schema.String),
-    resultContent: Schema.optional(Schema.Array(ToolResultContent)),
-    details: Schema.optional(Schema.Unknown),
-    status: Schema.Literal("ok", "error"),
-    durationMs: Schema.Number,
-  }),
-  Schema.Struct({ t: Schema.Literal("compaction"), ...Seq, entry: CompactionEntry }),
-  Schema.Struct({ t: Schema.Literal("status"), ...Seq, status: SessionStatus }),
-  Schema.Struct({
-    t: Schema.Literal("queue"),
-    ...Seq,
-    queued: Schema.Array(QueuedMessage),
+    type: Schema.Literal("compaction"),
+    ...Base,
+    summary: Schema.String,
+    tokensBefore: Schema.Number,
   }),
   Schema.Struct({
-    t: Schema.Literal("cost"),
-    ...Seq,
-    tokensIn: Schema.Number,
-    tokensOut: Schema.Number,
-    costUsd: Schema.Number,
-  }),
-  Schema.Struct({
-    t: Schema.Literal("auto_retry_start"),
-    ...Seq,
-    attempt: Schema.Number,
-    maxAttempts: Schema.Number,
-    delayMs: Schema.Number,
-    errorMessage: Schema.String,
-  }),
-  Schema.Struct({
-    t: Schema.Literal("auto_retry_end"),
-    ...Seq,
-    success: Schema.Boolean,
-    attempt: Schema.Number,
-    finalError: Schema.optional(Schema.String),
-  }),
-  Schema.Struct({
-    t: Schema.Literal("extension_ui_request"),
-    ...Seq,
-    request: ExtensionUiRequest,
-  }),
-);
-export type WireEvent = typeof WireEvent.Type;
-
-
-export const ClientEvent = Schema.Union(
-  Schema.Struct({
-    t: Schema.Literal("send"),
+    type: Schema.Literal("note"),
+    ...Base,
+    label: Schema.String,
     text: Schema.String,
-    mode: SendMode,
-    images: Schema.optional(Schema.Array(ImageContent)),
-    // Idempotency key: the host drops repeats and echoes it back on user_message.
-    clientId: Schema.String,
-  }),
-  Schema.Struct({ t: Schema.Literal("interrupt") }),
-  Schema.Struct({
-    t: Schema.Literal("extension_ui_response"),
-    id: Schema.String,
-    value: ExtensionUiResponseValue,
   }),
 );
-export type ClientEvent = typeof ClientEvent.Type;
+export type Entry = typeof Entry.Type;
 
+export const RetryInfo = Schema.Struct({
+  attempt: Schema.Number,
+  maxAttempts: Schema.Number,
+  delayMs: Schema.Number,
+  errorMessage: Schema.String,
+});
+export type RetryInfo = typeof RetryInfo.Type;
 
-// Decode wire events read back from the session journal (store/session pump).
-export const parseWireEvent = Schema.decodeUnknownSync(WireEvent);
+// pi's queue holds only text; `cid` is set when the item is a send the host made.
+export const QueueItem = Schema.Struct({
+  text: Schema.String,
+  mode: SendMode,
+  cid: Schema.optional(Schema.String),
+});
+export type QueueItem = typeof QueueItem.Type;
+
+export const LiveTool = Schema.Struct({
+  id: Schema.String,
+  text: Schema.String,
+  details: Schema.optional(Schema.Unknown),
+});
+export type LiveTool = typeof LiveTool.Type;
+
+export const Live = Schema.Struct({
+  running: Schema.Boolean,
+  compacting: Schema.Boolean,
+  retry: Schema.optional(RetryInfo),
+  // The reply being streamed, with the tool calls the model is still writing
+  // (their arguments as JSON so far); pi saves it as an entry when it ends.
+  msg: Schema.optional(
+    Schema.Struct({
+      at: Schema.Number,
+      text: Schema.String,
+      calls: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, args: Schema.String })),
+    }),
+  ),
+  // Output so far of tools still running.
+  tools: Schema.Array(LiveTool),
+  queue: Schema.Array(QueueItem),
+  // Extension dialogs waiting for an answer.
+  ui: Schema.Array(ExtensionUiRequest),
+});
+export type Live = typeof Live.Type;
+
+// started: pi began a run with it. queued: in pi's queue. held: waiting for a
+// compaction to end. handled: an extension command took it. delivered: a retry
+// of a message already in pi's file. cleared: taken out of the queue. failed:
+// pi refused it (`error` says why). delivered also covers a send whose entry
+// pi saved; that entry carries its `cid`.
+export const SendState = Schema.Literal("started", "queued", "held", "handled", "delivered", "cleared", "failed");
+export type SendState = typeof SendState.Type;
+
+const SendStatusFields = {
+  cid: Schema.String,
+  state: SendState,
+  error: Schema.optional(Schema.String),
+};
+export const SendStatus = Schema.Struct(SendStatusFields);
+export type SendStatus = typeof SendStatus.Type;
+
+// A change to a growing text: keep characters `drop` to `from` of the old one,
+// then append `s`. Usually that is appending; bash keeps only the tail of its
+// output, so lines also fall off the top.
+const TextChange = {
+  drop: Schema.optional(Schema.Number),
+  from: Schema.Number,
+  s: Schema.String,
+};
+
+// Changes to the live mirror, applied by the same reducer on host and phone.
+export const LiveEvent = Schema.Union(
+  // A reply started streaming.
+  Schema.Struct({ t: Schema.Literal("msg"), at: Schema.Number }),
+  // More text of the streaming reply.
+  Schema.Struct({ t: Schema.Literal("d"), s: Schema.String }),
+  // A tool call the model is writing: its arguments as JSON so far.
+  Schema.Struct({ t: Schema.Literal("call"), id: Schema.String, name: Schema.String, ...TextChange }),
+  // A running tool's output.
+  Schema.Struct({ t: Schema.Literal("out"), id: Schema.String, ...TextChange, details: Schema.optional(Schema.Unknown) }),
+  Schema.Struct({
+    t: Schema.Literal("run"),
+    running: Schema.Boolean,
+    compacting: Schema.Boolean,
+    retry: Schema.optional(RetryInfo),
+  }),
+  Schema.Struct({ t: Schema.Literal("queue"), queue: Schema.Array(QueueItem) }),
+  Schema.Struct({ t: Schema.Literal("ui"), request: ExtensionUiRequest }),
+  Schema.Struct({ t: Schema.Literal("ui_done"), id: Schema.String }),
+);
+export type LiveEvent = typeof LiveEvent.Type;
+
+export const ServerMessage = Schema.Union(
+  // First message on every connection, and again after a branch switch.
+  // `reset` means drop what you have: `entries` is the newest page, and `more`
+  // (when set) is the oldest entry id sent, to page back from. Otherwise
+  // `entries` follow the bookmark the phone connected with.
+  Schema.Struct({
+    t: Schema.Literal("sync"),
+    reset: Schema.Boolean,
+    leaf: Schema.NullOr(Schema.String),
+    entries: Schema.Array(Entry),
+    more: Schema.optional(Schema.String),
+    live: Live,
+    session: SessionMeta,
+    // What the host knows of the sends the phone asked about.
+    sends: Schema.Array(SendStatus),
+  }),
+  // Entries pi just saved, continuing the previous leaf.
+  Schema.Struct({ t: Schema.Literal("entries"), leaf: Schema.NullOr(Schema.String), entries: Schema.Array(Entry) }),
+  ...LiveEvent.members,
+  Schema.Struct({ t: Schema.Literal("send"), ...SendStatusFields }),
+  Schema.Struct({ t: Schema.Literal("meta"), session: SessionMeta }),
+);
+export type ServerMessage = typeof ServerMessage.Type;
+
+export const HistoryPage = Schema.Struct({
+  entries: Schema.Array(Entry),
+  more: Schema.optional(Schema.String),
+});
+export type HistoryPage = typeof HistoryPage.Type;

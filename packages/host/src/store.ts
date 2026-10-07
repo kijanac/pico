@@ -6,11 +6,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { dirname } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import {
-  parseWireEvent,
-  SessionStatus,
-  type WireEvent,
-} from "@pico/protocol";
+import { SessionStatus } from "@pico/protocol";
 import type { SessionRecord } from "./session-record.ts";
 
 
@@ -25,21 +21,6 @@ export class Store extends Context.Tag("Store")<
       patch: Partial<Pick<SessionRecord, "title" | "status" | "updatedAtMs" | "tokens" | "costUsd" | "archived">>,
     ) => Effect.Effect<void>;
     readonly deleteSession: (id: string) => Effect.Effect<void>;
-
-    readonly appendEvent: (
-      sessionId: string,
-      event: WireEvent,
-    ) => Effect.Effect<void>;
-
-    readonly loadEventsAfter: (
-      sessionId: string,
-      afterSeq: number,
-    ) => Effect.Effect<WireEvent[]>;
-
-    readonly maxSeq: (sessionId: string) => Effect.Effect<number>;
-
-    readonly prunedThrough: (sessionId: string) => Effect.Effect<number>;
-
   }
 >() {}
 
@@ -58,28 +39,10 @@ const SCHEMA = `
     archived    INTEGER NOT NULL DEFAULT 0
   ) STRICT;
 
-  CREATE TABLE IF NOT EXISTS events (
-    session_id  TEXT NOT NULL,
-    seq         INTEGER NOT NULL,
-    type        TEXT NOT NULL,
-    payload     TEXT NOT NULL,
-    created_at  INTEGER NOT NULL,
-    PRIMARY KEY (session_id, seq)
-  ) STRICT;
-
-  -- Duplicated the primary key; dropped from databases that still have it.
-  DROP INDEX IF EXISTS idx_events_session_seq;
-
-  CREATE TABLE IF NOT EXISTS session_prune (
-    session_id     TEXT PRIMARY KEY,
-    pruned_through INTEGER NOT NULL
-  ) STRICT;
+  -- The event journal, replaced by pi's own session files.
+  DROP TABLE IF EXISTS events;
+  DROP TABLE IF EXISTS session_prune;
 `;
-
-// Clients whose cursor falls below the pruned boundary get a full log_reset
-// instead of a stored replay.
-const EVENTS_RETAIN_PER_SESSION = 5000;
-const PRUNE_EVERY = 256;
 
 const SessionRow = Schema.Struct({
   id: Schema.String,
@@ -170,41 +133,6 @@ const make = (dbPath: string) =>
       `DELETE FROM sessions WHERE id = ?`,
     );
 
-    const stmtDeleteSessionEvents: StatementSync = db.prepare(
-      `DELETE FROM events WHERE session_id = ?`,
-    );
-
-    const stmtInsertEvent: StatementSync = db.prepare(`
-      INSERT INTO events (session_id, seq, type, payload, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-
-    const stmtLoadEventsAfter: StatementSync = db.prepare(`
-      SELECT payload FROM events
-      WHERE session_id = ? AND seq > ?
-      ORDER BY seq ASC
-    `);
-
-    const stmtMaxSeq: StatementSync = db.prepare(`
-      SELECT COALESCE(MAX(seq), 0) AS m FROM events WHERE session_id = ?
-    `);
-
-    const stmtPruneEvents: StatementSync = db.prepare(
-      `DELETE FROM events WHERE session_id = ? AND seq <= ?`,
-    );
-
-    const stmtSetPrunedThrough: StatementSync = db.prepare(
-      `INSERT OR REPLACE INTO session_prune (session_id, pruned_through) VALUES (?, ?)`,
-    );
-
-    const stmtGetPrunedThrough: StatementSync = db.prepare(
-      `SELECT pruned_through FROM session_prune WHERE session_id = ?`,
-    );
-
-    const stmtDeletePrune: StatementSync = db.prepare(
-      `DELETE FROM session_prune WHERE session_id = ?`,
-    );
-
     return Store.of({
       insertSession: (record) =>
         Effect.sync(() => {
@@ -251,54 +179,7 @@ const make = (dbPath: string) =>
 
       deleteSession: (id) =>
         Effect.sync(() => {
-          db.exec("BEGIN");
-          try {
-            stmtDeleteSessionEvents.run(id);
-            stmtDeletePrune.run(id);
-            stmtDeleteSession.run(id);
-            db.exec("COMMIT");
-          } catch (e) {
-            db.exec("ROLLBACK");
-            throw e;
-          }
-        }),
-
-      appendEvent: (sessionId, event) =>
-        Effect.sync(() => {
-          stmtInsertEvent.run(
-            sessionId,
-            event.seq,
-            event.t,
-            JSON.stringify(event),
-            Date.now(),
-          );
-          const boundary = event.seq - EVENTS_RETAIN_PER_SESSION;
-          if (boundary > 0 && event.seq % PRUNE_EVERY === 0) {
-            const result = stmtPruneEvents.run(sessionId, boundary);
-            if (result.changes > 0) stmtSetPrunedThrough.run(sessionId, boundary);
-          }
-        }),
-
-      loadEventsAfter: (sessionId, afterSeq) =>
-        Effect.sync(() => {
-          const rows = stmtLoadEventsAfter.all(sessionId, afterSeq) as Array<{
-            payload: string;
-          }>;
-          return rows.map((r) => parseWireEvent(JSON.parse(r.payload)));
-        }),
-
-      maxSeq: (sessionId) =>
-        Effect.sync(() => {
-          const row = stmtMaxSeq.get(sessionId) as { m: number };
-          return row.m;
-        }),
-
-      prunedThrough: (sessionId) =>
-        Effect.sync(() => {
-          const row = stmtGetPrunedThrough.get(sessionId) as
-            | { pruned_through: number }
-            | undefined;
-          return row?.pruned_through ?? 0;
+          stmtDeleteSession.run(id);
         }),
     });
   });

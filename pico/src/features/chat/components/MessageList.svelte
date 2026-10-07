@@ -1,14 +1,15 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { ArrowDown } from "@lucide/svelte";
-  import type { LogEntry } from "@pico/protocol";
-  import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
+  import type { CompactionEntry, ImageContent, LogEntry, UserMessage } from "@pico/protocol";
+  import { chatLogState, type OutboxItem } from "@/features/chat/model/chat-log.state.svelte";
   import UserMessageView from "@/features/chat/components/UserMessage.svelte";
   import AssistantMessageView from "@/features/chat/components/AssistantMessage.svelte";
   import ToolCallView from "@/features/chat/components/ToolCall.svelte";
   import CompactionMessageView from "@/features/chat/components/CompactionMessage.svelte";
+  import NoteMessageView from "@/features/chat/components/NoteMessage.svelte";
   import AgentThinkingIndicator from "@/features/chat/components/AgentThinkingIndicator.svelte";
-  import { getSessionLogBefore } from "@/features/chat/api";
+  import { getSessionHistory } from "@/features/chat/api";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { markSessionOpen } from "@/shared/lib/session-open-timing";
   import { runOnHost } from "@/shared/lib/rpc-client";
@@ -37,9 +38,20 @@
   let firstRenderMarked = false;
   let lastBottomInset = $state(0);
 
-  type DisplayRow =
-    | { kind: "entry"; key: string; entry: LogEntry }
-    | { kind: "thinking"; key: string };
+  // A user message is one row from sending through queued to saved, keyed by
+  // its cid, so its bubble isn't rebuilt as it moves.
+  type UserRow = {
+    kind: "user";
+    key: string;
+    entry?: UserMessage;
+    text: string;
+    images?: readonly ImageContent[];
+    queued?: boolean;
+    outbox?: OutboxItem;
+  };
+  type DisplayRow = { kind: "entry"; key: string; entry: LogEntry } | { kind: "thinking"; key: string } | UserRow;
+
+  const compactingRow: CompactionEntry = { kind: "compaction", id: "live:compaction", at: 0, status: "running" };
 
   interface ScrollAnchor {
     entryId: string;
@@ -52,13 +64,20 @@
 
   const totalEntries = $derived(chatLogState.entries.length);
   const hasLocalEarlierEntries = $derived(visibleCount < totalEntries);
-  const hasEarlierEntries = $derived(hasLocalEarlierEntries || chatLogState.hasMoreBefore);
+  const hasEarlierEntries = $derived(hasLocalEarlierEntries || chatLogState.more !== undefined);
   const visibleStartIndex = $derived(Math.max(0, totalEntries - visibleCount));
-  const visibleEntries = $derived.by(() => chatLogState.entries.slice(visibleStartIndex));
-  const latestEntry = $derived.by(() => chatLogState.entries[chatLogState.entries.length - 1]);
+  // What pi hasn't saved yet follows the saved rows: the reply being streamed,
+  // the tool calls the model is writing, and a compaction in progress.
+  const liveEntries = $derived.by(() => [
+    ...(chatLogState.streaming ? [chatLogState.streaming] : []),
+    ...chatLogState.streamingCalls,
+    ...(chatLogState.live.compacting ? [compactingRow] : []),
+  ]);
+  const visibleEntries = $derived.by(() => [...chatLogState.entries.slice(visibleStartIndex), ...liveEntries]);
+  const latestEntry = $derived.by(() => liveEntries.at(-1) ?? chatLogState.entries.at(-1));
 
   function isDisplayableAssistant(entry: Extract<LogEntry, { kind: "assistant" }>): boolean {
-    return entry.text.trim().length > 0 || entry.stopReason === "error" || entry.stopReason === "aborted" || entry.stopReason === "length" || Boolean(entry.errorMessage || entry.errorCode);
+    return entry.text.trim().length > 0 || entry.stopReason === "error" || entry.stopReason === "aborted" || entry.stopReason === "length" || Boolean(entry.errorMessage);
   }
 
   function isRenderableEntry(entry: LogEntry): boolean {
@@ -68,7 +87,7 @@
   function isCurrentAgentOutput(entry: LogEntry | undefined): boolean {
     if (!entry) return false;
     if (entry.kind === "assistant") return isDisplayableAssistant(entry);
-    if (entry.kind === "tool_call") return entry.status === "running";
+    if (entry.kind === "tool_call") return entry.status === "running" || entry.status === "pending";
     if (entry.kind === "compaction") return entry.status === "running";
     return false;
   }
@@ -95,17 +114,30 @@
 
     for (const entry of visibleEntries) {
       if (!isRenderableEntry(entry)) continue;
-      const key = entry.kind === "user" ? entry.id : agentSlotKey(previousRenderedEntry);
+      // A tool row keeps its key from being written through being saved.
+      const key =
+        entry.kind === "user" ? (entry.cid ?? entry.id) : entry.kind === "tool_call" ? `tool:${entry.id}` : agentSlotKey(previousRenderedEntry);
       const cached = rowCache.get(key);
-      const row: DisplayRow = cached?.kind === "entry" && cached.entry === entry ? cached : { kind: "entry", entry, key };
+      const row: DisplayRow =
+        cached && "entry" in cached && cached.entry === entry
+          ? cached
+          : entry.kind === "user"
+            ? { kind: "user", key, entry, text: entry.text, images: entry.images }
+            : { kind: "entry", entry, key };
       nextCache.set(key, row);
       rows.push(row);
       previousRenderedEntry = entry;
     }
     rowCache = nextCache;
 
+    for (const item of chatLogState.outbox) rows.push({ kind: "user", key: item.cid, text: item.text, images: item.images, outbox: item });
     if (showThinkingIndicator) rows.push({ kind: "thinking", key: agentSlotKey(previousRenderedEntry) });
-    return rows;
+    chatLogState.live.queue.forEach((item, index) =>
+      rows.push({ kind: "user", key: item.cid ?? `queued:${index}:${item.text}`, text: item.text, images: chatLogState.images(item.cid), queued: true }),
+    );
+    // A duplicate key would throw in the keyed {#each}; keep the first.
+    const keys = new Set<string>();
+    return rows.filter((row) => !keys.has(row.key) && keys.add(row.key));
   });
 
   function distanceFromBottom(): number {
@@ -180,10 +212,10 @@
       if (hasLocalEarlierEntries) {
         visibleCount = Math.min(totalEntries, visibleCount + REVEAL_ENTRIES);
       } else {
-        const beforeId = visibleEntries[0]?.id;
-        if (!beforeId) return;
-        const page = await runOnHost(hostId, getSessionLogBefore(sessionId, beforeId, REVEAL_ENTRIES));
-        const prepended = chatLogState.prependEarlierEntries(hostId, sessionId, page);
+        const before = chatLogState.more;
+        if (!before) return;
+        const page = await runOnHost(hostId, getSessionHistory(sessionId, before, REVEAL_ENTRIES));
+        const prepended = chatLogState.prependHistory(hostId, sessionId, page);
         expectedEarlierEntryGrowth += prepended;
         visibleCount += prepended;
       }
@@ -306,17 +338,19 @@
       <div bind:this={topSentinel} class="h-px" aria-hidden="true"></div>
     {/if}
     {#each displayRows as row (row.key)}
-      <div class="msg-cv" data-log-entry-id={row.kind === "entry" ? row.entry.id : undefined}>
+      <div class="msg-cv" data-log-entry-id={row.kind === "thinking" ? undefined : row.entry?.id}>
         {#if row.kind === "thinking"}
           <AgentThinkingIndicator />
-        {:else if row.entry.kind === "user"}
-          <UserMessageView msg={row.entry} {hostId} {sessionId} />
+        {:else if row.kind === "user"}
+          <UserMessageView text={row.text} images={row.images} queued={row.queued} outbox={row.outbox} {hostId} {sessionId} />
         {:else if row.entry.kind === "assistant"}
           <AssistantMessageView msg={row.entry} {hostId} {sessionId} />
         {:else if row.entry.kind === "tool_call"}
           <ToolCallView msg={row.entry} />
         {:else if row.entry.kind === "compaction"}
           <CompactionMessageView msg={row.entry} />
+        {:else if row.entry.kind === "note"}
+          <NoteMessageView msg={row.entry} />
         {/if}
       </div>
     {/each}

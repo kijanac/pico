@@ -53,7 +53,8 @@
     const text = displayText;
     const lang = path ? inferLangFromPath(path) : null;
     highlightedHtml = null;
-    if (!text || !lang || text.length > MAX_HIGHLIGHT_CHARS) return;
+    // A file still being written renders plain until its content is complete.
+    if (!text || !lang || text.length > MAX_HIGHLIGHT_CHARS || msg.status === "pending") return;
 
     let cancelled = false;
     void (async () => {

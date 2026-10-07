@@ -132,10 +132,6 @@ export const sessionListState = {
   },
   clearHostError(hostId: string): void { errorsByHost[hostId] = undefined; },
   upsert(hostId: string, session: SessionMeta): void { replaceSession(hostId, session); },
-  patchLocal(hostId: string, sessionId: string, patch: Partial<SessionMeta>): void {
-    const session = sessionsByHost[hostId]?.find((candidate) => candidate.id === sessionId);
-    if (session) Object.assign(session, patch);
-  },
   removeLocal,
 
   async refresh(): Promise<void> {

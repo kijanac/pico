@@ -1,20 +1,13 @@
 <script lang="ts">
   import { AlertCircle, AlertTriangle, XCircle } from "@lucide/svelte";
-  import type { HostErrorCode } from "@pico/protocol";
-  import { hostIssueForCode } from "@/shared/lib/host-issues";
 
   let {
     stopReason,
     errorMessage,
-    errorCode,
   }: {
     stopReason: "error" | "aborted" | "length" | "stop" | "toolUse";
     errorMessage?: string;
-    errorCode?: HostErrorCode;
   } = $props();
-
-  const hostIssue = $derived(errorCode ? hostIssueForCode(errorCode) : null);
-  const providerAuthIssue = $derived(hostIssue?.kind === "provider-auth-missing" ? hostIssue : null);
 
   const toneClass = $derived(
     stopReason === "error"
@@ -25,16 +18,8 @@
   );
 
   const label = $derived(
-    providerAuthIssue
-      ? providerAuthIssue.title
-      : stopReason === "error"
-        ? "error"
-        : stopReason === "length"
-          ? "output truncated (max tokens reached)"
-          : "interrupted",
+    stopReason === "error" ? "error" : stopReason === "length" ? "output truncated (max tokens reached)" : "interrupted",
   );
-
-  const detail = $derived(providerAuthIssue ? providerAuthIssue.message : errorMessage);
 </script>
 
 <div class={`type-meta mt-1.5 flex items-start gap-1.5 ${toneClass}`}>
@@ -49,8 +34,8 @@
   </span>
   <div class="min-w-0 flex-1">
     <div class="font-medium">{label}</div>
-    {#if detail}
-      <div class="mt-0.5 break-words opacity-80">{detail}</div>
+    {#if errorMessage}
+      <div class="mt-0.5 break-words opacity-80">{errorMessage}</div>
     {/if}
   </div>
 </div>

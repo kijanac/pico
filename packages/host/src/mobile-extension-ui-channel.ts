@@ -28,8 +28,11 @@ const createRequestBase = (title: string, options?: DialogOptions): RequestBase 
   ...(options?.timeout !== undefined ? { timeoutMs: options.timeout } : {}),
 });
 
+// `onClosed` hears when a dialog closes (answered, timed out or aborted), so
+// every phone showing it can close it too.
 export const createMobileExtensionUiChannel = (
   emit: (request: ExtensionUiRequest) => void,
+  onClosed: (id: string) => void,
 ): MobileExtensionUiChannel => {
   const pending = new Map<string, PendingResponse>();
 
@@ -49,6 +52,7 @@ export const createMobileExtensionUiChannel = (
         if (timer) clearTimeout(timer);
         options?.signal?.removeEventListener("abort", onAbort);
         pending.delete(request.id);
+        onClosed(request.id);
         resolve(value);
       };
       const onAbort = () => settle(fallback);

@@ -16,8 +16,7 @@
       duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 160,
       easing: cubicOut,
     });
-  // svelte-ignore state_referenced_locally
-  let open = $state(msg.toolKind === "builtin" && msg.tool === "edit");
+  let open = $state(false);
   let detailScroller: HTMLDivElement | null = $state(null);
 
   const isEdit = $derived(msg.toolKind === "builtin" && msg.tool === "edit");
@@ -25,19 +24,30 @@
   const hasResultPane = $derived(
     Boolean(msg.result || msg.resultContent || hasToolDetails(msg.details) || (msg.toolKind === "builtin" && msg.tool === "write" && msg.args.content.length > 0)),
   );
-  const detailScrollStyle = $derived(msg.status === "running" ? "height: min(22rem, 48vh)" : "max-height: min(22rem, 48vh)");
+  // Being written by the model, or running.
+  const live = $derived(msg.status === "running" || msg.status === "pending");
+  const detailScrollStyle = $derived(live ? "height: min(22rem, 48vh)" : "max-height: min(22rem, 48vh)");
   const detailScrollVersion = $derived.by(() => {
     const contentLength = msg.resultContent?.reduce((total, part) => total + (part.type === "text" ? part.text.length : part.data.length), 0) ?? 0;
-    return `${msg.status}:${msg.result?.length ?? 0}:${msg.resultContent?.length ?? 0}:${contentLength}:${hasToolDetails(msg.details)}`;
+    const written = msg.toolKind === "builtin" && msg.tool === "write" ? msg.args.content.length : 0;
+    return `${msg.status}:${msg.result?.length ?? 0}:${msg.resultContent?.length ?? 0}:${contentLength}:${written}:${hasToolDetails(msg.details)}`;
   });
 
   $effect(() => {
-    if (msg.status === "running" && hasResultPane) open = true;
+    if (live && hasResultPane) open = true;
+  });
+
+  // An edit opens on its diff once its arguments are complete, as pi's TUI computes it then.
+  let editOpened = false;
+  $effect(() => {
+    if (editOpened || !isEdit || msg.status === "pending") return;
+    editOpened = true;
+    open = true;
   });
 
   $effect(() => {
     detailScrollVersion;
-    if (msg.status !== "running") return;
+    if (!live) return;
     void tick().then(() => {
       if (detailScroller) detailScroller.scrollTop = detailScroller.scrollHeight;
     });
@@ -81,7 +91,7 @@
     </span>
 
     <span class="ml-auto flex shrink-0 items-center gap-1">
-      {#if msg.status === "running"}
+      {#if live}
         <Loader2 class="size-3 animate-spin text-[color:var(--color-accent)]" />
       {:else if msg.status === "ok"}
         <Check class="size-3 text-[color:var(--color-fg-faint)]" />
@@ -103,7 +113,7 @@
       aria-label={`${label} details`}
     >
       {#if isEdit && msg.toolKind === "builtin" && msg.tool === "edit"}
-        <EditDiff args={msg.args} />
+        {#if msg.status !== "pending"}<EditDiff args={msg.args} />{/if}
       {:else}
         {#if isCustom && msg.toolKind === "custom"}
           <pre

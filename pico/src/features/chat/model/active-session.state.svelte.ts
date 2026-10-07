@@ -1,20 +1,18 @@
-import type { ClientEvent, ExtensionUiRequest, SessionMeta, WireEvent } from "@pico/protocol";
-import { retryState } from "@/features/chat/model/retry-state.svelte";
+import type { ExtensionUiRequest, ServerMessage, SessionMeta } from "@pico/protocol";
+import { answerExtensionUi } from "@/features/chat/api";
+import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
+import { runOnHost } from "@/shared/lib/rpc-client";
 
 export type ConnectionStatus = "offline" | "connecting" | "connected" | "reconnecting" | "gone";
-export type InteractiveExtensionUiRequest = Extract<ExtensionUiRequest, { kind: "confirm" | "select" | "input" }>;
 export type ExtensionUiNotification = Extract<ExtensionUiRequest, { kind: "notify" }>;
 
 let activeHostId = $state<string | null>(null);
 let activeSessionId = $state<string | null>(null);
 let activeStatus = $state<SessionMeta["status"]>("idle");
 let connectionStatus = $state<ConnectionStatus>("offline");
-let compacting = $state(false);
 let contextUsageInvalidationVersion = $state(0);
 let contextUsageVersion = $state(0);
-let extensionUiRequests = $state<InteractiveExtensionUiRequest[]>([]);
 let extensionNotification = $state<ExtensionUiNotification | null>(null);
-let activeSend = $state<((event: ClientEvent) => void) | null>(null);
 
 // notify() is fire-and-forget (returns void), so we mirror pi's TUI: surface the
 // latest notification in a transient status line that auto-clears, instead of a
@@ -56,9 +54,7 @@ export const activeSessionState = {
     return connectionStatus;
   },
 
-  get compacting() {
-    return compacting;
-  },
+
 
   get contextUsageInvalidationVersion() {
     return contextUsageInvalidationVersion;
@@ -68,26 +64,16 @@ export const activeSessionState = {
     return contextUsageVersion;
   },
 
-  get extensionUiRequests() {
-    return extensionUiRequests;
-  },
 
   get extensionNotification() {
     return extensionNotification;
-  },
-
-  get send() {
-    return activeSend;
   },
 
   activate(hostId: string, sessionId: string): void {
     activeHostId = hostId;
     activeSessionId = sessionId;
     activeStatus = "idle";
-    compacting = false;
-    extensionUiRequests.length = 0;
     clearNotification();
-    retryState.reset();
   },
 
   deactivate(hostId?: string, sessionId?: string): void {
@@ -96,74 +82,36 @@ export const activeSessionState = {
     activeHostId = null;
     activeSessionId = null;
     activeStatus = "idle";
-    compacting = false;
-    extensionUiRequests.length = 0;
     clearNotification();
     connectionStatus = "offline";
-    activeSend = null;
-    retryState.reset();
   },
 
   setConnectionStatus(status: ConnectionStatus): void {
     connectionStatus = status;
   },
 
-  setStatus(status: SessionMeta["status"]): void {
-    activeStatus = status;
-  },
-
-  setSend(send: ((event: ClientEvent) => void) | null): void {
-    activeSend = send;
-  },
-
   respondToExtensionUi(id: string, value: string | boolean | null): void {
-    activeSend?.({ t: "extension_ui_response", id, value });
-    const index = extensionUiRequests.findIndex((request) => request.id === id);
-    if (index !== -1) extensionUiRequests.splice(index, 1);
+    if (!activeHostId || !activeSessionId) return;
+    void runOnHost(activeHostId, answerExtensionUi(activeSessionId, id, value)).catch(() => {});
+    chatLogState.apply(activeHostId, activeSessionId, { t: "ui_done", id });
   },
 
   dismissExtensionNotification(): void {
     clearNotification();
   },
 
-  applyWireEvent(hostId: string, sessionId: string, event: WireEvent): void {
+  // Status, notices and context-usage changes; the rest of the live state is
+  // the mirror in chatLogState.
+  apply(hostId: string, sessionId: string, message: ServerMessage): void {
     if (activeHostId !== hostId || activeSessionId !== sessionId) return;
 
-    // hello is an authoritative snapshot on (re)connect; adopt its status so a
-    // turn killed by a host restart (whose turn-ending status event died with
-    // the old process) doesn't leave the spinner stuck.
-    if (event.t === "hello") {
-      activeStatus = event.session.status;
-      return;
-    }
-
-    if (event.t === "status") {
-      activeStatus = event.status;
-      return;
-    }
-
-    if (event.t === "compaction") {
-      compacting = event.entry.status === "running";
-      if (event.entry.status === "success") contextUsageInvalidationVersion += 1;
-      return;
-    }
-
-    if (event.t === "assistant_end" && event.usage) {
-      contextUsageVersion += 1;
-    }
-
-    if (event.t === "extension_ui_request") {
-      const request = event.request;
-      if (request.kind === "notify") {
-        showNotification(request);
-      } else if (request.kind === "confirm" || request.kind === "select" || request.kind === "input") {
-        const index = extensionUiRequests.findIndex((existing) => existing.id === request.id);
-        if (index === -1) extensionUiRequests.push(request);
-        else extensionUiRequests[index] = request;
+    if (message.t === "sync" || message.t === "meta") activeStatus = message.session.status;
+    else if (message.t === "ui" && message.request.kind === "notify") showNotification(message.request);
+    else if (message.t === "entries") {
+      for (const entry of message.entries) {
+        if (entry.type === "assistant" && entry.usage) contextUsageVersion += 1;
+        if (entry.type === "compaction") contextUsageInvalidationVersion += 1;
       }
-      return;
     }
-
-    retryState.applyWireEvent(event);
   },
 };

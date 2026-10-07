@@ -1,131 +1,41 @@
-import { randomUUIDv7 } from "node:crypto";
-import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Layer from "effect/Layer";
-import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Runtime from "effect/Runtime";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
-import * as Fiber from "effect/Fiber";
 import * as HashMap from "effect/HashMap";
 import * as Option from "effect/Option";
-import { pipe } from "effect/Function";
-import { PiClient, type PiSession, type PiEmission, type ExportedHtml, PiError } from "./pi.ts";
-import { parseWireEvent } from "@pico/protocol";
-import { emptyLog, reconcileOrphanedToolCalls, reduceLog } from "@pico/protocol/log";
+import { PiClient, type PiSession, type ExportedHtml, type LiveHooks, type LiveSession, PiError } from "./pi.ts";
 import type {
   Commands,
   ExtensionUiResponseValue,
-  ImageContent,
-  LogEntry,
-  LogPage,
-  SendMode,
+  HistoryPage,
+  SendStatus,
+  ServerMessage,
   SessionMeta,
-  QueuedMessage,
-  QueueState,
-  UserMessage,
   SessionControls,
   SessionStats,
   SessionTree,
-  WireEvent,
 } from "@pico/protocol";
 import { Store } from "./store.ts";
 import { toSessionMeta } from "./session-record.ts";
 import { SessionNotFound } from "./errors.ts";
 
-interface PendingSend extends QueuedMessage {
-  readonly at: number;
-  readonly phase: "held_for_compaction" | "sdk_queue";
-  readonly images?: ImageContent[];
-}
-
-interface ManagedSessionState {
-  readonly meta: Ref.Ref<SessionMeta>;
+interface ManagedSession {
   readonly pi: PiSession;
-  readonly pubsub: PubSub.PubSub<WireEvent>;
-  readonly seq: Ref.Ref<number>;
-  readonly subscribers: Ref.Ref<number>;
-  readonly idleEvictionTimer: Ref.Ref<ReturnType<typeof setTimeout> | null>;
-  readonly pendingSends: Ref.Ref<PendingSend[]>;
-  readonly compacting: Ref.Ref<boolean>;
-  /**
-   * Serializes queue decisions and edits that span pi calls (send, compaction
-   * start/end and its flush, clear/remove), so none of them reads pendingSends
-   * or the compacting flag while another is midway.
-   */
-  readonly queueLock: Effect.Semaphore;
-  readonly queueEventsToIgnore: Ref.Ref<number>;
-  /** Newest last; retries with a seen id are dropped. */
-  readonly seenClientIds: Ref.Ref<string[]>;
-}
-
-interface ManagedSession extends ManagedSessionState {
-  readonly pumpFiber: Fiber.RuntimeFiber<void, PiError>;
+  // Last lookup or viewer leaving; an idle session closes IDLE_EVICT_MS after.
+  lastUsed: number;
 }
 
 type ReattachWaiter = Deferred.Deferred<ManagedSession, PiError | SessionNotFound>;
 type ReattachMap = HashMap.HashMap<string, ReattachWaiter>;
 type ReattachDecision = readonly [ReattachWaiter, ReattachMap];
 
-function queuedCounts(values: string[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
-  return counts;
-}
-
-function consumeQueued(counts: Map<string, number>, text: string): boolean {
-  const count = counts.get(text) ?? 0;
-  if (count <= 0) return false;
-  if (count === 1) counts.delete(text);
-  else counts.set(text, count - 1);
-  return true;
-}
-
-function reconcileSdkQueue(
-  pending: PendingSend[],
-  queue: { steering: readonly string[]; followUp: readonly string[] },
-): PendingSend[] {
-  const steering = queuedCounts([...queue.steering]);
-  const followUp = queuedCounts([...queue.followUp]);
-  const next: PendingSend[] = [];
-
-  for (let index = pending.length - 1; index >= 0; index -= 1) {
-    const message = pending[index];
-    if (message.phase === "held_for_compaction") {
-      next.push(message);
-      continue;
-    }
-
-    const counts = message.mode === "follow_up" ? followUp : steering;
-    if (consumeQueued(counts, message.text)) next.push(message);
-  }
-
-  return next.reverse();
-}
-
-function projectQueue(pending: readonly PendingSend[]): QueueState {
-  return {
-    queued: pending.map(({ id, text, images, mode }) => ({ id, text, images, mode })),
-  };
-}
-
-function withPendingUserEntries(entries: readonly LogEntry[], pending: readonly PendingSend[]): LogEntry[] {
-  const ids = new Set(entries.map((entry) => entry.id));
-  const pendingEntries: LogEntry[] = pending
-    .filter((message) => !ids.has(message.id))
-    .map(({ id, at, text, images, mode }) => ({
-      kind: "user",
-      id,
-      at,
-      text,
-      images,
-      queued: true,
-      mode,
-    }));
-  return [...entries, ...pendingEntries];
-}
+type SendInput = Parameters<LiveSession["send"]>[0];
 
 export class SessionManager extends Context.Tag("SessionManager")<
   SessionManager,
@@ -137,15 +47,10 @@ export class SessionManager extends Context.Tag("SessionManager")<
     readonly list: (filter?: { archived?: boolean }) => Effect.Effect<SessionMeta[]>;
     readonly subscribe: (
       id: string,
-      fromCursor: number,
-    ) => Stream.Stream<WireEvent, PiError | SessionNotFound>;
-    readonly send: (
-      id: string,
-      text: string,
-      mode: SendMode,
-      images: ImageContent[] | undefined,
-      clientId: string,
-    ) => Effect.Effect<void, PiError | SessionNotFound>;
+      head: string | null,
+      cids: readonly string[],
+    ) => Stream.Stream<ServerMessage, PiError | SessionNotFound>;
+    readonly send: (id: string, input: SendInput) => Effect.Effect<SendStatus, PiError | SessionNotFound>;
     readonly interrupt: (
       id: string,
     ) => Effect.Effect<void, PiError | SessionNotFound>;
@@ -160,9 +65,9 @@ export class SessionManager extends Context.Tag("SessionManager")<
     ) => Effect.Effect<void, PiError | SessionNotFound>;
     readonly exportHtml: (id: string) => Effect.Effect<ExportedHtml, PiError | SessionNotFound>;
     readonly listCommands: (id: string) => Effect.Effect<Commands, PiError | SessionNotFound>;
-    readonly getQueue: (id: string) => Effect.Effect<QueueState, PiError | SessionNotFound>;
-    readonly clearQueue: (id: string) => Effect.Effect<QueueState, PiError | SessionNotFound>;
-    readonly removeQueued: (id: string, messageId: string) => Effect.Effect<QueueState, PiError | SessionNotFound>;
+    readonly clearQueue: (
+      id: string,
+    ) => Effect.Effect<{ steering: string[]; followUp: string[] }, PiError | SessionNotFound>;
     readonly getSettings: (id: string) => Effect.Effect<SessionControls, PiError | SessionNotFound>;
     readonly patchSetting: (
       id: string,
@@ -170,7 +75,7 @@ export class SessionManager extends Context.Tag("SessionManager")<
       value: string | boolean,
     ) => Effect.Effect<SessionControls, PiError | SessionNotFound>;
     readonly getStats: (id: string) => Effect.Effect<SessionStats, PiError | SessionNotFound>;
-    readonly getLogBefore: (id: string, beforeId: string, limit?: number) => Effect.Effect<LogPage, PiError | SessionNotFound>;
+    readonly history: (id: string, before: string, limit?: number) => Effect.Effect<HistoryPage, PiError | SessionNotFound>;
     readonly getTree: (id: string) => Effect.Effect<SessionTree, PiError | SessionNotFound>;
     readonly navigateTree: (
       id: string,
@@ -192,24 +97,18 @@ export { SessionNotFound } from "./errors.ts";
 
 const IDLE_EVICT_MS = 15 * 60 * 1000;
 
-// A subscriber that falls this far behind loses oldest events; heals on reconnect via cursor replay.
-const LIVE_BUFFER_CAPACITY = 4096;
+// A viewer this many messages behind is dropped; it reconnects from its bookmark.
+const MAX_BEHIND_MESSAGES = 2048;
 
-// Backstop against a runaway client queueing sends forever.
-const MAX_PENDING_SENDS = 200;
-
-// Retries only race acks over seconds, so a small dedupe window is plenty.
-const MAX_SEEN_CLIENT_IDS = 64;
-const INITIAL_LOG_TAIL_ENTRIES = 120;
-const LOG_PAGE_LIMIT = 120;
-const MAX_LOG_PAGE_LIMIT = 240;
+// Graceful shutdown waits this long for a running turn to stop.
+const STOP_TIMEOUT = "10 seconds";
 
 const make = Effect.gen(function* () {
   const pi = yield* PiClient;
   const store = yield* Store;
   const sessions = yield* Ref.make(HashMap.empty<string, ManagedSession>());
-  // Runs the idle-eviction timer on the host runtime (its logger config) instead of the Effect default.
-  const timerRuntime = yield* Effect.runtime<never>();
+  const runSync = Runtime.runSync(yield* Effect.runtime<never>());
+  let stopping = false;
 
   const reattachInFlight = yield* Ref.make(
     HashMap.empty<
@@ -218,305 +117,39 @@ const make = Effect.gen(function* () {
     >(),
   );
 
-  const queueEvent = (seq: number, pending: readonly PendingSend[]): WireEvent =>
-    parseWireEvent({ t: "queue", seq, ...projectQueue(pending) });
-
-  const userMessageRemovedEvent = (seq: number, id: string): WireEvent =>
-    parseWireEvent({ t: "user_message_removed", seq, id });
-
-  const reduceEventsToEntries = (events: readonly WireEvent[], status: SessionMeta["status"]): LogEntry[] => {
-    const log = emptyLog();
-    for (const event of events) reduceLog(log, event, Date.now());
-    if (status === "idle" || status === "error") reconcileOrphanedToolCalls(log);
-    return log.entries as LogEntry[];
-  };
-
-  const retainedLogEntries = (
-    id: string,
-    pending: readonly PendingSend[],
-    status: SessionMeta["status"],
-  ): Effect.Effect<{ entries: LogEntry[]; prunedThrough: number }> =>
-    Effect.gen(function* () {
-      const prunedThrough = yield* store.prunedThrough(id);
-      const entries = withPendingUserEntries(
-        reduceEventsToEntries(yield* store.loadEventsAfter(id, prunedThrough), status),
-        pending,
-      );
-      return { entries, prunedThrough };
-    });
-
-  const retainedLogTail = (
-    id: string,
-    pending: readonly PendingSend[],
-    status: SessionMeta["status"],
-  ): Effect.Effect<LogPage> =>
-    retainedLogEntries(id, pending, status).pipe(
-      Effect.map(({ entries, prunedThrough }) => {
-        const start = Math.max(0, entries.length - INITIAL_LOG_TAIL_ENTRIES);
-        return {
-          entries: entries.slice(start),
-          hasMoreBefore: start > 0 || prunedThrough > 0,
-        };
-      }),
-    );
-
-  const pageBefore = (entries: readonly LogEntry[], beforeId: string, limit?: number): LogPage => {
-    const end = entries.findIndex((entry) => entry.id === beforeId);
-    if (end <= 0) return { entries: [], hasMoreBefore: false };
-
-    const size = Math.min(Math.max(Math.floor(limit ?? LOG_PAGE_LIMIT), 1), MAX_LOG_PAGE_LIMIT);
-    const start = Math.max(0, end - size);
-    return {
-      entries: entries.slice(start, end),
-      hasMoreBefore: start > 0,
-    };
-  };
-
-  const publishQueueSnapshot = (
-    ms: ManagedSessionState,
-    sessionId: string,
-  ): Effect.Effect<void, PiError> =>
-    Effect.gen(function* () {
-      const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
-      const event = queueEvent(seq, yield* Ref.get(ms.pendingSends));
-      yield* store.appendEvent(sessionId, event);
-      yield* PubSub.publish(ms.pubsub, event);
-    });
-
-  const publishUserMessageRemoved = (
-    ms: ManagedSessionState,
-    sessionId: string,
-    messageId: string,
-  ): Effect.Effect<void, PiError> =>
-    Effect.gen(function* () {
-      const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
-      const event = userMessageRemovedEvent(seq, messageId);
-      yield* store.appendEvent(sessionId, event);
-      yield* PubSub.publish(ms.pubsub, event);
-    });
-
-  const resyncSdkQueue = (
-    ms: ManagedSessionState,
-    pending: readonly PendingSend[],
-  ): Effect.Effect<void, PiError> =>
-    Effect.gen(function* () {
-      const sdkQueued = pending.filter((message) => message.phase === "sdk_queue");
-      yield* Ref.update(ms.queueEventsToIgnore, (count) => count + 1 + sdkQueued.length);
-      yield* ms.pi.clearQueue();
-
-      const meta = yield* Ref.get(ms.meta);
-      if (meta.status !== "thinking" && meta.status !== "tool") return;
-
-      for (const message of sdkQueued) {
-        yield* ms.pi.send(message.text, message.mode, message.images);
-      }
-    });
-
-  const flushCompactionQueue = (
-    ms: ManagedSessionState,
-    sessionId: string,
-    opts?: { willRetry?: boolean },
-  ): Effect.Effect<void, PiError> =>
-    Effect.gen(function* () {
-      const pending = yield* Ref.get(ms.pendingSends);
-      const held = pending.filter((message) => message.phase === "held_for_compaction");
-      if (held.length === 0) return;
-
-      const unheld = pending.filter((message) => message.phase !== "held_for_compaction");
-      const sdkQueued = (opts?.willRetry ? held : held.slice(1)).map(
-        (message): PendingSend => ({ ...message, phase: "sdk_queue" }),
-      );
-      const afterFlush = [...unheld, ...sdkQueued];
-      const messagesForSdk = held.map(({ text, mode, images }) => ({ text, mode, images }));
-
-      yield* ms.pi.flushAfterCompaction(messagesForSdk, opts).pipe(
-        Effect.tap(() =>
-          Ref.set(ms.pendingSends, afterFlush).pipe(
-            Effect.andThen(publishQueueSnapshot(ms, sessionId)),
-          ),
-        ),
-        Effect.catchAll((error) =>
-          Ref.set(ms.pendingSends, pending).pipe(
-            Effect.andThen(publishQueueSnapshot(ms, sessionId)),
-            Effect.andThen(Effect.logError("[session] failed to flush compaction queue", error)),
-          ),
-        ),
-      );
-    });
-
-  const isEvictable = (ms: ManagedSession): Effect.Effect<boolean> =>
-    Effect.gen(function* () {
-      const [subscribers, pending, compacting, meta] = yield* Effect.all([
-        Ref.get(ms.subscribers),
-        Ref.get(ms.pendingSends),
-        Ref.get(ms.compacting),
-        Ref.get(ms.meta),
-      ]);
-
-      return subscribers === 0 &&
-        pending.length === 0 &&
-        !compacting &&
-        (meta.status === "idle" || meta.status === "error");
-    });
-
-  const clearIdleEviction = (ms: ManagedSessionState): Effect.Effect<void> =>
-    Ref.modify(ms.idleEvictionTimer, (timer) => {
-      if (timer) clearTimeout(timer);
-      return [undefined, null];
-    });
-
-  const evictIfIdle = (sessionId: string): Effect.Effect<void> =>
-    Effect.gen(function* () {
-      const map = yield* Ref.get(sessions);
-      const current = HashMap.get(map, sessionId);
-      if (Option.isNone(current)) return;
-
-      const ms = current.value;
-      yield* Ref.set(ms.idleEvictionTimer, null);
-      if (!(yield* isEvictable(ms))) return;
-
-      // Unpublish before closing, so a concurrent lookup reattaches a fresh
-      // session instead of getting this one mid-close.
-      yield* Ref.update(sessions, (m) => HashMap.remove(m, sessionId));
-      yield* Effect.logInfo(`[session] evict idle session=${sessionId}`);
-      yield* Fiber.interrupt(ms.pumpFiber);
-      yield* ms.pi.close();
-    });
-
-  const scheduleIdleEviction = (sessionId: string, ms: ManagedSessionState): Effect.Effect<void> =>
-    Effect.gen(function* () {
-      yield* clearIdleEviction(ms);
-      yield* Ref.set(
-        ms.idleEvictionTimer,
-        setTimeout(() => {
-          void Runtime.runPromise(timerRuntime)(evictIfIdle(sessionId).pipe(Effect.ignoreLogged));
-        }, IDLE_EVICT_MS).unref(),
-      );
-    });
-
-  const startPump = (
-    ms: ManagedSessionState,
-    sessionId: string,
-  ): Effect.Effect<void, PiError> =>
-    pipe(
-      ms.pi.events,
-      Stream.runForEach((emission: PiEmission) =>
-        Effect.gen(function* () {
-          let event: WireEvent;
-          if (emission.t === "queue") {
-            const ignore = yield* Ref.modify(ms.queueEventsToIgnore, (count) =>
-              count > 0 ? [true, count - 1] : [false, 0],
-            );
-            if (ignore) return;
-
-            const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
-            event = queueEvent(
-              seq,
-              yield* Ref.updateAndGet(ms.pendingSends, (pending) => reconcileSdkQueue(pending, emission)),
-            );
-          } else {
-            const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
-            // A decode mismatch (PiEmission drifting from WireEvent) must not throw:
-            // a defect here kills the pump fiber and zombifies the session. Drop it.
-            const decoded = yield* Effect.either(Effect.try(() => parseWireEvent({ ...emission, seq })));
-            if (decoded._tag === "Left") {
-              yield* Effect.logError(`[pi] dropped undecodable emission (t=${emission.t}): ${String(decoded.left)}`);
-              return;
-            }
-            event = decoded.right;
-          }
-
-          if (event.t === "status") {
-            yield* Ref.update(ms.meta, (m) => ({
-              ...m,
-              status: event.status,
-              updatedAt: new Date().toISOString(),
-            }));
-            yield* store.updateSession(sessionId, {
-              status: event.status,
-              updatedAtMs: Date.now(),
-            });
-          } else if (event.t === "cost") {
-            const patch = {
-              tokens: { in: event.tokensIn, out: event.tokensOut },
-              costUsd: event.costUsd,
-              updatedAt: new Date().toISOString(),
-            };
-            yield* Ref.update(ms.meta, (m) => ({ ...m, ...patch }));
-            yield* store.updateSession(sessionId, {
-              tokens: patch.tokens,
-              costUsd: patch.costUsd,
-              updatedAtMs: Date.now(),
-            });
-          } else {
-            yield* Ref.update(ms.meta, (m) => ({ ...m, updatedAt: new Date().toISOString() }));
-          }
-
-          if (event.t !== "extension_ui_request" && event.t !== "tool_update") {
-            yield* store.appendEvent(sessionId, event);
-          }
-
-          yield* PubSub.publish(ms.pubsub, event);
-
-          if (event.t === "compaction") {
-            if (event.entry.status === "running") {
-              yield* ms.queueLock.withPermits(1)(Ref.set(ms.compacting, true));
-              yield* clearIdleEviction(ms);
-            } else {
-              yield* ms.queueLock.withPermits(1)(
-                Ref.set(ms.compacting, false).pipe(
-                  Effect.andThen(flushCompactionQueue(ms, sessionId, { willRetry: event.entry.willRetry })),
-                ),
-              );
-              yield* scheduleIdleEviction(sessionId, ms);
-            }
-          } else if (event.t === "status" && (event.status === "idle" || event.status === "error")) {
-            yield* scheduleIdleEviction(sessionId, ms);
-          } else if (event.t === "status") {
-            yield* clearIdleEviction(ms);
-          }
+  // Called from pi's notifications, which can't wait.
+  const hooks: LiveHooks = {
+    persist: (meta) =>
+      runSync(
+        store.updateSession(meta.id, {
+          status: meta.status,
+          tokens: meta.tokens,
+          costUsd: meta.costUsd,
+          updatedAtMs: Date.parse(meta.updatedAt),
         }),
       ),
-    );
+    log: (event, fields) => runSync(Effect.logInfo(event).pipe(Effect.annotateLogs(fields))),
+  };
 
-  const buildManagedSession = (
-    sessionId: string,
-    piSession: PiSession,
-  ): Effect.Effect<ManagedSession, PiError> =>
-    Effect.gen(function* () {
-      const state: ManagedSessionState = {
-        meta: yield* Ref.make(piSession.meta),
-        pi: piSession,
-        pubsub: yield* PubSub.sliding<WireEvent>(LIVE_BUFFER_CAPACITY),
-        seq: yield* Ref.make(yield* store.maxSeq(sessionId)),
-        subscribers: yield* Ref.make(0),
-        idleEvictionTimer: yield* Ref.make<ReturnType<typeof setTimeout> | null>(null),
-        pendingSends: yield* Ref.make<PendingSend[]>([]),
-        compacting: yield* Ref.make(false),
-        queueLock: yield* Effect.makeSemaphore(1),
-        queueEventsToIgnore: yield* Ref.make(0),
-        seenClientIds: yield* Ref.make<string[]>([]),
-      };
-      // A pump death silently zombifies the session: pi keeps running but no events reach store or subscribers.
-      const pumpFiber = yield* Effect.forkDaemon(
-        startPump(state, sessionId).pipe(
-          Effect.tapErrorCause((cause) =>
-            Cause.isInterruptedOnly(cause)
-              ? Effect.void
-              : Effect.logError(`[session] event pump died session=${sessionId}: ${Cause.pretty(cause)}`),
-          ),
-        ),
-      );
-      return { ...state, pumpFiber };
-    });
+  // Sessions nobody watches, with nothing running or queued, close after a while.
+  const evictIdle = Effect.gen(function* () {
+    const now = Date.now();
+    for (const [id, ms] of yield* Ref.get(sessions)) {
+      const { live } = ms.pi;
+      if (!live.idle || now - Math.max(ms.lastUsed, Date.parse(live.meta.updatedAt)) < IDLE_EVICT_MS) continue;
+      // Unpublish before closing, so a concurrent lookup reattaches a fresh
+      // session instead of getting this one mid-close.
+      yield* Ref.update(sessions, HashMap.remove(id));
+      yield* Effect.logInfo("session_evicted").pipe(Effect.annotateLogs({ session_id: id }));
+      yield* ms.pi.close();
+    }
+  });
+  yield* evictIdle.pipe(Effect.repeat(Schedule.spaced("1 minute")), Effect.forkScoped);
 
   const create = (opts: { cwd: string; title: string }) =>
     Effect.gen(function* () {
-      const piSession = yield* pi.create({
-        cwd: opts.cwd,
-        title: opts.title,
-      });
-      const meta = piSession.meta;
+      const piSession = yield* pi.create(opts, hooks);
+      const meta = piSession.live.meta;
 
       yield* store.insertSession({
         id: meta.id,
@@ -529,8 +162,7 @@ const make = Effect.gen(function* () {
         archived: meta.archived,
       });
 
-      const ms = yield* buildManagedSession(meta.id, piSession);
-      yield* Ref.update(sessions, HashMap.set(meta.id, ms));
+      yield* Ref.update(sessions, HashMap.set(meta.id, { pi: piSession, lastUsed: Date.now() }));
       return meta;
     });
 
@@ -543,11 +175,15 @@ const make = Effect.gen(function* () {
         return yield* Effect.fail(new SessionNotFound({ id }));
       }
       const storedRecord = storedOpt.value;
-      const storedMeta = toSessionMeta(storedRecord);
 
-      const piSession = yield* pi.resume(storedRecord);
-      yield* Effect.ignoreLogged(piSession.patchSession({ title: storedMeta.title }));
-      const ms = yield* buildManagedSession(id, piSession);
+      const piSession = yield* pi.resume(storedRecord, hooks);
+      // Shutdown began while this was opening; closeAll has already run.
+      if (stopping) {
+        yield* piSession.close();
+        return yield* Effect.fail(new PiError({ message: "The host is restarting; try again in a moment." }));
+      }
+      yield* Effect.ignoreLogged(piSession.patchSession({ title: storedRecord.title }));
+      const ms: ManagedSession = { pi: piSession, lastUsed: Date.now() };
       yield* Ref.update(sessions, HashMap.set(id, ms));
       return ms;
     });
@@ -556,9 +192,12 @@ const make = Effect.gen(function* () {
     id: string,
   ): Effect.Effect<ManagedSession, PiError | SessionNotFound> =>
     Effect.gen(function* () {
-      const map = yield* Ref.get(sessions);
-      const existing = HashMap.get(map, id);
-      if (Option.isSome(existing)) return existing.value;
+      if (stopping) return yield* Effect.fail(new PiError({ message: "The host is restarting; try again in a moment." }));
+      const existing = HashMap.get(yield* Ref.get(sessions), id);
+      if (Option.isSome(existing)) {
+        existing.value.lastUsed = Date.now();
+        return existing.value;
+      }
 
       const ours = yield* Deferred.make<
         ManagedSession,
@@ -588,156 +227,37 @@ const make = Effect.gen(function* () {
   const list = (filter?: { archived?: boolean }) =>
     Effect.map(store.listSessions(filter), (records) => records.map(toSessionMeta));
 
-
-  const subscribe = (id: string, fromCursor: number) =>
+  const subscribe = (id: string, head: string | null, cids: readonly string[]) =>
     Stream.unwrapScoped(
       Effect.gen(function* () {
         const ms = yield* lookupOrReattach(id);
-        // Count the subscriber before anything else, so an idle eviction can't
-        // close the session while this stream is being set up.
+        // Full means too far behind: push() then returns false and the viewer is ended.
+        const queue = yield* Queue.bounded<ServerMessage>(MAX_BEHIND_MESSAGES);
         yield* Effect.acquireRelease(
-          clearIdleEviction(ms).pipe(Effect.andThen(Ref.update(ms.subscribers, (n) => n + 1))),
-          () => Ref.update(ms.subscribers, (n) => Math.max(0, n - 1)).pipe(Effect.andThen(scheduleIdleEviction(id, ms))),
+          Effect.sync(() =>
+            ms.pi.live.attach(head, cids, {
+              push: (message) => Queue.unsafeOffer(queue, message),
+              // Ends the stream; the phone reconnects from its bookmark.
+              end: () => void Effect.runFork(Queue.shutdown(queue)),
+            }),
+          ),
+          (detach) =>
+            Effect.sync(() => {
+              detach();
+              ms.lastUsed = Date.now();
+            }),
         );
-        const liveQueue = yield* PubSub.subscribe(ms.pubsub);
-        const currentMeta = yield* Ref.get(ms.meta);
-        const cursorAtSubscribe = yield* Ref.get(ms.seq);
-        const pending = yield* Ref.get(ms.pendingSends);
-
-        const helloEvent: WireEvent = {
-          t: "hello",
-          seq: 0,
-          session: currentMeta,
-          cursor: cursorAtSubscribe,
-        };
-        const queueSnapshotEvent = queueEvent(0, pending);
-
-        let replayEvents: WireEvent[];
-        const prunedThrough = yield* store.prunedThrough(id);
-        if (fromCursor < 0 || fromCursor > cursorAtSubscribe || fromCursor < prunedThrough) {
-          const page = yield* retainedLogTail(id, pending, currentMeta.status);
-          replayEvents = [{
-            t: "log_reset",
-            seq: cursorAtSubscribe,
-            entries: page.entries,
-            hasMoreBefore: page.hasMoreBefore,
-          }];
-        } else {
-          const storedEvents = yield* store.loadEventsAfter(id, fromCursor);
-          replayEvents = storedEvents.filter((event) => event.seq <= cursorAtSubscribe);
-        }
-
-        const liveStream = pipe(
-          Stream.fromQueue(liveQueue),
-          Stream.filter((e) => e.seq > cursorAtSubscribe),
-        );
-
-        return pipe(
-          Stream.fromIterable<WireEvent>([helloEvent, ...replayEvents, queueSnapshotEvent]),
-          Stream.concat(liveStream),
-        );
+        return Stream.fromQueue(queue);
       }),
     );
 
-  const send = (
-    id: string,
-    text: string,
-    mode: SendMode,
-    images: ImageContent[] | undefined,
-    clientId: string,
-  ) =>
-    Effect.gen(function* () {
-      const ms = yield* lookupOrReattach(id);
-      // Atomically claim this clientId. A duplicate is a send that already landed
-      // (the original user_message is the ack) — drop it before any work. Checking and
-      // claiming in one Ref.modify closes the retry-vs-ack race: without it, two
-      // concurrent sends with the same clientId both read an empty set and each mint a
-      // fresh userMessageId, double-posting the turn to pi. The claim is released below
-      // on any path that fails before the event is durably appended.
-      const duplicate = yield* Ref.modify(ms.seenClientIds, (seen) =>
-        seen.includes(clientId)
-          ? ([true, seen] as const)
-          : ([false, [...seen, clientId].slice(-MAX_SEEN_CLIENT_IDS)] as const),
-      );
-      if (duplicate) return;
-      const releaseClaim = Ref.update(ms.seenClientIds, (seen) => seen.filter((c) => c !== clientId));
-      yield* ms.queueLock.withPermits(1)(enqueueSend(ms, id, text, mode, images, clientId, releaseClaim));
-    });
-
-  // Where a message goes (held for compaction, queued behind a turn, or sent
-  // now) depends on state a compaction ending also changes; runs under queueLock.
-  const enqueueSend = (
-    ms: ManagedSession,
-    id: string,
-    text: string,
-    mode: SendMode,
-    images: ImageContent[] | undefined,
-    clientId: string,
-    releaseClaim: Effect.Effect<void>,
-  ) =>
-    Effect.gen(function* () {
-      const currentMeta = yield* Ref.get(ms.meta);
-      const compacting = (yield* Ref.get(ms.compacting)) || (yield* ms.pi.isCompacting());
-      const queued = compacting || currentMeta.status === "thinking" || currentMeta.status === "tool";
-      if (queued && (yield* Ref.get(ms.pendingSends)).length >= MAX_PENDING_SENDS) {
-        yield* releaseClaim;
-        return yield* Effect.fail(new PiError({ message: `send queue full (${MAX_PENDING_SENDS})` }));
-      }
-      const userMessageId = randomUUIDv7();
-      const at = Date.now();
-      const seq = yield* Ref.updateAndGet(ms.seq, (n) => n + 1);
-      const baseEntry = {
-        kind: "user" as const,
-        id: userMessageId,
-        at,
-        text,
-        images,
-        clientId,
-      };
-      const entry: UserMessage = queued ? { ...baseEntry, queued: true, mode } : baseEntry;
-      const userEvent: WireEvent = { t: "user_message", seq, entry };
-      // Release the claim if the event never lands, so a legitimate retry isn't swallowed.
-      yield* store.appendEvent(id, userEvent).pipe(Effect.tapError(() => releaseClaim));
-      yield* PubSub.publish(ms.pubsub, userEvent);
-
-      if (compacting) {
-        const pendingSend: PendingSend = {
-          id: userMessageId,
-          at,
-          text,
-          images,
-          mode,
-          phase: "held_for_compaction",
-        };
-        yield* Ref.update(ms.pendingSends, (pending) => [...pending, pendingSend]);
-        yield* publishQueueSnapshot(ms, id);
-        return;
-      }
-
-      if (queued) {
-        const pendingSend: PendingSend = {
-          id: userMessageId,
-          at,
-          text,
-          images,
-          mode,
-          phase: "sdk_queue",
-        };
-        yield* Ref.update(ms.pendingSends, (pending) => [...pending, pendingSend]);
-        yield* publishQueueSnapshot(ms, id);
-        yield* ms.pi.send(text, mode, images).pipe(
-          Effect.catchAll((error) =>
-            Ref.update(ms.pendingSends, (pending) => pending.filter((message) => message.id !== userMessageId)).pipe(
-              Effect.andThen(publishQueueSnapshot(ms, id)),
-              Effect.andThen(Effect.fail(error)),
-            ),
-          ),
-        );
-        return;
-      }
-
-      yield* ms.pi.send(text, mode, images);
-    });
+  const send = (id: string, input: SendInput) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) =>
+      Effect.tryPromise({
+        try: () => ms.pi.live.send(input),
+        catch: (e) => new PiError({ message: e instanceof Error ? e.message : String(e), cause: e }),
+      }),
+    );
 
   const interrupt = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.interrupt());
@@ -749,21 +269,8 @@ const make = Effect.gen(function* () {
   ) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.extensionUiResponse(requestId, value));
 
-
   const compact = (id: string, instructions?: string) =>
-    Effect.gen(function* () {
-      const ms = yield* lookupOrReattach(id);
-      if (yield* ms.pi.isCompacting()) return;
-      // Claim atomically so two concurrent requests can't both start one.
-      if (yield* ms.queueLock.withPermits(1)(Ref.getAndSet(ms.compacting, true))) return;
-      yield* ms.pi.compact(instructions).pipe(
-        Effect.onExit(() =>
-          Ref.get(ms.compacting).pipe(
-            Effect.flatMap((stillCompacting) => stillCompacting ? Ref.set(ms.compacting, false) : Effect.void),
-          ),
-        ),
-      );
-    });
+    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.compact(instructions));
 
   const exportHtml = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.exportHtml());
@@ -771,44 +278,8 @@ const make = Effect.gen(function* () {
   const listCommands = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.listCommands());
 
-  const getQueue = (id: string) =>
-    Effect.gen(function* () {
-      const ms = yield* lookupOrReattach(id);
-      return projectQueue(yield* Ref.get(ms.pendingSends));
-    });
-
   const clearQueue = (id: string) =>
-    Effect.gen(function* () {
-      const ms = yield* lookupOrReattach(id);
-      return yield* ms.queueLock.withPermits(1)(
-        Effect.gen(function* () {
-          const pending = yield* Ref.getAndSet(ms.pendingSends, []);
-          yield* ms.pi.clearQueue();
-          for (const message of pending) yield* publishUserMessageRemoved(ms, id, message.id);
-          yield* publishQueueSnapshot(ms, id);
-          return { queued: [] };
-        }),
-      );
-    });
-
-  const removeQueued = (id: string, messageId: string) =>
-    Effect.gen(function* () {
-      const ms = yield* lookupOrReattach(id);
-      return yield* ms.queueLock.withPermits(1)(
-        Effect.gen(function* () {
-          const pending = yield* Ref.get(ms.pendingSends);
-          const removed = pending.find((message) => message.id === messageId);
-          if (!removed) return projectQueue(pending);
-
-          const next = pending.filter((message) => message.id !== messageId);
-          yield* Ref.set(ms.pendingSends, next);
-          if (removed.phase === "sdk_queue") yield* resyncSdkQueue(ms, next);
-          yield* publishUserMessageRemoved(ms, id, messageId);
-          yield* publishQueueSnapshot(ms, id);
-          return projectQueue(next);
-        }),
-      );
-    });
+    Effect.map(lookupOrReattach(id), (ms) => ms.pi.live.clearQueue());
 
   const getSettings = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getSettings());
@@ -819,23 +290,8 @@ const make = Effect.gen(function* () {
   const getStats = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getStats());
 
-  const getLogBefore = (id: string, beforeId: string, limit?: number) =>
-    Effect.gen(function* () {
-      const ms = yield* lookupOrReattach(id);
-      const [pending, meta] = yield* Effect.all([Ref.get(ms.pendingSends), Ref.get(ms.meta)]);
-      const retained = yield* retainedLogEntries(id, pending, meta.status);
-      const retainedIndex = retained.entries.findIndex((entry) => entry.id === beforeId);
-
-      if (retainedIndex > 0) {
-        const page = pageBefore(retained.entries, beforeId, limit);
-        return { ...page, hasMoreBefore: page.hasMoreBefore || retained.prunedThrough > 0 };
-      }
-
-      if (retained.prunedThrough <= 0) return { entries: [], hasMoreBefore: false };
-
-      const entries = withPendingUserEntries(yield* ms.pi.getLog(), pending);
-      return pageBefore(entries, beforeId, limit);
-    });
+  const history = (id: string, before: string, limit?: number) =>
+    Effect.map(lookupOrReattach(id), (ms) => ms.pi.live.history(before, limit));
 
   const getTree = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getTree());
@@ -852,8 +308,8 @@ const make = Effect.gen(function* () {
       if (Option.isNone(existing))
         return yield* Effect.fail(new SessionNotFound({ id }));
 
-      // Write and merge only the changed fields: a live session's pump may have
-      // moved status or cost on since the read above.
+      // Write and merge only the changed fields: a live session may have moved
+      // status or cost on since the read above.
       const changes = {
         ...(p.title !== undefined ? { title: p.title } : {}),
         ...(p.archived !== undefined ? { archived: p.archived } : {}),
@@ -863,15 +319,11 @@ const make = Effect.gen(function* () {
 
       const live = HashMap.get(yield* Ref.get(sessions), id);
       if (Option.isNone(live)) return toSessionMeta({ ...existing.value, ...changes, updatedAtMs });
-      const next = yield* Ref.updateAndGet(live.value.meta, (meta) => ({
-        ...meta,
-        ...changes,
-        updatedAt: new Date(updatedAtMs).toISOString(),
-      }));
+      live.value.pi.live.patchMeta(changes);
       if (p.title !== undefined) {
         yield* Effect.ignoreLogged(live.value.pi.patchSession({ title: p.title }));
       }
-      return next;
+      return live.value.pi.live.meta;
     });
 
   const remove = (id: string): Effect.Effect<void, SessionNotFound> =>
@@ -880,30 +332,33 @@ const make = Effect.gen(function* () {
       if (Option.isNone(existing))
         return yield* Effect.fail(new SessionNotFound({ id }));
 
-      const map = yield* Ref.get(sessions);
-      const live = HashMap.get(map, id);
+      const live = HashMap.get(yield* Ref.get(sessions), id);
       if (Option.isSome(live)) {
-        yield* clearIdleEviction(live.value);
-        yield* Fiber.interrupt(live.value.pumpFiber);
+        yield* Ref.update(sessions, HashMap.remove(id));
+        // Also ends open streams, so viewers don't wait on a deleted session.
         yield* live.value.pi.close();
-        // Ends open event streams so subscribers don't wait on a deleted session.
-        yield* PubSub.shutdown(live.value.pubsub);
-        yield* Ref.update(sessions, (m) => HashMap.remove(m, id));
       }
       yield* store.deleteSession(id);
     });
 
+  // On shutdown: refuse new work, stop running turns so pi saves what they
+  // have, then close every session.
   const closeAll = () =>
     Effect.gen(function* () {
-      const map = yield* Ref.get(sessions);
-      yield* Effect.forEach(HashMap.values(map), (live) =>
-        Effect.all([
-          clearIdleEviction(live),
-          Fiber.interrupt(live.pumpFiber),
-          live.pi.close(),
-        ], { discard: true }).pipe(Effect.ignoreLogged),
+      stopping = true;
+      const map = yield* Ref.getAndSet(sessions, HashMap.empty<string, ManagedSession>());
+      yield* Effect.forEach(
+        HashMap.values(map),
+        (ms) =>
+          Effect.promise(() => ms.pi.live.stop()).pipe(
+            Effect.timeout(STOP_TIMEOUT),
+            Effect.catchAllCause((cause) =>
+              Effect.logWarning("session_stop_failed", cause).pipe(Effect.annotateLogs({ session_id: ms.pi.live.meta.id })),
+            ),
+            Effect.andThen(ms.pi.close()),
+          ),
+        { concurrency: "unbounded", discard: true },
       );
-      yield* Ref.set(sessions, HashMap.empty<string, ManagedSession>());
     });
 
   return SessionManager.of({
@@ -916,13 +371,11 @@ const make = Effect.gen(function* () {
     compact,
     exportHtml,
     listCommands,
-    getQueue,
     clearQueue,
-    removeQueued,
     getSettings,
     patchSetting,
     getStats,
-    getLogBefore,
+    history,
     getTree,
     navigateTree,
     patch,
@@ -931,7 +384,7 @@ const make = Effect.gen(function* () {
   });
 });
 
-// Scoped so the server scope tears sessions down on shutdown (closes pi, interrupts pump fibers).
+// Scoped so the server scope tears sessions down on shutdown (stops turns, closes pi).
 export const SessionManagerLive = Layer.scoped(
   SessionManager,
   Effect.tap(make, (manager) => Effect.addFinalizer(() => manager.closeAll())),

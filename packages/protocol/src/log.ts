@@ -1,4 +1,15 @@
-import { hasToolDetails, type AssistantMessage, type CompactionEntry, type LogEntry, type ToolCallMessage, type ToolResultContent, type WireEvent } from "./index.ts";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import {
+  CustomToolArgs,
+  hasToolDetails,
+  ToolCallMessage,
+  type Entry,
+  type Live,
+  type LiveEvent,
+  type LogEntry,
+  type ToolCall,
+} from "./index.ts";
 
 // effect/Schema decodes to readonly; a live log mutates the entries it owns in place.
 export type Mutable<T> = T extends ReadonlyArray<infer U>
@@ -7,13 +18,10 @@ export type Mutable<T> = T extends ReadonlyArray<infer U>
     ? { -readonly [K in keyof T]: Mutable<T[K]> }
     : T;
 
-// Set on a tool call orphaned by a host restart: its tool_result never arrived
-// and never will, so cursor replay alone can't heal it.
-export const TOOL_INTERRUPTED_MESSAGE = "Interrupted — the host restarted while this command was running.";
+// Set on a tool call whose result pi never saved (the host stopped mid-tool).
+export const TOOL_INTERRUPTED_MESSAGE = "Interrupted — the host stopped while this was running.";
 
-// The mutable accumulator the fold operates on. Callers wrap it with their own
-// concerns — the mobile log adds a cursor and a reactivity counter; the host
-// builds one transiently to reconstruct a cold-start snapshot.
+// The rows on screen, folded from pi's entries.
 export interface LogAccumulator {
   entries: Mutable<LogEntry>[];
   indexById: Map<string, number>;
@@ -21,34 +29,24 @@ export interface LogAccumulator {
 
 export const emptyLog = (): LogAccumulator => ({ entries: [], indexById: new Map() });
 
-export function appendLogEntry(acc: LogAccumulator, entry: LogEntry): void {
+export const emptyLive = (): Mutable<Live> => ({ running: false, compacting: false, tools: [], queue: [], ui: [] });
+
+function appendLogEntry(acc: LogAccumulator, entry: LogEntry): void {
   acc.indexById.set(entry.id, acc.entries.length);
   acc.entries.push(entry as Mutable<LogEntry>);
 }
 
 export function findLogEntry(acc: LogAccumulator, id: string): Mutable<LogEntry> | undefined {
   const index = acc.indexById.get(id);
-  if (index !== undefined && acc.entries[index]?.id === id) return acc.entries[index];
-
-  const fallback = acc.entries.findIndex((entry) => entry.id === id);
-  if (fallback >= 0) {
-    acc.indexById.set(id, fallback);
-    return acc.entries[fallback];
-  }
-  return undefined;
+  return index === undefined ? undefined : acc.entries[index];
 }
 
-export function removeLogEntry(acc: LogAccumulator, id: string): boolean {
-  const index = acc.entries.findIndex((entry) => entry.id === id);
-  if (index < 0) return false;
-  acc.entries.splice(index, 1);
+export function reindexLog(acc: LogAccumulator): void {
   acc.indexById = new Map(acc.entries.map((entry, i) => [entry.id, i]));
-  return true;
 }
 
-// Marks tool calls still "running" as interrupted — called by the caller when a
-// turn has ended (or a reconstructed snapshot isn't mid-stream), so no
-// tool_result is coming. Returns whether anything changed.
+// Marks tool calls still "running" as interrupted. Callers run it when no run
+// is active, so no result is coming. Returns whether anything changed.
 export function reconcileOrphanedToolCalls(acc: LogAccumulator): boolean {
   let changed = false;
   for (const entry of acc.entries) {
@@ -60,127 +58,164 @@ export function reconcileOrphanedToolCalls(acc: LogAccumulator): boolean {
   return changed;
 }
 
-type AssistantEndMeta = Pick<AssistantMessage, "stopReason" | "errorMessage" | "errorCode" | "usage">;
-
-function finalizeAssistant(message: Mutable<AssistantMessage>, meta: AssistantEndMeta): void {
-  message.streaming = false;
-  if (meta.stopReason) message.stopReason = meta.stopReason;
-  if (meta.errorMessage) message.errorMessage = meta.errorMessage;
-  if (meta.errorCode) message.errorCode = meta.errorCode;
-  if (meta.usage) message.usage = meta.usage;
-}
-
-interface ToolResultLike {
-  result?: string;
-  resultContent?: readonly ToolResultContent[];
-  details?: unknown;
-  status: "ok" | "error";
-  durationMs: number;
-}
-
-function applyToolResult(entry: Mutable<ToolCallMessage>, data: ToolResultLike): void {
-  entry.status = data.status;
-  entry.durationMs = data.durationMs;
-  setToolOutput(entry, data);
-}
-
-// Each update carries the whole output so far, so it replaces the previous one.
-function setToolOutput(entry: Mutable<ToolCallMessage>, data: Omit<ToolResultLike, "status" | "durationMs">): void {
-  if (data.result !== undefined) entry.result = data.result;
-  else delete entry.result;
-  if (data.resultContent) entry.resultContent = [...data.resultContent];
-  else delete entry.resultContent;
-  if (hasToolDetails(data.details)) entry.details = data.details;
-  else delete entry.details;
-}
-
-function applyCompaction(acc: LogAccumulator, entry: CompactionEntry): void {
-  const existing = findLogEntry(acc, entry.id);
-  if (existing?.kind !== "compaction") {
-    appendLogEntry(acc, entry);
-    return;
-  }
-  existing.at = entry.at;
-  existing.status = entry.status;
-  if (entry.reason) existing.reason = entry.reason;
-  else delete existing.reason;
-  if (entry.summary !== undefined) existing.summary = entry.summary;
-  else delete existing.summary;
-  if (entry.tokensBefore !== undefined) existing.tokensBefore = entry.tokensBefore;
-  else delete existing.tokensBefore;
-  if (entry.errorMessage !== undefined) existing.errorMessage = entry.errorMessage;
-  else delete existing.errorMessage;
-  if (entry.willRetry !== undefined) existing.willRetry = entry.willRetry;
-  else delete existing.willRetry;
-}
-
-// The canonical WireEvent -> LogEntry fold, shared by the mobile live log and
-// the host's cold-start snapshot so the two can't drift. `now` is the timestamp
-// for a freshly streamed assistant entry (only `assistant_delta` uses it).
-// Returns whether the log changed; events that don't produce entries
-// (hello/status/cost/queue/…) return false and are the caller's concern.
-export function reduceLog(acc: LogAccumulator, event: WireEvent, now: number): boolean {
-  switch (event.t) {
-    case "log_reset":
-      acc.entries = event.entries.map((entry) => entry as Mutable<LogEntry>);
-      acc.indexById = new Map(acc.entries.map((entry, i) => [entry.id, i]));
-      return true;
-
-    case "user_message":
-      appendLogEntry(acc, event.entry);
-      return true;
-
-    case "user_message_removed":
-      return removeLogEntry(acc, event.id);
-
-    case "assistant_delta": {
-      const existing = findLogEntry(acc, event.id);
-      if (existing?.kind === "assistant") {
-        existing.text += event.text;
-        existing.streaming = true;
-      } else {
-        appendLogEntry(acc, { kind: "assistant", id: event.id, at: now, text: event.text, streaming: true });
-      }
-      return true;
+// Folds one of pi's entries into rows: an assistant message becomes its row
+// plus one per tool call, and a tool result completes its call's row. An entry
+// already folded is skipped, so overlapping batches are harmless.
+export function applyEntry(acc: LogAccumulator, entry: Entry): void {
+  // A tool result's own id is never a row, so this only skips repeats.
+  if (acc.indexById.has(entry.id)) return;
+  switch (entry.type) {
+    case "user": {
+      const { type: _, ...rest } = entry;
+      appendLogEntry(acc, { kind: "user", ...rest });
+      return;
     }
-
-    case "assistant_end": {
-      const existing = findLogEntry(acc, event.id);
-      if (existing?.kind === "assistant") {
-        // Keep the streamed entry's `at`; adopt the authoritative final text.
-        existing.text = event.text;
-        finalizeAssistant(existing, event);
-      } else {
-        const message: Mutable<AssistantMessage> = { kind: "assistant", id: event.id, at: event.at, text: event.text, streaming: false };
-        finalizeAssistant(message, event);
-        appendLogEntry(acc, message);
-      }
-      return true;
+    case "assistant": {
+      const { type: _, tools, ...rest } = entry;
+      appendLogEntry(acc, { kind: "assistant", ...rest });
+      for (const call of tools) if (!acc.indexById.has(call.id)) appendLogEntry(acc, toolCallRow(call, entry.at));
+      return;
     }
-
-    case "tool_call":
-      appendLogEntry(acc, event.entry);
-      return true;
-
-    case "tool_update": {
-      const entry = findLogEntry(acc, event.id);
-      if (entry?.kind !== "tool_call") return false;
-      setToolOutput(entry, event);
-      return true;
-    }
-
     case "tool_result": {
-      const entry = findLogEntry(acc, event.id);
-      if (entry?.kind !== "tool_call") return false;
-      applyToolResult(entry, event);
-      return true;
+      const row = findLogEntry(acc, entry.toolCallId);
+      if (row?.kind === "tool_call") completeToolCall(row, entry);
+      return;
     }
-
     case "compaction":
-      applyCompaction(acc, event.entry);
-      return true;
-
-    default:
-      return false;
+      appendLogEntry(acc, {
+        kind: "compaction",
+        id: entry.id,
+        at: entry.at,
+        status: "success",
+        summary: entry.summary,
+        tokensBefore: entry.tokensBefore,
+      });
+      return;
+    case "note": {
+      const { type: _, ...rest } = entry;
+      appendLogEntry(acc, { kind: "note", ...rest });
+    }
   }
+}
+
+const decodeToolCall = Schema.decodeUnknownOption(ToolCallMessage);
+const decodeCustomArgs = Schema.decodeUnknownOption(CustomToolArgs);
+
+// A builtin tool's row when its args have that tool's shape, else a custom
+// tool's row, so a call the phone can't model still shows. "pending" while the
+// model is still writing its arguments.
+export function toolCallRow(call: ToolCall, at: number, status: "pending" | "running" = "running"): ToolCallMessage {
+  const row = { kind: "tool_call", id: call.id, at, status, tool: call.name } as const;
+  return Option.getOrElse(
+    decodeToolCall({ ...row, toolKind: "builtin", args: call.args }),
+    (): ToolCallMessage => ({
+      ...row,
+      toolKind: "custom",
+      args: Option.getOrElse(decodeCustomArgs(call.args), (): CustomToolArgs => ({})),
+    }),
+  );
+}
+
+function completeToolCall(row: Mutable<ToolCallMessage>, result: Extract<Entry, { type: "tool_result" }>): void {
+  row.status = result.isError ? "error" : "ok";
+  // pi saves no durations; the gap from the call's message to its result is close.
+  row.durationMs = Math.max(0, result.at - row.at);
+  if (result.result !== undefined) row.result = result.result;
+  else delete row.result;
+  if (result.resultContent) row.resultContent = [...result.resultContent] as Mutable<typeof result.resultContent>;
+  else delete row.resultContent;
+  if (hasToolDetails(result.details)) row.details = result.details;
+  else delete row.details;
+}
+
+type TextChange = { drop?: number; from: number; s: string };
+
+const commonPrefixLength = (a: string, b: string): number => {
+  let i = 0;
+  while (i < a.length && i < b.length && a.charCodeAt(i) === b.charCodeAt(i)) i += 1;
+  return i;
+};
+
+// The smaller of two ways to turn `before` into `after`: keep their common
+// start and append, or drop what fell off the top of a tail window (bash
+// keeps only its last 50 KB) and append.
+export function textChange(before: string, after: string): TextChange {
+  const from = commonPrefixLength(before, after);
+  const kept: TextChange = { from, s: after.slice(from) };
+  const probe = after.slice(0, 64);
+  // A few candidates bound the cost on repetitive output.
+  for (let drop = before.indexOf(probe, 1), tries = 0; probe && drop > 0 && tries < 16; drop = before.indexOf(probe, drop + 1), tries += 1) {
+    if (!after.startsWith(before.slice(drop))) continue;
+    const s = after.slice(before.length - drop);
+    return s.length < kept.s.length ? { drop, from: before.length, s } : kept;
+  }
+  return kept;
+}
+
+export const applyTextChange = (before: string, change: TextChange): string =>
+  before.slice(change.drop ?? 0, change.from) + change.s;
+
+// Applies a change to the live mirror. Returns the running tool it changed,
+// if any, so the phone can show the new output on that tool's row.
+export function applyLiveEvent(live: Mutable<Live>, event: LiveEvent): Mutable<Live["tools"][number]> | undefined {
+  switch (event.t) {
+    case "msg":
+      live.msg = { at: event.at, text: "", calls: [] };
+      return;
+    case "d":
+      live.msg ??= { at: Date.now(), text: "", calls: [] };
+      live.msg.text += event.s;
+      return;
+    case "call": {
+      live.msg ??= { at: Date.now(), text: "", calls: [] };
+      let call = live.msg.calls.find((candidate) => candidate.id === event.id);
+      if (!call) {
+        call = { id: event.id, name: event.name, args: "" };
+        live.msg.calls.push(call);
+      }
+      call.args = applyTextChange(call.args, event);
+      return;
+    }
+    case "out": {
+      let tool = live.tools.find((candidate) => candidate.id === event.id);
+      if (!tool) {
+        tool = { id: event.id, text: "" };
+        live.tools.push(tool);
+      }
+      tool.text = applyTextChange(tool.text, event);
+      if (event.details !== undefined) tool.details = event.details;
+      return tool;
+    }
+    case "run":
+      live.running = event.running;
+      live.compacting = event.compacting;
+      if (event.retry) live.retry = { ...event.retry };
+      else delete live.retry;
+      // Nothing streams once the run is over; whatever pi kept is in its entries.
+      if (!event.running) {
+        delete live.msg;
+        live.tools = [];
+      }
+      return;
+    case "queue":
+      live.queue = event.queue.map((item) => ({ ...item }));
+      return;
+    case "ui": {
+      if (event.request.kind !== "confirm" && event.request.kind !== "select" && event.request.kind !== "input") return;
+      const at = live.ui.findIndex((request) => request.id === event.request.id);
+      if (at >= 0) live.ui[at] = event.request as Mutable<Live["ui"][number]>;
+      else live.ui.push(event.request as Mutable<Live["ui"][number]>);
+      return;
+    }
+    case "ui_done":
+      live.ui = live.ui.filter((request) => request.id !== event.id);
+      return;
+  }
+}
+
+// A saved entry ends the live item it records: the assistant entry replaces
+// the streamed reply, and a tool result ends that tool's live output.
+export function endLiveItem(live: Mutable<Live>, entry: Entry): void {
+  if (entry.type === "assistant") delete live.msg;
+  else if (entry.type === "tool_result") live.tools = live.tools.filter((tool) => tool.id !== entry.toolCallId);
 }

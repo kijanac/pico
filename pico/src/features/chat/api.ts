@@ -1,3 +1,4 @@
+import type { ExtensionUiResponseValue, ImageContent, SendMode } from "@pico/protocol";
 import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 import { sessionExportHtmlUrl } from "@/shared/lib/host-http";
 import { rpc } from "@/shared/lib/rpc-client";
@@ -5,12 +6,17 @@ import { rpc } from "@/shared/lib/rpc-client";
 export const compactSession = (sessionId: string, instructions?: string) =>
   rpc((c) => c.sessions.compact({ id: sessionId, instructions: instructions?.trim() || undefined }));
 
-export const getSessionQueue = (sessionId: string) => rpc((c) => c.sessions.queue({ id: sessionId }));
+export const sendMessage = (
+  sessionId: string,
+  message: { cid: string; text: string; mode: SendMode; images?: readonly ImageContent[]; base: string | null; retry: boolean },
+) => rpc((c) => c.sessions.send({ id: sessionId, ...message }));
+
+export const interruptSession = (sessionId: string) => rpc((c) => c.sessions.interrupt({ id: sessionId }));
+
+export const answerExtensionUi = (sessionId: string, requestId: string, value: ExtensionUiResponseValue) =>
+  rpc((c) => c.sessions.uiResponse({ id: sessionId, requestId, value }));
 
 export const clearSessionQueue = (sessionId: string) => rpc((c) => c.sessions.clearQueue({ id: sessionId }));
-
-export const removeQueuedMessage = (sessionId: string, messageId: string) =>
-  rpc((c) => c.sessions.removeQueued({ id: sessionId, messageId }));
 
 export const listSessionCommands = (sessionId: string) => rpc((c) => c.sessions.commands({ id: sessionId }));
 
@@ -21,8 +27,8 @@ export const patchSessionSetting = (sessionId: string, key: string, value: strin
 
 export const getSessionStats = (sessionId: string) => rpc((c) => c.sessions.stats({ id: sessionId }));
 
-export const getSessionLogBefore = (sessionId: string, beforeId: string, limit?: number) =>
-  rpc((c) => c.sessions.logBefore({ id: sessionId, beforeId, limit }));
+export const getSessionHistory = (sessionId: string, before: string, limit?: number) =>
+  rpc((c) => c.sessions.history({ id: sessionId, before, limit }));
 
 const safeFilenamePart = (value: string): string =>
   value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "session";

@@ -6,11 +6,12 @@
   import { Input } from "@/shared/ui/input";
   import { Textarea } from "@/shared/ui/textarea";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
+  import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
 
   let textValue = $state("");
   let sheetOpen = $state(false);
   let activeRequestId = $state<string | null>(null);
-  const request = $derived(activeSessionState.extensionUiRequests[0]);
+  const request = $derived(chatLogState.live.ui[0]);
 
   $effect(() => {
     const nextId = request?.id ?? null;

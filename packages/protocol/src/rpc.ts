@@ -6,15 +6,15 @@ import {
   AuthProviders,
   Commands,
   ExtensionUiResponseValue,
+  HistoryPage,
   ImageContent,
-  LogPage,
-  QueueState,
   SendMode,
+  SendStatus,
+  ServerMessage,
   SessionControls,
   SessionMeta,
   SessionStats,
   SessionTree,
-  WireEvent,
 } from "./index.ts";
 
 export const FsListing = Schema.Struct({
@@ -45,13 +45,38 @@ export const PicoRpc = RpcGroup.make(
   Rpc.make("sessions.controls", { payload: { id: Schema.String }, success: SessionControls, error: SessionFail }),
   Rpc.make("sessions.patchControl", { payload: { id: Schema.String, key: Schema.String, value: Schema.Union(Schema.String, Schema.Boolean) }, success: SessionControls, error: SessionFail }),
   Rpc.make("sessions.compact", { payload: { id: Schema.String, instructions: Schema.optional(Schema.String) }, error: SessionFail }),
-  Rpc.make("sessions.queue", { payload: { id: Schema.String }, success: QueueState, error: SessionFail }),
-  Rpc.make("sessions.clearQueue", { payload: { id: Schema.String }, success: QueueState, error: SessionFail }),
-  Rpc.make("sessions.removeQueued", { payload: { id: Schema.String, messageId: Schema.String }, success: QueueState, error: SessionFail }),
+  // Safe to repeat: a send is identified by `cid`. `base` is the phone's
+  // bookmark when the message was first sent; on a retry (`retry`) the host
+  // looks after it in pi's file for the same text, in case it forgot the cid
+  // in a restart.
+  Rpc.make("sessions.send", {
+    payload: {
+      id: Schema.String,
+      cid: Schema.String,
+      text: Schema.String,
+      mode: SendMode,
+      images: Schema.optional(Schema.Array(ImageContent)),
+      base: Schema.NullOr(Schema.String),
+      retry: Schema.Boolean,
+    },
+    success: SendStatus,
+    error: SessionFail,
+  }),
+  Rpc.make("sessions.interrupt", { payload: { id: Schema.String }, error: SessionFail }),
+  Rpc.make("sessions.uiResponse", {
+    payload: { id: Schema.String, requestId: Schema.String, value: ExtensionUiResponseValue },
+    error: SessionFail,
+  }),
+  // Empties the queue and returns what was in it, for the composer (pi's dequeue).
+  Rpc.make("sessions.clearQueue", {
+    payload: { id: Schema.String },
+    success: Schema.Struct({ steering: Schema.Array(Schema.String), followUp: Schema.Array(Schema.String) }),
+    error: SessionFail,
+  }),
   Rpc.make("sessions.stats", { payload: { id: Schema.String }, success: SessionStats, error: SessionFail }),
-  Rpc.make("sessions.logBefore", {
-    payload: { id: Schema.String, beforeId: Schema.String, limit: Schema.optional(Schema.Number) },
-    success: LogPage,
+  Rpc.make("sessions.history", {
+    payload: { id: Schema.String, before: Schema.String, limit: Schema.optional(Schema.Number) },
+    success: HistoryPage,
     error: SessionFail,
   }),
   Rpc.make("sessions.tree", { payload: { id: Schema.String }, success: SessionTree, error: SessionFail }),
@@ -66,29 +91,14 @@ export const PicoRpc = RpcGroup.make(
   Rpc.make("fs.ls", { payload: { path: Schema.optional(Schema.String) }, success: FsListing, error: RequestError }),
 );
 
-// The realtime session channel, served over a WebSocket. `events` is the
-// server push stream (resumed from `cursor`); the rest are the live commands a
-// viewer issues. One socket serves any session, so each rpc names its `id`.
+// The live channel, served over a WebSocket. It only pushes: the first
+// message is a sync from the phone's bookmark (`head`, a pi entry id), then
+// changes follow. `cids` are the phone's unconfirmed sends, reported in the sync.
 export const PicoSessionRpc = RpcGroup.make(
-  Rpc.make("session.events", {
-    payload: { id: Schema.String, cursor: Schema.Number },
-    success: WireEvent,
+  Rpc.make("session.live", {
+    payload: { id: Schema.String, head: Schema.NullOr(Schema.String), cids: Schema.Array(Schema.String) },
+    success: ServerMessage,
     error: SessionFail,
     stream: true,
-  }),
-  Rpc.make("session.send", {
-    payload: {
-      id: Schema.String,
-      text: Schema.String,
-      mode: SendMode,
-      images: Schema.optional(Schema.Array(ImageContent)),
-      clientId: Schema.String,
-    },
-    error: SessionFail,
-  }),
-  Rpc.make("session.interrupt", { payload: { id: Schema.String }, error: SessionFail }),
-  Rpc.make("session.extensionUiResponse", {
-    payload: { id: Schema.String, requestId: Schema.String, value: ExtensionUiResponseValue },
-    error: SessionFail,
   }),
 );

@@ -4,16 +4,13 @@
   import type { ImageContent, SessionControls, SessionStats } from "@pico/protocol";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
-  import { chatQueueState } from "@/features/chat/model/chat-queue.state.svelte";
   import { queuedMessageActionsState } from "@/features/chat/model/queued-message-actions.state.svelte";
   import { keyboardState } from "@/shared/mobile/keyboard.svelte";
   import { pickImages } from "@/shared/mobile/image-picker";
   import { cloneImageContent, filesToImageContent } from "@/shared/mobile/image-content";
   import { createLongPress } from "@/shared/gestures/long-press";
-  import { clearSessionQueue, getSessionQueue, getSessionSettings } from "@/features/chat/api";
-  import { hostIssueSummary } from "@/shared/lib/host-issues";
+  import { getSessionSettings, interruptSession } from "@/features/chat/api";
   import { runOnHost } from "@/shared/lib/rpc-client";
-  import { createLatest } from "@/shared/lib/latest";
   import { formatCost } from "@/shared/lib/format";
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
   import { Button } from "@/shared/ui/button";
@@ -53,10 +50,6 @@
   let compactOpen = $state(false);
   let queueOpen = $state(false);
   let images = $state<ImageContent[]>([]);
-  let queueLoading = $state(false);
-  let queueError = $state<string | null>(null);
-  let clearing = $state(false);
-  const queueRequest = createLatest();
   let lastRecallRequestId = 0;
 
   const slashCommands = createSlashCommandsState(
@@ -73,9 +66,10 @@
   const busy = $derived(activeSessionState.status === "thinking" || activeSessionState.status === "tool");
   const hasText = $derived(value.trim().length > 0);
   const hasSendable = $derived(hasText || images.length > 0);
-  const canSend = $derived(activeSessionState.send !== null);
-  const queue = $derived(chatQueueState.get(hostId, sessionId));
-  const queueCount = $derived(chatQueueState.count(hostId, sessionId));
+  // Sends go over HTTP and wait in the outbox, so only a deleted session can't take one.
+  const canSend = $derived(activeSessionState.connectionStatus !== "gone");
+  const queue = $derived(chatLogState.live.queue);
+  const queueCount = $derived(queue.length);
   const contextPercent = $derived(
     contextStats && contextStats.usage.percent !== null ? Math.round(contextStats.usage.percent) : null,
   );
@@ -87,10 +81,6 @@
     if (!mc || mc.kind !== "select") return null;
     return mc.options.find((option) => option.value === mc.value)?.label ?? mc.value;
   });
-
-  function replaceImages(next: readonly ImageContent[] | undefined): void {
-    images.splice(0, images.length, ...(cloneImageContent(next) ?? []));
-  }
 
   function clearImages(): void {
     images.length = 0;
@@ -115,10 +105,7 @@
   $effect(() => {
     hostId;
     sessionId;
-    untrack(() => {
-      restoreDraft();
-      void syncQueue();
-    });
+    untrack(() => restoreDraft());
   });
 
   $effect(() => {
@@ -126,12 +113,13 @@
     if (!request || request.hostId !== hostId || request.sessionId !== sessionId || request.id === lastRecallRequestId) return;
 
     lastRecallRequestId = request.id;
-    value = request.text;
-    cursor = request.text.length;
-    replaceImages(request.images);
+    // Ahead of any draft, as pi's dequeue does.
+    value = [request.text, untrack(() => value)].filter((text) => text.trim()).join("\n\n");
+    if (request.images) untrack(() => addImages(request.images ?? []));
+    cursor = value.length;
     requestAnimationFrame(() => {
       textarea?.focus();
-      textarea?.setSelectionRange(request.text.length, request.text.length);
+      textarea?.setSelectionRange(value.length, value.length);
     });
   });
 
@@ -168,18 +156,9 @@
 
   function submit(mode: "steer" | "follow_up"): void {
     const text = value.trim();
-    const send = activeSessionState.send;
     const sentImages = cloneImageContent(images);
-    if ((!text && !sentImages) || !send) return;
-    const event = {
-      t: "send" as const,
-      text,
-      mode,
-      ...(sentImages ? { images: sentImages } : {}),
-      clientId: crypto.randomUUID(),
-    };
-    send(event);
-    chatLogState.appendLocalEcho(hostId, sessionId, event);
+    if ((!text && !sentImages) || !canSend) return;
+    chatLogState.send(hostId, sessionId, { text, mode, images: sentImages });
     value = "";
     cursor = 0;
     clearImages();
@@ -187,7 +166,7 @@
   }
 
   function interrupt(): void {
-    activeSessionState.send?.({ t: "interrupt" });
+    void runOnHost(hostId, interruptSession(sessionId)).catch(() => {});
   }
 
   // Tap sends/steers; long-press queues a follow-up — pi's alt+enter, as a touch gesture.
@@ -307,37 +286,8 @@
     images.splice(index, 1);
   }
 
-  async function syncQueue(options: { showLoading?: boolean } = {}): Promise<void> {
-    const token = queueRequest.begin();
-    if (options.showLoading) {
-      queueLoading = true;
-      queueError = null;
-    }
-
-    try {
-      const next = await runOnHost(hostId, getSessionQueue(sessionId));
-      if (!queueRequest.isCurrent(token)) return;
-      chatQueueState.set(hostId, sessionId, next);
-    } catch (error) {
-      if (!queueRequest.isCurrent(token) || !options.showLoading) return;
-      queueError = hostIssueSummary(error);
-    } finally {
-      if (queueRequest.isCurrent(token) && options.showLoading) queueLoading = false;
-    }
-  }
-
-  function loadQueue(): Promise<void> {
-    return syncQueue({ showLoading: true });
-  }
-
-  async function clearQueuedMessages(): Promise<void> {
-    clearing = true;
-    try {
-      await runOnHost(hostId, clearSessionQueue(sessionId));
-      chatQueueState.clear(hostId, sessionId);
-    } finally {
-      clearing = false;
-    }
+  async function restoreQueue(): Promise<void> {
+    if (await queuedMessageActionsState.restoreQueue(hostId, sessionId)) queueOpen = false;
   }
 </script>
 
@@ -445,7 +395,7 @@
         disabled={!hasSendable || !canSend}
         class={`shrink-0 rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)] transition-transform duration-100 active:opacity-80 disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-100 ${holding ? "scale-95" : ""}`}
         aria-label={busy ? "Steer (hold to queue a follow-up)" : "Send"}
-        title={hasSendable ? (activeSessionState.compacting ? "Queue until compaction finishes" : busy ? "Tap to steer · hold to queue a follow-up" : "Send · hold to queue a follow-up") : "Draft a message to send"}
+        title={hasSendable ? (chatLogState.live.compacting ? "Queue until compaction finishes" : busy ? "Tap to steer · hold to queue a follow-up" : "Send · hold to queue a follow-up") : "Draft a message to send"}
       >
         <ArrowUp class="size-3.5" strokeWidth={2.5} />
       </Button>
@@ -457,11 +407,9 @@
   <QueuedMessagesSheet
     bind:open={queueOpen}
     {queue}
-    loading={queueLoading}
-    error={queueError}
-    {clearing}
-    onLoad={loadQueue}
-    onClear={clearQueuedMessages}
+    error={queuedMessageActionsState.restoreError}
+    clearing={queuedMessageActionsState.restoring}
+    onClear={restoreQueue}
   />
 
   <Sheet.Root bind:open={modelOpen}>

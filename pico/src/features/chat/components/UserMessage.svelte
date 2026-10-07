@@ -1,78 +1,54 @@
 <script lang="ts">
-  import { X } from "@lucide/svelte";
-  import type { QueuedUserMessage, UserMessage } from "@pico/protocol";
-  import { removeQueuedMessage as removeQueuedMessageApi } from "@/features/chat/api";
+  import type { ImageContent } from "@pico/protocol";
   import ImageGrid from "@/features/chat/components/ImageGrid.svelte";
-  import { chatLogState, isLocalEcho } from "@/features/chat/model/chat-log.state.svelte";
-  import { chatQueueState } from "@/features/chat/model/chat-queue.state.svelte";
+  import { chatLogState, type OutboxItem } from "@/features/chat/model/chat-log.state.svelte";
   import { queuedMessageActionsState } from "@/features/chat/model/queued-message-actions.state.svelte";
-  import { hostIssueSummary } from "@/shared/lib/host-issues";
-  import { runOnHost } from "@/shared/lib/rpc-client";
 
-  let { msg, hostId, sessionId }: { msg: UserMessage; hostId: string; sessionId: string } = $props();
+  // A saved message, one waiting in pi's queue, or one from the outbox.
+  let {
+    text,
+    images = [],
+    queued = false,
+    outbox,
+    hostId,
+    sessionId,
+  }: {
+    text: string;
+    images?: readonly ImageContent[];
+    queued?: boolean;
+    outbox?: OutboxItem;
+    hostId: string;
+    sessionId: string;
+  } = $props();
 
-  let queueActionBusy = $state<"recall" | "remove" | null>(null);
-  let queueActionError = $state<string | null>(null);
+  const failed = $derived(outbox?.state === "failed" || outbox?.state === "lost");
+  const pending = $derived(outbox !== undefined && !failed);
 
-  const failed = $derived(isLocalEcho(msg.id) && chatLogState.isEchoFailed(msg.id));
-  const pending = $derived(isLocalEcho(msg.id) && !failed);
-  const queuedMessage = $derived<QueuedUserMessage | null>(msg.queued === true ? msg : null);
-  const images = $derived(msg.images ?? []);
-
-  function retry(): void {
-    chatLogState.retryLocalEcho(msg.id);
-  }
-
-  async function removeQueued(message: QueuedUserMessage, options: { recall: boolean }): Promise<void> {
-    if (queueActionBusy) return;
-    queueActionBusy = options.recall ? "recall" : "remove";
-    queueActionError = null;
-
-    try {
-      const next = await runOnHost(hostId, removeQueuedMessageApi(sessionId, message.id));
-      chatQueueState.set(hostId, sessionId, next);
-      if (options.recall) {
-        queuedMessageActionsState.recall(hostId, sessionId, message.text, message.mode, message.images);
-      }
-    } catch (error) {
-      queueActionError = hostIssueSummary(error);
-    } finally {
-      queueActionBusy = null;
-    }
+  function discard(cid: string): void {
+    const item = chatLogState.discard(cid);
+    if (item) queuedMessageActionsState.recall(hostId, sessionId, item.text, item.images);
   }
 </script>
 
 {#snippet MessageBody()}
-  {#if msg.text.trim().length > 0}
-    <div>{msg.text}</div>
+  {#if text.trim().length > 0}
+    <div>{text}</div>
   {/if}
-  <ImageGrid {images} altPrefix="attached image" class={msg.text.trim().length > 0 ? "mt-2" : ""} />
+  <ImageGrid {images} altPrefix="attached image" class={text.trim().length > 0 ? "mt-2" : ""} />
 {/snippet}
 
 <div class="flex flex-col items-end px-3 py-1.5">
-  {#if queuedMessage}
-    <div class="relative max-w-[85%] min-w-0">
-      <button
-        type="button"
-        class="type-message font-readable w-full min-w-0 overflow-hidden break-words rounded-[var(--radius-md)] border border-dashed border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)] px-3 py-2 pr-8 text-left text-[color:var(--color-fg-muted)] opacity-90 transition-opacity duration-200 active:opacity-70 disabled:opacity-60"
-        disabled={queueActionBusy !== null}
-        onclick={() => void removeQueued(queuedMessage, { recall: true })}
-        aria-label="Edit queued message"
-        title="Edit queued message"
-      >
-        {@render MessageBody()}
-      </button>
-      <button
-        type="button"
-        class="absolute right-1 top-1 flex size-6 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-faint)] before:absolute before:-inset-2.5 before:content-[''] active:bg-[color:var(--color-surface-2)] active:text-[color:var(--color-fg-muted)] disabled:opacity-50"
-        disabled={queueActionBusy !== null}
-        onclick={() => void removeQueued(queuedMessage, { recall: false })}
-        aria-label="Remove queued message"
-        title="Remove queued message"
-      >
-        <X class="size-3.5" />
-      </button>
-    </div>
+  {#if queued}
+    <button
+      type="button"
+      class="type-message font-readable max-w-[85%] min-w-0 overflow-hidden break-words rounded-[var(--radius-md)] border border-dashed border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)] px-3 py-2 text-left text-[color:var(--color-fg-muted)] opacity-90 transition-opacity duration-200 active:opacity-70 disabled:opacity-60"
+      disabled={queuedMessageActionsState.restoring}
+      onclick={() => void queuedMessageActionsState.restoreQueue(hostId, sessionId)}
+      aria-label="Edit queued messages"
+      title="Move queued messages to the composer"
+    >
+      {@render MessageBody()}
+    </button>
   {:else}
     <div
       class="type-message font-readable max-w-[85%] min-w-0 overflow-hidden break-words rounded-[var(--radius-md)] bg-[color:var(--color-surface-2)] px-3 py-2 text-[color:var(--color-fg)] transition-opacity duration-200"
@@ -84,13 +60,16 @@
     </div>
   {/if}
 
-  {#if queueActionError}
-    <div class="type-meta mt-1 max-w-[85%] text-right text-[color:var(--color-danger)]">{queueActionError}</div>
+  {#if queued && queuedMessageActionsState.restoreError}
+    <div class="type-meta mt-1 max-w-[85%] text-right text-[color:var(--color-danger)]">{queuedMessageActionsState.restoreError}</div>
   {/if}
 
-  {#if failed}
-    <button type="button" class="type-meta mt-1 text-[color:var(--color-danger)] active:opacity-70" onclick={retry}>
-      not delivered · tap to retry
-    </button>
+  {#if outbox && failed}
+    <div class="type-meta mt-1 flex max-w-[85%] items-baseline justify-end gap-2 text-right text-[color:var(--color-danger)]">
+      <button type="button" class="active:opacity-70" onclick={() => chatLogState.retry(outbox.cid)}>
+        {outbox.state === "lost" ? "not sent: the host restarted · send again" : `not delivered${outbox.error ? `: ${outbox.error}` : ""} · tap to retry`}
+      </button>
+      <button type="button" class="text-[color:var(--color-fg-muted)] active:opacity-70" onclick={() => discard(outbox.cid)}>edit</button>
+    </div>
   {/if}
 </div>
