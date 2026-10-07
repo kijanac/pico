@@ -57,4 +57,3 @@ The journal keeps a bounded replay window; a client behind it gets a `log_reset`
 | `PICO_HOST_DB` | SQLite path; its directory also holds HTML exports. Required. |
 | `PICO_WORKSPACES_DIR` | Root the directory picker starts from. Required. |
 | `PICO_HOST_INSECURE_NO_AUTH` | `=1` disables the identity check. Local dev only. |
-| `PICO_HOST_OTEL` | `=1` prints tracing spans to the console. |

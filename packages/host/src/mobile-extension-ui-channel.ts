@@ -1,4 +1,4 @@
-import { v7 as randomUUIDv7 } from "uuid";
+import { randomUUIDv7 } from "node:crypto";
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { ExtensionUiRequest, ExtensionUiResponseValue } from "@pico/protocol";
 

@@ -1,16 +1,9 @@
-import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ImageContent, TextContent, ThinkingContent, ToolCall } from "@earendil-works/pi-ai";
 import { hasToolDetails, type ToolResultContent } from "@pico/protocol";
 
 type ToolResultContentBlock = TextContent | ImageContent;
 type DisplayContentBlock = ToolResultContentBlock | ThinkingContent | ToolCall;
 type DisplayContent = string | readonly DisplayContentBlock[];
-
-export type ProjectedToolResult = {
-  text: string;
-  content?: ToolResultContent[];
-  details?: unknown;
-};
 
 const toProtocolContent = (part: ToolResultContentBlock): ToolResultContent => {
   if (part.type === "text") return { type: "text", text: part.text };
@@ -35,19 +28,13 @@ export const textFromContent = (content: DisplayContent): string => {
   return content.map(displayContentBlock).filter(Boolean).join(" ");
 };
 
-export const projectToolResultContent = (
-  content: readonly ToolResultContentBlock[],
-): ToolResultContent[] | undefined => {
-  const projected = content.map(toProtocolContent);
-  return projected.length > 0 ? projected : undefined;
-};
-
-export const projectToolResult = (result: AgentToolResult<unknown>): ProjectedToolResult => {
-  const content = projectToolResultContent(result.content);
-
+// Wire fields for a tool's output. The text goes once: as text content when
+// there is any (what the app renders), otherwise as the plain `result`.
+export const toolResultFields = (content: readonly ToolResultContentBlock[], details?: unknown) => {
+  const resultContent = content.map(toProtocolContent);
   return {
-    text: textFromContent(result.content),
-    ...(content ? { content } : {}),
-    ...(hasToolDetails(result.details) ? { details: result.details } : {}),
+    ...(resultContent.some((part) => part.type === "text") ? {} : { result: textFromContent(content) }),
+    ...(resultContent.length > 0 ? { resultContent } : {}),
+    ...(hasToolDetails(details) ? { details } : {}),
   };
 };

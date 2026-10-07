@@ -1,7 +1,7 @@
 import { dirname, isAbsolute, join, relative, resolve as resolvePath } from "node:path";
-import { FileSystem } from "@effect/platform";
+import * as FileSystem from "@effect/platform/FileSystem";
 import type { PlatformError } from "@effect/platform/Error";
-import { Effect } from "effect";
+import * as Effect from "effect/Effect";
 import type { FsListing } from "@pico/protocol/rpc";
 import { WORKSPACES_DIR } from "./config.ts";
 

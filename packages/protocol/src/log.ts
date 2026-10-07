@@ -71,7 +71,7 @@ function finalizeAssistant(message: Mutable<AssistantMessage>, meta: AssistantEn
 }
 
 interface ToolResultLike {
-  result: string;
+  result?: string;
   resultContent?: readonly ToolResultContent[];
   details?: unknown;
   status: "ok" | "error";
@@ -80,12 +80,18 @@ interface ToolResultLike {
 
 function applyToolResult(entry: Mutable<ToolCallMessage>, data: ToolResultLike): void {
   entry.status = data.status;
-  entry.result = data.result;
+  entry.durationMs = data.durationMs;
+  setToolOutput(entry, data);
+}
+
+// Each update carries the whole output so far, so it replaces the previous one.
+function setToolOutput(entry: Mutable<ToolCallMessage>, data: Omit<ToolResultLike, "status" | "durationMs">): void {
+  if (data.result !== undefined) entry.result = data.result;
+  else delete entry.result;
   if (data.resultContent) entry.resultContent = [...data.resultContent];
   else delete entry.resultContent;
   if (hasToolDetails(data.details)) entry.details = data.details;
   else delete entry.details;
-  entry.durationMs = data.durationMs;
 }
 
 function applyCompaction(acc: LogAccumulator, entry: CompactionEntry): void {
@@ -159,10 +165,7 @@ export function reduceLog(acc: LogAccumulator, event: WireEvent, now: number): b
     case "tool_update": {
       const entry = findLogEntry(acc, event.id);
       if (entry?.kind !== "tool_call") return false;
-      entry.result = event.result;
-      if (event.resultContent) entry.resultContent = [...event.resultContent];
-      if (hasToolDetails(event.details)) entry.details = event.details;
-      else delete entry.details;
+      setToolOutput(entry, event);
       return true;
     }
 

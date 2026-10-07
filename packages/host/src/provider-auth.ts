@@ -1,5 +1,7 @@
-import { v7 as randomUUIDv7 } from "uuid";
-import { Context, Effect, Layer } from "effect";
+import { randomUUIDv7 } from "node:crypto";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import type { AuthEvent, AuthInteraction, AuthPrompt } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AuthLoginJob, AuthProvider, AuthProviders } from "@pico/protocol";

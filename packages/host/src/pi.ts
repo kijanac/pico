@@ -1,47 +1,39 @@
+import * as Context from "effect/Context";
+import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
+import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import {
-  Context,
-  Data,
-  Effect,
-  Layer,
-  Option,
-  Queue,
-  Schema,
-  Stream,
-} from "effect";
-import {
-  createAgentSession,
+  createAgentSessionFromServices,
   createAgentSessionServices,
   ModelRuntime,
   SessionManager as PiSessionManager,
   type AgentSession,
-  type AgentSessionServices,
   type AgentSessionEvent,
   type SessionEntry,
   type SessionStats as PiSdkSessionStats,
 } from "@earendil-works/pi-coding-agent";
 import type { Api, AssistantMessage as PiAssistantMessage, ImageContent as PiImageContent, Model, TextContent } from "@earendil-works/pi-ai";
-import { v7 as randomUUIDv7 } from "uuid";
-import { join, resolve } from "node:path";
-import { FileSystem } from "@effect/platform";
+import { randomUUIDv7 } from "node:crypto";
+import { join } from "node:path";
+import * as FileSystem from "@effect/platform/FileSystem";
 import {
   BashToolArgs,
   CustomToolArgs,
   type Commands,
-  type CompactionEntry as ProtocolCompactionEntry,
   type ImageContent,
   EditToolArgs,
   type LogEntry,
   ReadToolArgs,
   WriteToolArgs,
-  type ExtensionUiRequest,
   type ExtensionUiResponseValue,
-  type HostErrorCode,
   type SendMode,
   type SessionControls,
-  type ToolResultContent,
   type SessionMeta,
   type SessionStats,
-  type SessionStatus,
   type SessionTree,
   type StopReason,
   type ToolCallMessage,
@@ -52,64 +44,18 @@ import { emptyLog, reconcileOrphanedToolCalls, reduceLog } from "@pico/protocol/
 import { SessionNotFound } from "./errors.ts";
 import { HOST_DATA_DIR, PI_EPHEMERAL } from "./config.ts";
 import { createMobileExtensionUiChannel } from "./mobile-extension-ui-channel.ts";
-import { projectToolResult, projectToolResultContent, textFromContent } from "./tool-result-projection.ts";
+import { textFromContent, toolResultFields } from "./tool-result-projection.ts";
 
 
 export type SdkQueueState = Pick<Extract<AgentSessionEvent, { type: "queue_update" }>, "steering" | "followUp">;
 
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+// The wire events this adapter emits, before the session journal assigns seq.
+// The session itself produces hello and user messages; queue carries pi's raw state.
 export type PiEmission =
-  | { t: "log_reset"; entries: LogEntry[] }
-  | { t: "assistant_delta"; id: string; text: string }
-  | {
-      t: "assistant_end";
-      id: string;
-      at: number;
-      text: string;
-      stopReason?:
-        | "stop"
-        | "length"
-        | "toolUse"
-        | "error"
-        | "aborted";
-      errorMessage?: string;
-      errorCode?: HostErrorCode;
-      usage?: PiAssistantMessage["usage"];
-    }
-  | { t: "tool_call"; entry: ToolCallMessage }
-  | {
-      t: "tool_update";
-      id: string;
-      result: string;
-      resultContent?: ToolResultContent[];
-      details?: unknown;
-    }
-  | {
-      t: "tool_result";
-      id: string;
-      result: string;
-      resultContent?: ToolResultContent[];
-      details?: unknown;
-      status: "ok" | "error";
-      durationMs: number;
-    }
-  | { t: "compaction"; entry: ProtocolCompactionEntry }
-  | { t: "status"; status: SessionStatus }
-  | ({ t: "queue" } & SdkQueueState)
-  | { t: "cost"; tokensIn: number; tokensOut: number; costUsd: number }
-  | {
-      t: "auto_retry_start";
-      attempt: number;
-      maxAttempts: number;
-      delayMs: number;
-      errorMessage: string;
-    }
-  | {
-      t: "auto_retry_end";
-      success: boolean;
-      attempt: number;
-      finalError?: string;
-    }
-  | { t: "extension_ui_request"; request: ExtensionUiRequest };
+  | DistributiveOmit<Exclude<WireEvent, { t: "hello" | "user_message" | "user_message_removed" | "queue" }>, "seq">
+  | ({ t: "queue" } & SdkQueueState);
 
 export class PiError extends Data.TaggedError("PiError")<{
   readonly message: string;
@@ -151,7 +97,6 @@ export interface PiSession {
   readonly compact: (instructions?: string) => Effect.Effect<void, PiError>;
   readonly exportHtml: () => Effect.Effect<ExportedHtml, PiError>;
   readonly listCommands: () => Effect.Effect<Commands, PiError>;
-  readonly getQueue: () => Effect.Effect<SdkQueueState, PiError>;
   readonly clearQueue: () => Effect.Effect<SdkQueueState, PiError>;
   readonly getSettings: () => Effect.Effect<SessionControls, PiError>;
   readonly patchSession: (patch: { title?: string }) => Effect.Effect<void, PiError>;
@@ -180,7 +125,6 @@ export class PiClient extends Context.Tag("PiClient")<
 const EXPORT_DIR = join(HOST_DATA_DIR, "exports");
 const EXPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 let modelRuntimePromise: Promise<ModelRuntime> | undefined;
-const servicesByCwd = new Map<string, Promise<AgentSessionServices>>();
 
 // A failed create isn't cached, so the next caller retries.
 export const getAgentModelRuntime = (): Promise<ModelRuntime> =>
@@ -189,15 +133,12 @@ export const getAgentModelRuntime = (): Promise<ModelRuntime> =>
     throw error;
   });
 
-export const getAgentServices = (cwd: string): Promise<AgentSessionServices> => {
-  const key = resolve(cwd);
-  const existing = servicesByCwd.get(key);
-  if (existing) return existing;
-  const created = getAgentModelRuntime().then((modelRuntime) =>
-    createAgentSessionServices({ cwd: key, modelRuntime }),
-  );
-  servicesByCwd.set(key, created);
-  return created;
+// Same order as pi's CLI: the cwd's services (settings, resources, extensions
+// and any providers they register), then the session from them.
+const openAgentSession = async (cwd: string, sessionManager: PiSessionManager): Promise<AgentSession> => {
+  const services = await createAgentSessionServices({ cwd, modelRuntime: await getAgentModelRuntime() });
+  const { session } = await createAgentSessionFromServices({ services, sessionManager });
+  return session;
 };
 
 const safeFilenamePart = (value: string) =>
@@ -528,14 +469,11 @@ const branchToWireEvents = (piSession: AgentSession): WireEvent[] => {
     }
 
     if (message.role === "toolResult") {
-      const resultContent = projectToolResultContent(message.content);
       events.push({
         t: "tool_result",
         seq: 0,
         id: message.toolCallId,
-        result: textFromContent(message.content),
-        ...(resultContent ? { resultContent } : {}),
-        ...("details" in message && message.details !== undefined ? { details: message.details } : {}),
+        ...toolResultFields(message.content, "details" in message ? message.details : undefined),
         status: message.isError ? "error" : "ok",
         durationMs: 0,
       });
@@ -559,6 +497,7 @@ const logEntriesFromCurrentBranch = (piSession: AgentSession): LogEntry[] => {
 };
 
 const DELTA_COALESCE_MS = 75;
+const TOOL_UPDATE_COALESCE_MS = 250;
 
 const wirePiSession = (
   piSession: AgentSession,
@@ -568,36 +507,41 @@ const wirePiSession = (
   Effect.gen(function* () {
     const q = yield* Queue.unbounded<PiEmission>();
 
-    // Coalesce per-token deltas into ~75ms chunks: one persisted event and WS
-    // frame per chunk instead of per token. Every other emission flushes first
-    // to preserve log order.
-    let pendingDelta: { id: string; text: string } | null = null;
-    let deltaTimer: ReturnType<typeof setTimeout> | null = null;
+    // Coalesce streaming emissions: per-token deltas into ~75ms chunks, and tool
+    // updates (each carries the whole output so far) to the newest every
+    // ~250ms. One persisted event and WS frame per chunk; every other emission
+    // flushes first to preserve log order.
+    type Coalesced = Extract<PiEmission, { t: "assistant_delta" | "tool_update" }>;
+    let pending: Coalesced | null = null;
+    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const flushDelta = () => {
-      if (deltaTimer) {
-        clearTimeout(deltaTimer);
-        deltaTimer = null;
+    const flushPending = () => {
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        pendingTimer = null;
       }
-      if (!pendingDelta) return;
-      const delta = pendingDelta;
-      pendingDelta = null;
-      Queue.unsafeOffer(q, { t: "assistant_delta", id: delta.id, text: delta.text });
+      if (pending) Queue.unsafeOffer(q, pending);
+      pending = null;
     };
 
     const offer = (emission: PiEmission) => {
-      if (emission.t === "assistant_delta") {
-        if (pendingDelta?.id === emission.id) {
-          pendingDelta.text += emission.text;
-        } else {
-          flushDelta();
-          pendingDelta = { id: emission.id, text: emission.text };
-        }
-        deltaTimer ??= setTimeout(flushDelta, DELTA_COALESCE_MS).unref();
+      if (emission.t !== "assistant_delta" && emission.t !== "tool_update") {
+        flushPending();
+        Queue.unsafeOffer(q, emission);
         return;
       }
-      flushDelta();
-      Queue.unsafeOffer(q, emission);
+      if (pending?.t !== emission.t || pending.id !== emission.id) {
+        flushPending();
+        pending = emission;
+      } else if (pending.t === "assistant_delta" && emission.t === "assistant_delta") {
+        pending = { ...pending, text: pending.text + emission.text };
+      } else {
+        pending = emission;
+      }
+      pendingTimer ??= setTimeout(
+        flushPending,
+        emission.t === "assistant_delta" ? DELTA_COALESCE_MS : TOOL_UPDATE_COALESCE_MS,
+      ).unref();
     };
 
     const extensionUi = createMobileExtensionUiChannel((request) => {
@@ -680,14 +624,10 @@ const wirePiSession = (
         }
 
         case "tool_execution_update": {
-          const result = projectToolResult(event.partialResult);
-
           offer({
             t: "tool_update",
             id: event.toolCallId,
-            result: result.text,
-            ...(result.content ? { resultContent: result.content } : {}),
-            ...(result.details !== undefined ? { details: result.details } : {}),
+            ...toolResultFields(event.partialResult.content, event.partialResult.details),
           });
           return;
         }
@@ -696,14 +636,10 @@ const wirePiSession = (
           const start = toolStarts.get(event.toolCallId);
           toolStarts.delete(event.toolCallId);
 
-          const result = projectToolResult(event.result);
-
           offer({
             t: "tool_result",
             id: event.toolCallId,
-            result: result.text,
-            ...(result.content ? { resultContent: result.content } : {}),
-            ...(result.details !== undefined ? { details: result.details } : {}),
+            ...toolResultFields(event.result.content, event.result.details),
             status: event.isError ? "error" : "ok",
             durationMs: start ? Date.now() - start.startedAt : 0,
           });
@@ -957,11 +893,6 @@ const wirePiSession = (
             takesArgs: true,
           })),
         })),
-      getQueue: () =>
-        Effect.sync(() => ({
-          steering: [...piSession.getSteeringMessages()],
-          followUp: [...piSession.getFollowUpMessages()],
-        })),
       clearQueue: () => Effect.sync(() => piSession.clearQueue()),
       getSettings: () => Effect.sync(() => sessionSettings(piSession)),
       patchSession: (patch) =>
@@ -986,7 +917,7 @@ const wirePiSession = (
         }),
       close: () =>
         Effect.sync(() => {
-          flushDelta();
+          flushPending();
           extensionUi.close();
           unsub();
           piSession.dispose();
@@ -995,7 +926,6 @@ const wirePiSession = (
   });
 
 const makeLiveSession = (
-  services: AgentSessionServices,
   opts: {
     cwd: string;
     title: string;
@@ -1005,23 +935,12 @@ const makeLiveSession = (
   Effect.gen(function* () {
     const piSession = yield* Effect.tryPromise<AgentSession, PiError>({
       try: async () => {
-        const sessionManager =
-          PI_EPHEMERAL
-            ? PiSessionManager.inMemory(opts.cwd)
-            : PiSessionManager.create(opts.cwd);
-
-        // createAgentSession (not …FromServices) discovers + loads the host's
-        // pi extensions; their tools/commands/ctx.ui then pass through to the
-        // phone. Reuse our cached registry/auth so we don't rebuild them.
-        const { session } = await createAgentSession({
-          cwd: opts.cwd,
-          modelRuntime: services.modelRuntime,
-          sessionManager,
-        });
-
-        return session;
+        const sessionManager = PI_EPHEMERAL
+          ? PiSessionManager.inMemory(opts.cwd)
+          : PiSessionManager.create(opts.cwd);
+        return openAgentSession(opts.cwd, sessionManager);
       },
-      catch: (e) => new PiError({ message: `createAgentSession failed: ${String(e)}`, cause: e }),
+      catch: (e) => new PiError({ message: `create session failed: ${String(e)}`, cause: e }),
     });
 
     const meta: SessionMeta = {
@@ -1039,7 +958,6 @@ const makeLiveSession = (
   });
 
 const makeResumedSession = (
-  services: AgentSessionServices,
   storedRecord: import("./session-record.ts").SessionRecord,
   fs: FileSystem.FileSystem,
 ): Effect.Effect<PiSession, PiError | SessionNotFound> =>
@@ -1049,21 +967,10 @@ const makeResumedSession = (
       PiError | SessionNotFound
     >({
       try: async () => {
-        const infos = await PiSessionManager.list(storedRecord.cwd);
-        const found = infos.find((i) => i.id === storedRecord.id);
-        if (!found) {
-          throw new SessionNotFound({ id: storedRecord.id });
-        }
-
-        const sessionManager = PiSessionManager.open(found.path);
-
-        const { session } = await createAgentSession({
-          cwd: storedRecord.cwd,
-          modelRuntime: services.modelRuntime,
-          sessionManager,
-        });
-
-        return session;
+        // findById only reads headers; list() parses every transcript in the cwd.
+        const path = PiSessionManager.findById(storedRecord.cwd, storedRecord.id);
+        if (!path) throw new SessionNotFound({ id: storedRecord.id });
+        return openAgentSession(storedRecord.cwd, PiSessionManager.open(path));
       },
       catch: (e) => {
         if (e instanceof SessionNotFound) return e;
@@ -1086,20 +993,12 @@ const makeResumedSession = (
   });
 
 
-const loadServices = (cwd: string) =>
-  Effect.tryPromise({
-    try: () => getAgentServices(cwd),
-    catch: (e) => new PiError({ message: `createAgentSessionServices failed: ${String(e)}`, cause: e }),
-  });
-
 export const PiClientLive = Layer.effect(
   PiClient,
   Effect.map(FileSystem.FileSystem, (fs) =>
     PiClient.of({
-      create: (opts) =>
-        Effect.flatMap(loadServices(opts.cwd), (services) => makeLiveSession(services, opts, fs)),
-      resume: (storedMeta) =>
-        Effect.flatMap(loadServices(storedMeta.cwd), (services) => makeResumedSession(services, storedMeta, fs)),
+      create: (opts) => makeLiveSession(opts, fs),
+      resume: (storedRecord) => makeResumedSession(storedRecord, fs),
     }),
   ),
 );

@@ -1,5 +1,9 @@
-import { FileSystem } from "@effect/platform";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import * as FileSystem from "@effect/platform/FileSystem";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { dirname } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import {
@@ -36,7 +40,6 @@ export class Store extends Context.Tag("Store")<
 
     readonly prunedThrough: (sessionId: string) => Effect.Effect<number>;
 
-    readonly close: () => Effect.Effect<void>;
   }
 >() {}
 
@@ -64,8 +67,8 @@ const SCHEMA = `
     PRIMARY KEY (session_id, seq)
   ) STRICT;
 
-  CREATE INDEX IF NOT EXISTS idx_events_session_seq
-    ON events(session_id, seq);
+  -- Duplicated the primary key; dropped from databases that still have it.
+  DROP INDEX IF EXISTS idx_events_session_seq;
 
   CREATE TABLE IF NOT EXISTS session_prune (
     session_id     TEXT PRIMARY KEY,
@@ -113,11 +116,10 @@ const make = (dbPath: string) =>
     const fs = yield* FileSystem.FileSystem;
     yield* fs.makeDirectory(dirname(dbPath), { recursive: true });
 
-    const db = yield* Effect.sync(() => {
+    const db = yield* Effect.acquireRelease(Effect.sync(() => {
       const d = new DatabaseSync(dbPath);
       d.exec("PRAGMA journal_mode = WAL");
       d.exec("PRAGMA synchronous = NORMAL");
-      d.exec("PRAGMA foreign_keys = ON");
       // Checkpoint WAL every ~2MB to keep the side file small.
       d.exec("PRAGMA wal_autocheckpoint = 500");
 
@@ -129,7 +131,7 @@ const make = (dbPath: string) =>
       d.exec("UPDATE sessions SET status = 'idle' WHERE status IN ('thinking', 'tool', 'waiting')");
 
       return d;
-    });
+    }), (d) => Effect.sync(() => d.close()));
 
     const stmtUpsertSession: StatementSync = db.prepare(`
       INSERT OR REPLACE INTO sessions
@@ -289,9 +291,7 @@ const make = (dbPath: string) =>
             | undefined;
           return row?.pruned_through ?? 0;
         }),
-
-      close: () => Effect.sync(() => db.close()),
     });
   });
 
-export const StoreLive = (dbPath: string) => Layer.effect(Store, make(dbPath));
+export const StoreLive = (dbPath: string) => Layer.scoped(Store, make(dbPath));

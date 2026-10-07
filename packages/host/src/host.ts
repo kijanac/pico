@@ -1,6 +1,9 @@
-import { Effect, Layer } from "effect";
-import { HttpApiBuilder, HttpServer } from "@effect/platform";
-import { NodeContext, NodeHttpServer } from "@effect/platform-node";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as HttpApiBuilder from "@effect/platform/HttpApiBuilder";
+import * as HttpServer from "@effect/platform/HttpServer";
+import * as NodeContext from "@effect/platform-node/NodeContext";
+import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { createServer } from "node:http";
 import { DB_PATH, HOST_INSECURE_NO_AUTH, USE_MOCK } from "./config.ts";
 import { AppLayer } from "./runtime.ts";
@@ -11,7 +14,6 @@ import { compress } from "./http/compression.ts";
 import { RawRoutesLive } from "./http/routes.ts";
 import { RpcRoutesLive, SessionWsRoutesLive } from "./http/rpc.ts";
 import { WebRoutesLive } from "./http/web.ts";
-import { TracingLive } from "./tracing.ts";
 
 // Logs once the server is listening, and again when it shuts down.
 const LifecycleLogLive = Layer.scopedDiscard(
@@ -44,5 +46,4 @@ export const hostLayer = (port: number) =>
     Layer.provideMerge(NodeHttpServer.layer(createServer, { port, host: "127.0.0.1" })),
     Layer.provide(AppLayer),
     Layer.provide(NodeContext.layer),
-    Layer.provide(TracingLive),
   );

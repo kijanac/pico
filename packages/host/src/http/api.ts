@@ -1,4 +1,7 @@
-import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
+import * as HttpApi from "@effect/platform/HttpApi";
+import * as HttpApiEndpoint from "@effect/platform/HttpApiEndpoint";
+import * as HttpApiGroup from "@effect/platform/HttpApiGroup";
+import * as HttpApiSchema from "@effect/platform/HttpApiSchema";
 
 const SystemGroup = HttpApiGroup.make("system").add(
   HttpApiEndpoint.get("healthz", "/healthz").addSuccess(HttpApiSchema.Text()),

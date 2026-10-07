@@ -1,5 +1,8 @@
-import { FileSystem, HttpApiBuilder, HttpServerRequest, HttpServerResponse } from "@effect/platform";
-import { Effect } from "effect";
+import * as FileSystem from "@effect/platform/FileSystem";
+import * as HttpApiBuilder from "@effect/platform/HttpApiBuilder";
+import * as HttpServerRequest from "@effect/platform/HttpServerRequest";
+import * as HttpServerResponse from "@effect/platform/HttpServerResponse";
+import * as Effect from "effect/Effect";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 

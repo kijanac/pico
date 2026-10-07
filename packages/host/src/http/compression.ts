@@ -1,8 +1,12 @@
 import { Readable } from "node:stream";
 import { promisify } from "node:util";
 import { createGzip, gzip } from "node:zlib";
-import { Headers, HttpApp, HttpServerRequest, HttpServerResponse } from "@effect/platform";
-import { Effect, Stream } from "effect";
+import * as Headers from "@effect/platform/Headers";
+import * as HttpApp from "@effect/platform/HttpApp";
+import * as HttpServerRequest from "@effect/platform/HttpServerRequest";
+import * as HttpServerResponse from "@effect/platform/HttpServerResponse";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 const gzipAsync = promisify(gzip);
 

@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import * as Schema from "effect/Schema";
 import { HostErrorCodeSchema } from "./errors.ts";
 export { HostErrorCodeSchema, isHostErrorCode } from "./errors.ts";
 export type { HostErrorCode } from "./errors.ts";
@@ -554,7 +554,7 @@ export const WireEvent = Schema.Union(
     t: Schema.Literal("tool_update"),
     ...Seq,
     id: Schema.String,
-    result: Schema.String,
+    result: Schema.optional(Schema.String),
     resultContent: Schema.optional(Schema.Array(ToolResultContent)),
     details: Schema.optional(Schema.Unknown),
   }),
@@ -562,7 +562,7 @@ export const WireEvent = Schema.Union(
     t: Schema.Literal("tool_result"),
     ...Seq,
     id: Schema.String,
-    result: Schema.String,
+    result: Schema.optional(Schema.String),
     resultContent: Schema.optional(Schema.Array(ToolResultContent)),
     details: Schema.optional(Schema.Unknown),
     status: Schema.Literal("ok", "error"),

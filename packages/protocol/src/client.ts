@@ -1,6 +1,8 @@
-import { FetchHttpClient, Socket } from "@effect/platform";
-import { RpcClient, RpcSerialization } from "@effect/rpc";
-import { Layer } from "effect";
+import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
+import * as Socket from "@effect/platform/Socket";
+import * as RpcClient from "@effect/rpc/RpcClient";
+import * as RpcSerialization from "@effect/rpc/RpcSerialization";
+import * as Layer from "effect/Layer";
 
 const stripTrailingSlash = (url: string) => url.replace(/\/+$/, "");
 

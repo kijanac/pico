@@ -1,6 +1,10 @@
-import { HttpApiBuilder } from "@effect/platform";
-import { RpcSerialization, RpcServer } from "@effect/rpc";
-import { Context, Effect, Layer, Stream } from "effect";
+import * as HttpApiBuilder from "@effect/platform/HttpApiBuilder";
+import * as RpcSerialization from "@effect/rpc/RpcSerialization";
+import * as RpcServer from "@effect/rpc/RpcServer";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import {
   PicoRpc,
   PicoSessionRpc,

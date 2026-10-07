@@ -1,5 +1,11 @@
-import { v7 as randomUUIDv7 } from "uuid";
-import { Effect, Fiber, Layer, Queue, Random, Ref, Stream } from "effect";
+import { randomUUIDv7 } from "node:crypto";
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
+import * as Random from "effect/Random";
+import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
 import type { SessionControls, SessionMeta } from "@pico/protocol";
 import { SessionNotFound } from "./errors.ts";
 import {
@@ -190,7 +196,6 @@ const makeMockSession = (opts: {
         });
       },
       listCommands: () => Effect.succeed({ builtins: [], prompts: [], skills: [], extensions: [] }),
-      getQueue: () => Effect.succeed({ steering: [], followUp: [] }),
       clearQueue: () => Effect.succeed({ steering: [], followUp: [] }),
       patchSession: () => Effect.void,
       getSettings: () => Effect.succeed(mockSettings()),

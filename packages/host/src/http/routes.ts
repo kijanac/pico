@@ -1,5 +1,5 @@
-import { HttpApiBuilder } from "@effect/platform";
-import { Effect } from "effect";
+import * as HttpApiBuilder from "@effect/platform/HttpApiBuilder";
+import * as Effect from "effect/Effect";
 import { SessionManager } from "../session.ts";
 import { exportRoute } from "./session-actions.ts";
 

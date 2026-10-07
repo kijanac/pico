@@ -1,5 +1,7 @@
-import { HttpRouter, HttpServerResponse } from "@effect/platform";
-import { Context, Effect } from "effect";
+import * as HttpRouter from "@effect/platform/HttpRouter";
+import * as HttpServerResponse from "@effect/platform/HttpServerResponse";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
 import { SessionManager } from "../session.ts";
 
 // manager is a captured service whose methods need no further Effect context.

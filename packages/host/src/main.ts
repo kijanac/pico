@@ -1,5 +1,5 @@
-import { NodeRuntime } from "@effect/platform-node";
-import { Layer } from "effect";
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as Layer from "effect/Layer";
 import { hostLayer } from "./host.ts";
 
 // runMain interrupts on SIGINT/SIGTERM (running every finalizer) and exits

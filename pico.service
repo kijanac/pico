@@ -3,7 +3,9 @@ Description=Pico host
 
 [Service]
 WorkingDirectory=%h/work/pico
-ExecStart=%h/.local/share/mise/installs/node/26/bin/node packages/host/dist/main.js
+# A small young generation keeps the heap ~50 MB smaller on a box shared with
+# agents, for slightly more frequent minor GCs.
+ExecStart=%h/.local/share/mise/installs/node/26/bin/node --max-semi-space-size=4 packages/host/dist/main.js
 Restart=always
 RestartSec=3
 Environment=NODE_ENV=production

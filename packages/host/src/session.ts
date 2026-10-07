@@ -1,19 +1,17 @@
-import { v7 as randomUUIDv7 } from "uuid";
-import {
-  Cause,
-  Context,
-  Effect,
-  Deferred,
-  Layer,
-  PubSub,
-  Ref,
-  Runtime,
-  Stream,
-  Fiber,
-  HashMap,
-  Option,
-  pipe,
-} from "effect";
+import { randomUUIDv7 } from "node:crypto";
+import * as Cause from "effect/Cause";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
+import * as Ref from "effect/Ref";
+import * as Runtime from "effect/Runtime";
+import * as Stream from "effect/Stream";
+import * as Fiber from "effect/Fiber";
+import * as HashMap from "effect/HashMap";
+import * as Option from "effect/Option";
+import { pipe } from "effect/Function";
 import { PiClient, type PiSession, type PiEmission, type ExportedHtml, PiError } from "./pi.ts";
 import { parseWireEvent } from "@pico/protocol";
 import { emptyLog, reconcileOrphanedToolCalls, reduceLog } from "@pico/protocol/log";
@@ -131,7 +129,6 @@ export class SessionManager extends Context.Tag("SessionManager")<
       title: string;
     }) => Effect.Effect<SessionMeta, PiError>;
     readonly list: (filter?: { archived?: boolean }) => Effect.Effect<SessionMeta[]>;
-    readonly get: (id: string) => Effect.Effect<Option.Option<SessionMeta>>;
     readonly subscribe: (
       id: string,
       fromCursor: number,
@@ -576,7 +573,6 @@ const make = Effect.gen(function* () {
   const list = (filter?: { archived?: boolean }) =>
     Effect.map(store.listSessions(filter), (records) => records.map(toSessionMeta));
 
-  const get = (id: string) => Effect.map(store.getSession(id), Option.map(toSessionMeta));
 
   const subscribe = (id: string, fromCursor: number) =>
     Stream.unwrapScoped(
@@ -852,6 +848,8 @@ const make = Effect.gen(function* () {
         yield* clearIdleEviction(live.value);
         yield* Fiber.interrupt(live.value.pumpFiber);
         yield* live.value.pi.close();
+        // Ends open event streams so subscribers don't wait on a deleted session.
+        yield* PubSub.shutdown(live.value.pubsub);
         yield* Ref.update(sessions, (m) => HashMap.remove(m, id));
       }
       yield* store.deleteSession(id);
@@ -873,7 +871,6 @@ const make = Effect.gen(function* () {
   return SessionManager.of({
     create,
     list,
-    get,
     subscribe,
     send,
     interrupt,

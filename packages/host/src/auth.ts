@@ -1,4 +1,4 @@
-import type { Headers } from "@effect/platform";
+import type * as Headers from "@effect/platform/Headers";
 import type { HostErrorCode } from "@pico/protocol";
 import { HOST_INSECURE_NO_AUTH, OWNER_LOGIN } from "./config.ts";
 
