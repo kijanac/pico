@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as Headers from "@effect/platform/Headers";
 import { describe, expect, it, vi } from "vitest";
 
 type AuthModule = typeof import("../src/auth.ts");
@@ -21,13 +22,13 @@ async function freshAuth(opts: { insecure?: boolean; owner?: string } = {}): Pro
 describe("a host admits only its owner's Tailscale identity", () => {
   it("rejects a request that carries no identity", async () => {
     const auth = await freshAuth({ owner: "owner@example.test" });
-    expect(auth.authorizeHeaders({})).toEqual({ ok: false, status: 401, error: "missing_tailscale_identity" });
+    expect(auth.authorizeHeaders(Headers.fromInput({}))).toEqual({ ok: false, status: 401, error: "missing_tailscale_identity" });
   });
 
   it("admits the owner, ignoring case and surrounding whitespace", async () => {
     const auth = await freshAuth({ owner: " Owner@Example.Test " });
-    expect(auth.authorizeHeaders({ "tailscale-user-login": "owner@example.test" })).toEqual({ ok: true });
-    expect(auth.authorizeHeaders({ "tailscale-user-login": " OWNER@example.test" })).toEqual({ ok: true });
+    expect(auth.authorizeHeaders(Headers.fromInput({ "tailscale-user-login": "owner@example.test" }))).toEqual({ ok: true });
+    expect(auth.authorizeHeaders(Headers.fromInput({ "tailscale-user-login": " OWNER@example.test" }))).toEqual({ ok: true });
   });
 
   it("rejects every other identity", async () => {
@@ -41,9 +42,9 @@ describe("a host admits only its owner's Tailscale identity", () => {
       "ówner@example.test",
     ];
     for (const login of impostors) {
-      expect(auth.authorizeHeaders({ "tailscale-user-login": login }).ok).toBe(false);
+      expect(auth.authorizeHeaders(Headers.fromInput({ "tailscale-user-login": login })).ok).toBe(false);
     }
-    expect(auth.authorizeHeaders({ "tailscale-user-login": "bob@example.test" })).toEqual({
+    expect(auth.authorizeHeaders(Headers.fromInput({ "tailscale-user-login": "bob@example.test" }))).toEqual({
       ok: false,
       status: 403,
       error: "tailscale_user_not_pico_host_owner",
@@ -53,6 +54,6 @@ describe("a host admits only its owner's Tailscale identity", () => {
   it("refuses to start without an owner unless auth is explicitly off", async () => {
     await expect(freshAuth()).rejects.toThrow("PICO_OWNER is required");
     const auth = await freshAuth({ insecure: true });
-    expect(auth.authorizeHeaders({})).toEqual({ ok: true });
+    expect(auth.authorizeHeaders(Headers.fromInput({}))).toEqual({ ok: true });
   });
 });
