@@ -22,7 +22,7 @@
     <span class="label mb-1.5 block">optional instructions</span>
     <Textarea bind:value={instructions} rows={4} placeholder="Preserve decisions, TODOs, file paths, and open questions…" class="type-copy" />
   </label>
-  <Button type="button" variant="default" onclick={compact} class="w-full bg-[color:var(--color-accent)] text-[color:var(--color-bg)] hover:bg-[color:var(--color-accent)] active:opacity-80">
+  <Button type="button" variant="default" onclick={compact} class="w-full bg-[color:var(--color-accent)] text-[color:var(--color-on-accent)] hover:bg-[color:var(--color-accent)] active:opacity-80">
     compact now
   </Button>
 </div>

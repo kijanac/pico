@@ -102,10 +102,10 @@
   <div>
     <div class="label mb-1.5">{label}</div>
     <div class="grid grid-cols-2 gap-1 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-1">
-      <button type="button" disabled={disabled || !checked} onclick={() => onChange(false)} class={!checked ? "type-meta rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] px-2 py-2 font-medium text-[color:var(--color-bg)]" : "type-meta rounded-[var(--radius-sm)] px-2 py-2 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)] disabled:opacity-70"}>
+      <button type="button" disabled={disabled || !checked} onclick={() => onChange(false)} class={!checked ? "type-meta rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] px-2 py-2 font-medium text-[color:var(--color-on-accent)]" : "type-meta rounded-[var(--radius-sm)] px-2 py-2 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)] disabled:opacity-70"}>
         off
       </button>
-      <button type="button" disabled={disabled || checked} onclick={() => onChange(true)} class={checked ? "type-meta rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] px-2 py-2 font-medium text-[color:var(--color-bg)]" : "type-meta rounded-[var(--radius-sm)] px-2 py-2 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)] disabled:opacity-70"}>
+      <button type="button" disabled={disabled || checked} onclick={() => onChange(true)} class={checked ? "type-meta rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] px-2 py-2 font-medium text-[color:var(--color-on-accent)]" : "type-meta rounded-[var(--radius-sm)] px-2 py-2 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)] disabled:opacity-70"}>
         on
       </button>
     </div>
@@ -117,7 +117,7 @@
     <div class="label mb-1.5">{label}</div>
     <div class="grid grid-cols-2 gap-1 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-1">
       {#each options as option (option.value)}
-        <button type="button" disabled={disabled || option.disabled || option.value === value} onclick={() => onChange(option.value)} class={option.value === value ? "type-meta rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] px-2 py-2 font-medium text-[color:var(--color-bg)]" : "type-meta rounded-[var(--radius-sm)] px-2 py-2 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)] disabled:opacity-70"}>
+        <button type="button" disabled={disabled || option.disabled || option.value === value} onclick={() => onChange(option.value)} class={option.value === value ? "type-meta rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] px-2 py-2 font-medium text-[color:var(--color-on-accent)]" : "type-meta rounded-[var(--radius-sm)] px-2 py-2 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)] disabled:opacity-70"}>
           {option.label}
         </button>
       {/each}

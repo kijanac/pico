@@ -6,6 +6,7 @@
   import NewSessionSheet from "@/features/sessions/components/NewSessionSheet.svelte";
   import RenameSheet from "@/features/sessions/components/RenameSheet.svelte";
   import SessionsView from "@/features/sessions/components/SessionsView.svelte";
+  import { hostIssueSummary } from "@/shared/lib/host-issues";
   import { markSessionOpen } from "@/shared/lib/session-open-timing";
   import { Button } from "@/shared/ui/button";
   import * as Dialog from "@/shared/ui/dialog";
@@ -22,10 +23,18 @@
     sessionListState.refresh().catch(() => {});
   });
 
+  // Shown in the sheet, which keeps the folder and title for a retry.
+  let createError = $state<string | null>(null);
+
   async function createSession(input: { cwd: string; title?: string }): Promise<void> {
-    const session = await sessionListState.create(input);
-    newSessionOpen = false;
-    navigateTo(routePaths.session(session.id));
+    createError = null;
+    try {
+      const session = await sessionListState.create(input);
+      newSessionOpen = false;
+      navigateTo(routePaths.session(session.id));
+    } catch (caught) {
+      createError = hostIssueSummary(caught);
+    }
   }
 
   async function renameSession(title: string): Promise<void> {
@@ -71,14 +80,17 @@
   onRefresh={() => sessionListState.refresh()}
   onToggleArchived={() => sessionListState.switchArchivedView(!sessionListState.archivedView)}
   onSettings={() => navigateTo(routePaths.settings)}
-  onNewSession={() => (newSessionOpen = true)}
+  onNewSession={() => {
+    createError = null;
+    newSessionOpen = true;
+  }}
   onOpenSession={openSession}
   onRename={requestRename}
   onToggleArchive={toggleArchive}
   onDelete={requestDelete}
 />
 
-<NewSessionSheet bind:open={newSessionOpen} creating={sessionListState.creating} folders={recentFolders} onCreate={createSession} />
+<NewSessionSheet bind:open={newSessionOpen} creating={sessionListState.creating} error={createError} folders={recentFolders} onCreate={createSession} />
 
 {#if renameTarget}
   <RenameSheet

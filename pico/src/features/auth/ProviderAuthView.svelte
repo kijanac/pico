@@ -97,12 +97,12 @@
       {@render InfoRow("status", job.status)}
 
       {#if job.status === "auth"}
-        <a class="block rounded-[var(--radius-md)] bg-[color:var(--color-accent)] px-3 py-3 text-center font-medium text-[color:var(--color-bg)]" href={job.authUrl} target="_blank" rel="noreferrer">open sign-in page</a>
+        <a class="block rounded-[var(--radius-md)] bg-[color:var(--color-accent)] px-3 py-3 text-center font-medium text-[color:var(--color-on-accent)]" href={job.authUrl} target="_blank" rel="noreferrer">open sign-in page</a>
         {#if job.instructions}
           <p class="type-copy text-[color:var(--color-fg-muted)]">{job.instructions}</p>
         {/if}
       {:else if job.status === "device"}
-        <a class="block rounded-[var(--radius-md)] bg-[color:var(--color-accent)] px-3 py-3 text-center font-medium text-[color:var(--color-bg)]" href={job.verificationUri} target="_blank" rel="noreferrer">open verification page</a>
+        <a class="block rounded-[var(--radius-md)] bg-[color:var(--color-accent)] px-3 py-3 text-center font-medium text-[color:var(--color-on-accent)]" href={job.verificationUri} target="_blank" rel="noreferrer">open verification page</a>
         {@render InfoRow("device code", job.userCode)}
       {:else if job.status === "progress"}
         <p class="type-meta text-[color:var(--color-fg-muted)]">{job.progress}</p>

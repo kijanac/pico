@@ -46,9 +46,12 @@
 
   --color-fg: light-dark(#25120c, #ededed);
   --color-fg-muted: light-dark(rgba(37, 18, 12, 0.66), rgba(237, 237, 237, 0.55));
-  --color-fg-faint: light-dark(rgba(37, 18, 12, 0.42), rgba(237, 237, 237, 0.32));
+  /* Small labels in faint still reach 4.5:1 on the page and on surfaces. */
+  --color-fg-faint: light-dark(rgba(37, 18, 12, 0.62), rgba(237, 237, 237, 0.49));
 
   --color-accent: light-dark(#c76f4a, #d4ff3a);
+  /* Text on the accent: dark brown on terracotta, near-black on lime. */
+  --color-on-accent: light-dark(#25120c, #0a0a0a);
   --color-accent-dim: light-dark(rgba(199, 111, 74, 0.2), rgba(212, 255, 58, 0.18));
 
   --color-danger: light-dark(#b33a34, #ff6b6b);
@@ -64,12 +67,12 @@
   --color-popover: var(--color-surface);
   --color-popover-foreground: var(--color-fg);
   --color-primary: var(--color-accent);
-  --color-primary-foreground: var(--color-bg);
+  --color-primary-foreground: var(--color-on-accent);
   --color-secondary: var(--color-surface);
   --color-secondary-foreground: var(--color-fg);
   --color-muted: var(--color-surface);
   --color-muted-foreground: var(--color-fg-muted);
-  --color-accent-foreground: var(--color-bg);
+  --color-accent-foreground: var(--color-on-accent);
   --color-destructive: var(--color-danger);
   --color-destructive-foreground: var(--color-bg);
   --color-input: var(--color-border);
@@ -121,8 +124,9 @@
   --color-border-strong: light-dark(rgb(40 33 15 / 0.24), rgb(255 240 200 / 0.17));
   --color-fg: light-dark(#1f1b12, #ece7dc);
   --color-fg-muted: light-dark(rgb(31 27 18 / 0.68), rgb(236 231 220 / 0.62));
-  --color-fg-faint: light-dark(rgb(31 27 18 / 0.42), rgb(236 231 220 / 0.36));
+  --color-fg-faint: light-dark(rgb(31 27 18 / 0.63), rgb(236 231 220 / 0.5));
   --color-accent: light-dark(#7d5a00, #d7a512);
+  --color-on-accent: light-dark(#f4f0e6, #0d0c0a);
   --color-accent-dim: light-dark(rgb(125 90 0 / 0.16), rgb(215 165 18 / 0.18));
   --color-code-bg: light-dark(#fbf8f1, #12110e);
   --color-code-fg: light-dark(#1f1b12, #ece7dc);

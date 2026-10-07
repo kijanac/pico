@@ -49,9 +49,7 @@
       <div class="label mb-1.5">{label}</div>
       <div class="space-y-1.5">
         {#each items as item, index (`${index}:${item.text}`)}
-          <div class="type-copy rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[color:var(--color-fg)]">
-            {item.text}
-          </div>
+          <div class="type-copy whitespace-pre-wrap break-words rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-[color:var(--color-fg)]">{item.text}</div>
         {/each}
       </div>
     </div>

@@ -89,21 +89,14 @@ export const sessionListState = {
   async create(input: CreateSessionInput): Promise<SessionMeta> {
     if (creating) throw new Error("session creation already in progress");
     creating = true;
+    // The caller opens the session as soon as it exists; the list catches up
+    // on its own, and a failed refresh there doesn't fail the create.
     try {
-      const result = await runRpc(
-        Effect.gen(function* () {
-          const session = yield* createSessionRequest(input);
-          const list = yield* loadSessionList({ archived: false });
-          return { session, list };
-        }),
-      );
+      const session = await runRpc(createSessionRequest(input));
       archivedView = false;
-      sessionList = [...result.list];
-      issue = null;
-      return result.session;
-    } catch (caught) {
-      await recordError(caught);
-      throw caught;
+      replaceSession(session);
+      void this.refresh();
+      return session;
     } finally {
       creating = false;
     }

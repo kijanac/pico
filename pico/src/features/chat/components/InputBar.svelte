@@ -396,7 +396,7 @@
       {#if queueCount > 0}
         <Button type="button" variant="ghost" size="icon" onclick={() => (queueOpen = true)} class="relative shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Queued messages" title="Queued messages">
           <ListTodo class="size-4" />
-          <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-surface)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[0.625rem] font-medium leading-none text-[color:var(--color-bg)]">
+          <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-surface)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[0.625rem] font-medium leading-none text-[color:var(--color-on-accent)]">
             {queueCount > 99 ? "99+" : queueCount}
           </span>
         </Button>
@@ -414,7 +414,7 @@
         onclick={handleSendClick}
         onpointerdown={handleSendPointerDown}
         disabled={!hasSendable || !canSend}
-        class={`shrink-0 rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)] transition-transform duration-100 active:opacity-80 disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-100 ${holding ? "scale-95" : ""}`}
+        class={`shrink-0 rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] text-[color:var(--color-on-accent)] transition-transform duration-100 active:opacity-80 disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-100 ${holding ? "scale-95" : ""}`}
         aria-label={busy ? "Steer (hold to queue a follow-up)" : "Send"}
         title={hasSendable ? (chatLogState.live.compacting ? "Queue until compaction finishes" : busy ? "Tap to steer · hold to queue a follow-up" : "Send · hold to queue a follow-up") : "Draft a message to send"}
       >

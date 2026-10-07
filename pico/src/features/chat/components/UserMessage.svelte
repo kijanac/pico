@@ -30,7 +30,7 @@
 
 {#snippet MessageBody()}
   {#if text.trim().length > 0}
-    <div>{text}</div>
+    <div class="whitespace-pre-wrap">{text}</div>
   {/if}
   <ImageGrid {images} altPrefix="attached image" class={text.trim().length > 0 ? "mt-2" : ""} />
 {/snippet}

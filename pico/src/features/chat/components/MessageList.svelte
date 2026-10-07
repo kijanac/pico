@@ -100,6 +100,23 @@
     return undefined;
   }
 
+  // Where each turn's copy / branch / details sit: under its final answer, the
+  // message pi ended the turn with (any stop reason but toolUse). When that
+  // message has no text, under the turn's last text before it.
+  const turnEnds = $derived.by(() => {
+    const ends = new Set<string>();
+    let lastText: string | undefined;
+    for (const entry of visibleEntries) {
+      if (entry.kind === "user") lastText = undefined;
+      if (entry.kind !== "assistant" || entry.streaming) continue;
+      if (entry.text.length > 0) lastText = entry.id;
+      if (entry.stopReason === undefined || entry.stopReason === "toolUse") continue;
+      if (lastText) ends.add(lastText);
+      lastText = undefined;
+    }
+    return ends;
+  });
+
   const latestEntryIsCurrentAgentOutput = $derived.by(() => isCurrentAgentOutput(latestEntry));
   const showThinkingIndicator = $derived(activeSessionState.status === "thinking" && !latestEntryIsCurrentAgentOutput);
   // Rows are reused while their entry and key are unchanged: a new row object
@@ -362,7 +379,7 @@
           {:else if row.kind === "user"}
             <UserMessageView text={row.text} images={row.images} queued={row.queued} outbox={row.outbox} {sessionId} />
           {:else if row.entry.kind === "assistant"}
-            <AssistantMessageView msg={row.entry} {sessionId} />
+            <AssistantMessageView msg={row.entry} {sessionId} endsTurn={turnEnds.has(row.entry.id)} />
           {:else if row.entry.kind === "tool_call"}
             <ToolCallView msg={row.entry} />
           {:else if row.entry.kind === "compaction"}

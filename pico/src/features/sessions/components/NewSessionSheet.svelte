@@ -9,11 +9,13 @@
   let {
     open = $bindable(false),
     creating = false,
+    error = null,
     folders = [],
     onCreate,
   }: {
     open: boolean;
     creating?: boolean;
+    error?: string | null;
     // Folders of recent sessions, most recent first.
     folders?: readonly string[];
     onCreate: (opts: { cwd: string; title?: string }) => void;
@@ -101,6 +103,10 @@
           <label class="label mb-1.5 block" for="session_title">title</label>
           <Input id="session_title" type="text" bind:value={title} placeholder="optional" class="h-10" />
         </div>
+
+        {#if error}
+          <p class="type-meta text-[color:var(--color-danger)]" role="alert">{error}</p>
+        {/if}
 
       </div>
 
