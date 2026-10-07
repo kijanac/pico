@@ -12,11 +12,11 @@
   import { getSessionHistory } from "@/features/chat/api";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { markSessionOpen } from "@/shared/lib/session-open-timing";
-  import { runOnHost } from "@/shared/lib/rpc-client";
+  import { runRpc } from "@/shared/lib/rpc-client";
   import { Button } from "@/shared/ui/button";
 
-  let { hostId, sessionId, bottomInset = 0 }: { hostId: string; sessionId: string; bottomInset?: number } = $props();
-  const timingId = $derived(`${hostId}:${sessionId}`);
+  let { sessionId, bottomInset = 0 }: { sessionId: string; bottomInset?: number } = $props();
+  const timingId = $derived(sessionId);
 
   const STICK_THRESHOLD_PX = 64;
   const INITIAL_VISIBLE_ENTRIES = 120;
@@ -214,8 +214,8 @@
       } else {
         const before = chatLogState.more;
         if (!before) return;
-        const page = await runOnHost(hostId, getSessionHistory(sessionId, before, REVEAL_ENTRIES));
-        const prepended = chatLogState.prependHistory(hostId, sessionId, page);
+        const page = await runRpc(getSessionHistory(sessionId, before, REVEAL_ENTRIES));
+        const prepended = chatLogState.prependHistory(sessionId, page);
         expectedEarlierEntryGrowth += prepended;
         visibleCount += prepended;
       }
@@ -337,14 +337,15 @@
     {#if hasEarlierEntries}
       <div bind:this={topSentinel} class="h-px" aria-hidden="true"></div>
     {/if}
-    {#each displayRows as row (row.key)}
-      <div class="msg-cv" data-log-entry-id={row.kind === "thinking" ? undefined : row.entry?.id}>
+    {#each displayRows as row, index (row.key)}
+      <!-- A turn starts with your message; its steps sit closer together. -->
+      <div class={["msg-cv", index > 0 && (row.kind === "user" ? "pt-turn" : "pt-step")]} data-log-entry-id={row.kind === "thinking" ? undefined : row.entry?.id}>
         {#if row.kind === "thinking"}
           <AgentThinkingIndicator />
         {:else if row.kind === "user"}
-          <UserMessageView text={row.text} images={row.images} queued={row.queued} outbox={row.outbox} {hostId} {sessionId} />
+          <UserMessageView text={row.text} images={row.images} queued={row.queued} outbox={row.outbox} {sessionId} />
         {:else if row.entry.kind === "assistant"}
-          <AssistantMessageView msg={row.entry} {hostId} {sessionId} />
+          <AssistantMessageView msg={row.entry} {sessionId} />
         {:else if row.entry.kind === "tool_call"}
           <ToolCallView msg={row.entry} />
         {:else if row.entry.kind === "compaction"}

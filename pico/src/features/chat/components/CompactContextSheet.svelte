@@ -3,7 +3,7 @@
   import SheetHeader from "@/shared/components/SheetHeader.svelte";
   import * as Sheet from "@/shared/ui/sheet";
 
-  let { open = $bindable(false), hostId, sessionId }: { open: boolean; hostId: string; sessionId: string } = $props();
+  let { open = $bindable(false), sessionId }: { open: boolean; sessionId: string } = $props();
 
   function startCompaction(): void {
     open = false;
@@ -13,6 +13,6 @@
 <Sheet.Root bind:open>
   <Sheet.BottomContent>
     <SheetHeader title="compact context" />
-    <CompactContextForm {hostId} {sessionId} onStart={startCompaction} />
+    <CompactContextForm {sessionId} onStart={startCompaction} />
   </Sheet.BottomContent>
 </Sheet.Root>

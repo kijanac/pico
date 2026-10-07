@@ -9,17 +9,15 @@
   import ActionRow from "@/shared/components/ActionRow.svelte";
 
   let {
-    hostId,
     onError,
     class: className = "",
   }: {
-    hostId: string;
     onError: (message: string | null) => void;
     class?: string;
   } = $props();
 
   // svelte-ignore state_referenced_locally
-  const auth = createProviderAuthState({ hostId, onError });
+  const auth = createProviderAuthState({ onError });
   const missingProviderIssue = providerAuthMissingIssue();
   const configuredProviderCount = $derived(auth.providers.filter((provider) => provider.configured).length);
 

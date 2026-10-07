@@ -14,21 +14,19 @@ export type HostReachability = "healthy" | "starting" | "unreachable";
 // Patient, retried probe. HttpClient's typed RequestError/ResponseError split +
 // Effect.timeout give the three buckets; it provides its own client layer, so it
 // composes into any caller without adding requirements.
-export const healthcheckHost = (url: string): Effect.Effect<HostReachability> =>
-  Effect.gen(function* () {
-    const client = yield* HttpClient.HttpClient;
-    yield* HttpClient.filterStatusOk(client).get(`${url.trim()}/healthz`);
-  }).pipe(
-    Effect.timeout("4 seconds"),
-    Effect.retry({ times: 1 }),
-    Effect.as("healthy" as const),
-    Effect.catchTags({
-      RequestError: () => Effect.succeed("unreachable" as const),
-      ResponseError: () => Effect.succeed("starting" as const),
-      TimeoutException: () => Effect.succeed("starting" as const),
-    }),
-    Effect.provide(FetchHttpClient.layer),
-  );
+export const healthcheckHost: Effect.Effect<HostReachability> = Effect.gen(function* () {
+  const client = yield* HttpClient.HttpClient;
+  yield* HttpClient.filterStatusOk(client).get(`${window.location.origin}/healthz`);
+}).pipe(
+  Effect.timeout("4 seconds"),
+  Effect.retry({ times: 1 }),
+  Effect.as("healthy" as const),
+  Effect.catchTags({
+    RequestError: () => Effect.succeed("unreachable" as const),
+    ResponseError: () => Effect.succeed("starting" as const),
+    TimeoutException: () => Effect.succeed("starting" as const),
+  }),
+  Effect.provide(FetchHttpClient.layer),
+);
 
-export const sessionExportHtmlUrl = (baseUrl: string, sessionId: string): string =>
-  `${baseUrl}/sessions/${encodeURIComponent(sessionId)}/export.html`;
+export const sessionExportHtmlUrl = (sessionId: string): string => `/sessions/${encodeURIComponent(sessionId)}/export.html`;

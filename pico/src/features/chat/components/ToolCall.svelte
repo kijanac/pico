@@ -55,7 +55,8 @@
 
   const label = $derived(msg.toolKind === "builtin" ? msg.tool : msg.tool);
   const summary = $derived.by(() => {
-    if (msg.toolKind === "custom") return JSON.stringify(msg.args);
+    // No arguments yet (still being written) or none at all: nothing to summarize.
+    if (msg.toolKind === "custom") return Object.keys(msg.args).length > 0 ? JSON.stringify(msg.args) : "";
     switch (msg.tool) {
       case "read":
       case "write":
@@ -67,7 +68,7 @@
   });
 </script>
 
-<div class="px-3 py-1">
+<div class="px-3">
   <button
     type="button"
     onclick={() => (open = !open)}

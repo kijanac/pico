@@ -17,10 +17,6 @@ export interface HostIssue {
   readonly steps: readonly string[];
 }
 
-export interface HostIssueOptions {
-  readonly url?: string;
-}
-
 function hostErrorCodeOf(error: unknown): HostErrorCode | undefined {
   if (isHostErrorCode(error)) return error;
   if (typeof error === "object" && error !== null && "hostErrorCode" in error) {
@@ -57,26 +53,21 @@ function hostStartingIssue(): HostIssue {
 // Map a non-healthy reachability to an issue. "unreachable" is a genuine transport
 // failure (so the Tailscale/host-unreachable copy is warranted); "starting" is a
 // slow/booting host that we must NOT mislabel as "Tailscale not connected".
-function reachabilityIssue(reachability: "starting" | "unreachable", options: HostIssueOptions = {}): HostIssue {
-  return reachability === "unreachable" ? hostIssueForCode("host_unreachable", options) : hostStartingIssue();
+function reachabilityIssue(reachability: "starting" | "unreachable"): HostIssue {
+  return reachability === "unreachable" ? hostIssueForCode("host_unreachable") : hostStartingIssue();
 }
 
-export function classifyHostIssue(error: unknown, options: HostIssueOptions = {}): HostIssue {
+export function classifyHostIssue(error: unknown): HostIssue {
   const code = hostErrorCodeOf(error);
-  return code ? hostIssueForCode(code, options) : genericIssue(error);
+  return code ? hostIssueForCode(code) : genericIssue(error);
 }
 
-export function classifyHostFailure(
-  error: unknown,
-  options: HostIssueOptions = {},
-): Effect.Effect<HostIssue> {
+export function classifyHostFailure(error: unknown): Effect.Effect<HostIssue> {
   const code = hostErrorCodeOf(error);
-  if (code) return Effect.succeed(hostIssueForCode(code, options));
-  const url = options.url;
-  if (!url) return Effect.succeed(genericIssue(error));
+  if (code) return Effect.succeed(hostIssueForCode(code));
   return Effect.gen(function* () {
-    const reachability = yield* healthcheckHost(url);
-    return reachability === "healthy" ? genericIssue(error) : reachabilityIssue(reachability, options);
+    const reachability = yield* healthcheckHost;
+    return reachability === "healthy" ? genericIssue(error) : reachabilityIssue(reachability);
   });
 }
 
@@ -84,14 +75,13 @@ export function providerAuthMissingIssue(): HostIssue {
   return hostIssueForCode("provider_auth_missing");
 }
 
-export function hostIssueSummary(error: unknown, options: HostIssueOptions = {}): string {
-  const issue = classifyHostIssue(error, options);
+export function hostIssueSummary(error: unknown): string {
+  const issue = classifyHostIssue(error);
   return `${issue.title}: ${issue.message}`;
 }
 
-export function hostIssueForCode(code: HostErrorCode, options: HostIssueOptions = {}): HostIssue {
-  const url = options.url?.trim();
-  const tailnetUrl = !!url && url.includes(".ts.net");
+export function hostIssueForCode(code: HostErrorCode): HostIssue {
+  const tailnetUrl = window.location.hostname.endsWith(".ts.net");
 
   switch (code) {
     case "missing_tailscale_identity":

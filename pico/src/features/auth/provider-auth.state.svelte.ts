@@ -1,15 +1,13 @@
 import { Effect } from "effect";
-import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 import { cancelAuthLogin, getAuthLoginJob, listAuthProviders, saveAuthApiKey, startAuthLogin, submitAuthLoginInput } from "@/features/auth/api";
 import { classifyHostFailure, hostIssueSummary } from "@/shared/lib/host-issues";
-import { type PicoClient, runOnHost } from "@/shared/lib/rpc-client";
+import { runRpc } from "@/shared/lib/rpc-client";
 
 type AuthProviders = Effect.Effect.Success<ReturnType<typeof listAuthProviders>>;
 type AuthProvider = AuthProviders["providers"][number];
 type AuthLoginJob = Effect.Effect.Success<ReturnType<typeof startAuthLogin>>;
 
 export interface ProviderAuthStateOptions {
-  hostId: string;
   onError: (message: string | null) => void;
 }
 
@@ -43,18 +41,15 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   let savingApiKey = $state(false);
   let startingProviderId = $state<string | null>(null);
 
-  const hostUrl = () => hostRegistryState.getHost(opts.hostId)?.url;
-  const run = <A, E>(effect: Effect.Effect<A, E, PicoClient>) => runOnHost(opts.hostId, effect);
-
   const reportFailure = (error: unknown) =>
-    classifyHostFailure(error, { url: hostUrl() }).pipe(
+    classifyHostFailure(error).pipe(
       Effect.andThen((issue) => Effect.sync(() => opts.onError(`${issue.title}: ${issue.message}`))),
     );
 
   async function loadProviders(): Promise<void> {
     loading = true;
     try {
-      await run(
+      await runRpc(
         listAuthProviders().pipe(
           Effect.tap((result) => Effect.sync(() => { providers = result.providers; opts.onError(null); })),
           Effect.catchAll(reportFailure),
@@ -80,7 +75,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     startingProviderId = provider.id;
     opts.onError(null);
     try {
-      await run(
+      await runRpc(
         startAuthLogin(provider.id).pipe(
           Effect.tap((next) => Effect.sync(() => { job = next; })),
           Effect.catchAll(reportFailure),
@@ -97,7 +92,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     savingApiKey = true;
     opts.onError(null);
     try {
-      await run(
+      await runRpc(
         saveAuthApiKey(provider.id, apiKeyInput).pipe(
           Effect.tap((result) => Effect.sync(() => {
             providers = result.providers;
@@ -115,7 +110,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   async function refreshJob(): Promise<void> {
     const current = job;
     if (!current) return;
-    await run(
+    await runRpc(
       getAuthLoginJob(current.id).pipe(
         Effect.tap((next) => Effect.sync(() => { job = next; })),
         Effect.catchAll(reportFailure),
@@ -127,7 +122,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   async function submit(value = input): Promise<void> {
     const current = job;
     if (!current) return;
-    await run(
+    await runRpc(
       submitAuthLoginInput(current.id, value).pipe(
         Effect.tap((next) => Effect.sync(() => { job = next; input = ""; opts.onError(null); })),
         Effect.catchAll(reportFailure),
@@ -138,7 +133,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   async function cancel(): Promise<void> {
     const current = job;
     if (!current) return;
-    await run(
+    await runRpc(
       cancelAuthLogin(current.id).pipe(
         Effect.tap(() => Effect.sync(() => { job = null; opts.onError(null); })),
         Effect.catchAll(reportFailure),

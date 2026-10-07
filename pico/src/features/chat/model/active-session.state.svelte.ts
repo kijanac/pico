@@ -1,12 +1,11 @@
 import type { ExtensionUiRequest, ServerMessage, SessionMeta } from "@pico/protocol";
 import { answerExtensionUi } from "@/features/chat/api";
 import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
-import { runOnHost } from "@/shared/lib/rpc-client";
+import { runRpc } from "@/shared/lib/rpc-client";
 
 export type ConnectionStatus = "offline" | "connecting" | "connected" | "reconnecting" | "gone";
 export type ExtensionUiNotification = Extract<ExtensionUiRequest, { kind: "notify" }>;
 
-let activeHostId = $state<string | null>(null);
 let activeSessionId = $state<string | null>(null);
 let activeStatus = $state<SessionMeta["status"]>("idle");
 let connectionStatus = $state<ConnectionStatus>("offline");
@@ -38,10 +37,6 @@ function showNotification(request: ExtensionUiNotification): void {
 }
 
 export const activeSessionState = {
-  get hostId() {
-    return activeHostId;
-  },
-
   get id() {
     return activeSessionId;
   },
@@ -69,17 +64,14 @@ export const activeSessionState = {
     return extensionNotification;
   },
 
-  activate(hostId: string, sessionId: string): void {
-    activeHostId = hostId;
+  activate(sessionId: string): void {
     activeSessionId = sessionId;
     activeStatus = "idle";
     clearNotification();
   },
 
-  deactivate(hostId?: string, sessionId?: string): void {
-    if (hostId !== undefined && activeHostId !== hostId) return;
+  deactivate(sessionId?: string): void {
     if (sessionId !== undefined && activeSessionId !== sessionId) return;
-    activeHostId = null;
     activeSessionId = null;
     activeStatus = "idle";
     clearNotification();
@@ -91,9 +83,9 @@ export const activeSessionState = {
   },
 
   respondToExtensionUi(id: string, value: string | boolean | null): void {
-    if (!activeHostId || !activeSessionId) return;
-    void runOnHost(activeHostId, answerExtensionUi(activeSessionId, id, value)).catch(() => {});
-    chatLogState.apply(activeHostId, activeSessionId, { t: "ui_done", id });
+    if (!activeSessionId) return;
+    void runRpc(answerExtensionUi(activeSessionId, id, value)).catch(() => {});
+    chatLogState.apply(activeSessionId, { t: "ui_done", id });
   },
 
   dismissExtensionNotification(): void {
@@ -102,8 +94,8 @@ export const activeSessionState = {
 
   // Status, notices and context-usage changes; the rest of the live state is
   // the mirror in chatLogState.
-  apply(hostId: string, sessionId: string, message: ServerMessage): void {
-    if (activeHostId !== hostId || activeSessionId !== sessionId) return;
+  apply(sessionId: string, message: ServerMessage): void {
+    if (activeSessionId !== sessionId) return;
 
     if (message.t === "sync" || message.t === "meta") activeStatus = message.session.status;
     else if (message.t === "ui" && message.request.kind === "notify") showNotification(message.request);

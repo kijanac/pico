@@ -7,14 +7,12 @@
 
   let {
     open = $bindable(false),
-    hostId,
     creating = false,
     onCreate,
   }: {
     open: boolean;
-    hostId: string;
     creating?: boolean;
-    onCreate: (opts: { hostId: string; cwd: string; title: string }) => void;
+    onCreate: (opts: { cwd: string; title: string }) => void;
   } = $props();
 
   let cwd = $state<string | undefined>();
@@ -31,7 +29,7 @@
 
   function handleCreate(): void {
     if (!cwd || !canCreate) return;
-    onCreate({ hostId, cwd, title: effectiveTitle });
+    onCreate({ cwd, title: effectiveTitle });
   }
 
   function basename(path: string): string {
@@ -58,7 +56,7 @@
 
     {#if pickerOpen}
       <CwdPicker
-        {hostId}
+       
         initial={cwd}
         onSelect={(path) => {
           cwd = path;

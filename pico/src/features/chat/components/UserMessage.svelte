@@ -10,14 +10,12 @@
     images = [],
     queued = false,
     outbox,
-    hostId,
     sessionId,
   }: {
     text: string;
     images?: readonly ImageContent[];
     queued?: boolean;
     outbox?: OutboxItem;
-    hostId: string;
     sessionId: string;
   } = $props();
 
@@ -26,7 +24,7 @@
 
   function discard(cid: string): void {
     const item = chatLogState.discard(cid);
-    if (item) queuedMessageActionsState.recall(hostId, sessionId, item.text, item.images);
+    if (item) queuedMessageActionsState.recall(sessionId, item.text, item.images);
   }
 </script>
 
@@ -37,13 +35,13 @@
   <ImageGrid {images} altPrefix="attached image" class={text.trim().length > 0 ? "mt-2" : ""} />
 {/snippet}
 
-<div class="flex flex-col items-end px-3 py-1.5">
+<div class="flex flex-col items-end px-3">
   {#if queued}
     <button
       type="button"
-      class="type-message font-readable max-w-[85%] min-w-0 overflow-hidden break-words rounded-[var(--radius-md)] border border-dashed border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)] px-3 py-2 text-left text-[color:var(--color-fg-muted)] opacity-90 transition-opacity duration-200 active:opacity-70 disabled:opacity-60"
+      class="type-message font-prose max-w-[85%] min-w-0 overflow-hidden break-words rounded-[var(--radius-md)] border border-dashed border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)] px-3 py-2 text-left text-[color:var(--color-fg-muted)] opacity-90 transition-opacity duration-200 active:opacity-70 disabled:opacity-60"
       disabled={queuedMessageActionsState.restoring}
-      onclick={() => void queuedMessageActionsState.restoreQueue(hostId, sessionId)}
+      onclick={() => void queuedMessageActionsState.restoreQueue(sessionId)}
       aria-label="Edit queued messages"
       title="Move queued messages to the composer"
     >
@@ -51,7 +49,7 @@
     </button>
   {:else}
     <div
-      class="type-message font-readable max-w-[85%] min-w-0 overflow-hidden break-words rounded-[var(--radius-md)] bg-[color:var(--color-surface-2)] px-3 py-2 text-[color:var(--color-fg)] transition-opacity duration-200"
+      class="type-message font-prose max-w-[85%] min-w-0 overflow-hidden break-words rounded-[var(--radius-md)] bg-[color:var(--color-surface-2)] px-3 py-2 text-[color:var(--color-fg)] transition-opacity duration-200"
       class:opacity-60={pending}
       class:border={failed}
       class:border-[color:var(--color-danger)]={failed}

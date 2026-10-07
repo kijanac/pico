@@ -5,7 +5,7 @@ describe("routes", () => {
   it("builds typed route paths", () => {
     expect(routePaths.sessions).toBe("/");
     expect(routePaths.settings).toBe("/settings");
-    expect(routePaths.session("host/a", "session b")).toBe("/h/host%2Fa/s/session%20b");
+    expect(routePaths.session("session b")).toBe("/s/session%20b");
   });
 
   it("matches static routes", () => {
@@ -13,26 +13,13 @@ describe("routes", () => {
     expect(resolveRoute("/settings")).toEqual({ id: "settings", params: {} });
   });
 
-  it("matches host-qualified sessions", () => {
-    expect(resolveRoute("/h/main-host/s/019f")).toEqual({
-      id: "session",
-      params: { hostId: "main-host", id: "019f" },
-    });
-    expect(resolveRoute("/h/host%2Fa/s/session%20b")).toEqual({
-      id: "session",
-      params: { hostId: "host/a", id: "session b" },
-    });
-  });
-
-  it("does not treat bare session IDs as routable", () => {
-    expect(resolveRoute("/s/019f")).toEqual({ id: "not-found", params: { path: "/s/019f" } });
+  it("matches sessions", () => {
+    expect(resolveRoute("/s/019f")).toEqual({ id: "session", params: { id: "019f" } });
+    expect(resolveRoute("/s/session%20b")).toEqual({ id: "session", params: { id: "session b" } });
   });
 
   it("returns not-found for malformed or unknown paths", () => {
-    expect(resolveRoute("/h/main-host/s/%E0%A4%A")).toEqual({
-      id: "not-found",
-      params: { path: "/h/main-host/s/%E0%A4%A" },
-    });
+    expect(resolveRoute("/s/%E0%A4%A")).toEqual({ id: "not-found", params: { path: "/s/%E0%A4%A" } });
     expect(resolveRoute("/missing")).toEqual({ id: "not-found", params: { path: "/missing" } });
   });
 });

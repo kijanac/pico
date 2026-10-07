@@ -7,9 +7,7 @@ import { sessionListState } from "@/features/sessions/model/session-list.state.s
 import { markSessionOpen } from "@/shared/lib/session-open-timing";
 
 export interface SessionStreamControllerOptions {
-  hostId: string;
   sessionId: string;
-  hostUrl: string;
   onGone?: () => void;
 }
 
@@ -18,9 +16,7 @@ const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 30_000;
 
 export class SessionStreamController {
-  readonly hostId: string;
   readonly sessionId: string;
-  readonly #hostUrl: string;
 
   #fiber: Fiber.RuntimeFiber<void> | null = null;
   #closed = false;
@@ -28,16 +24,14 @@ export class SessionStreamController {
   #onGone?: () => void;
 
   constructor(opts: SessionStreamControllerOptions) {
-    this.hostId = opts.hostId;
     this.sessionId = opts.sessionId;
-    this.#hostUrl = opts.hostUrl;
     this.#onGone = opts.onGone;
   }
 
   start(): void {
     if (this.#closed || this.#fiber) return;
-    chatLogState.activate(this.hostId, this.sessionId);
-    activeSessionState.activate(this.hostId, this.sessionId);
+    chatLogState.activate(this.sessionId);
+    activeSessionState.activate(this.sessionId);
     this.#fiber = Effect.runFork(this.#loop());
   }
 
@@ -52,7 +46,7 @@ export class SessionStreamController {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
-    activeSessionState.deactivate(this.hostId, this.sessionId);
+    activeSessionState.deactivate(this.sessionId);
     this.#setConnectionStatus("offline");
     if (this.#fiber) {
       Effect.runFork(Fiber.interrupt(this.#fiber));
@@ -66,10 +60,7 @@ export class SessionStreamController {
   // gone); transport failures reconnect.
   #loop(): Effect.Effect<void> {
     const self = this;
-    const hostId = this.hostId;
     const sessionId = this.sessionId;
-    const timingId = `${hostId}:${sessionId}`;
-    const layer = sessionClientLayer(this.#hostUrl);
     return Effect.gen(function* () {
       let delay = RECONNECT_MIN_MS;
       while (!self.#closed) {
@@ -78,14 +69,14 @@ export class SessionStreamController {
         const exit = yield* Effect.gen(function* () {
           const client = yield* PicoSessionClient;
           self.#everConnected = true;
-          markSessionOpen(timingId, "ws-connected");
+          markSessionOpen(sessionId, "ws-connected");
           self.#setConnectionStatus("connected");
           delay = RECONNECT_MIN_MS;
           yield* client.session
-            .live({ id: sessionId, ...chatLogState.connectParams(hostId, sessionId) })
+            .live({ id: sessionId, ...chatLogState.connectParams(sessionId) })
             .pipe(Stream.runForEach((message) => Effect.sync(() => self.#handle(message))));
         }).pipe(
-          Effect.provide(layer),
+          Effect.provide(sessionClientLayer),
           Effect.catchTag("SessionNotFound", () =>
             Effect.sync(() => {
               self.#closed = true;
@@ -107,10 +98,10 @@ export class SessionStreamController {
   }
 
   #handle(message: ServerMessage): void {
-    if (message.t === "sync") markSessionOpen(`${this.hostId}:${this.sessionId}`, "sync");
-    if (message.t === "sync" || message.t === "meta") sessionListState.upsert(this.hostId, message.session);
-    chatLogState.apply(this.hostId, this.sessionId, message);
-    activeSessionState.apply(this.hostId, this.sessionId, message);
+    if (message.t === "sync") markSessionOpen(this.sessionId, "sync");
+    if (message.t === "sync" || message.t === "meta") sessionListState.upsert(message.session);
+    chatLogState.apply(this.sessionId, message);
+    activeSessionState.apply(this.sessionId, message);
   }
 
   #setConnectionStatus(status: ConnectionStatus): void {

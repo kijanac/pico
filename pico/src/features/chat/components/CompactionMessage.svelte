@@ -13,7 +13,7 @@
   const detail = $derived(msg.tokensBefore !== undefined ? `${formatTokens(msg.tokensBefore)} before compaction` : undefined);
 </script>
 
-<div class="px-3 py-1">
+<div class="px-3">
   <button
     type="button"
     onclick={() => {

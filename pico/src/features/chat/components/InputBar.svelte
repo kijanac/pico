@@ -10,7 +10,7 @@
   import { cloneImageContent, filesToImageContent } from "@/shared/mobile/image-content";
   import { createLongPress } from "@/shared/gestures/long-press";
   import { getSessionSettings, interruptSession } from "@/features/chat/api";
-  import { runOnHost } from "@/shared/lib/rpc-client";
+  import { runRpc } from "@/shared/lib/rpc-client";
   import { formatCost } from "@/shared/lib/format";
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
   import { Button } from "@/shared/ui/button";
@@ -28,11 +28,9 @@
   const DRAFT_SAVE_DELAY_MS = 350;
 
   let {
-    hostId,
     sessionId,
     contextStats,
   }: {
-    hostId: string;
     sessionId: string;
     contextStats?: { cost: number; usage: NonNullable<SessionStats["contextUsage"]> };
   } = $props();
@@ -53,7 +51,6 @@
   let lastRecallRequestId = 0;
 
   const slashCommands = createSlashCommandsState(
-    () => hostId,
     () => sessionId,
     () => value,
     () => cursor,
@@ -88,7 +85,7 @@
 
   async function loadControls(): Promise<void> {
     try {
-      controls = await runOnHost(hostId, getSessionSettings(sessionId));
+      controls = await runRpc(getSessionSettings(sessionId));
     } catch {
       controls = null;
     }
@@ -96,21 +93,19 @@
 
   // Refresh the model chip on session change and after the picker sheet closes.
   $effect(() => {
-    hostId;
     sessionId;
     if (modelOpen) return;
     untrack(() => void loadControls());
   });
 
   $effect(() => {
-    hostId;
     sessionId;
     untrack(() => restoreDraft());
   });
 
   $effect(() => {
     const request = queuedMessageActionsState.recallRequest;
-    if (!request || request.hostId !== hostId || request.sessionId !== sessionId || request.id === lastRecallRequestId) return;
+    if (!request || request.sessionId !== sessionId || request.id === lastRecallRequestId) return;
 
     lastRecallRequestId = request.id;
     // Ahead of any draft, as pi's dequeue does.
@@ -124,11 +119,10 @@
   });
 
   $effect(() => {
-    const draftHostId = hostId;
     const draftSessionId = sessionId;
     const draftText = value;
     const timer = window.setTimeout(() => {
-      saveChatDraft(draftHostId, draftSessionId, draftText);
+      saveChatDraft(draftSessionId, draftText);
     }, DRAFT_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
@@ -149,7 +143,7 @@
   }
 
   function restoreDraft(): void {
-    value = loadChatDraft(hostId, sessionId);
+    value = loadChatDraft(sessionId);
     cursor = 0;
     clearImages();
   }
@@ -158,15 +152,15 @@
     const text = value.trim();
     const sentImages = cloneImageContent(images);
     if ((!text && !sentImages) || !canSend) return;
-    chatLogState.send(hostId, sessionId, { text, mode, images: sentImages });
+    chatLogState.send(sessionId, { text, mode, images: sentImages });
     value = "";
     cursor = 0;
     clearImages();
-    clearChatDraft(hostId, sessionId);
+    clearChatDraft(sessionId);
   }
 
   function interrupt(): void {
-    void runOnHost(hostId, interruptSession(sessionId)).catch(() => {});
+    void runRpc(interruptSession(sessionId)).catch(() => {});
   }
 
   // Tap sends/steers; long-press queues a follow-up — pi's alt+enter, as a touch gesture.
@@ -287,7 +281,7 @@
   }
 
   async function restoreQueue(): Promise<void> {
-    if (await queuedMessageActionsState.restoreQueue(hostId, sessionId)) queueOpen = false;
+    if (await queuedMessageActionsState.restoreQueue(sessionId)) queueOpen = false;
   }
 </script>
 
@@ -336,7 +330,7 @@
       }}
       rows="1"
       placeholder="ask, or / for commands"
-      class="type-input w-full resize-none bg-transparent px-3 pt-2 pb-1 text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] focus:outline-none"
+      class="type-input font-prose w-full resize-none bg-transparent px-3 pt-2 pb-1 text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] focus:outline-none"
     ></textarea>
 
     <div class="flex items-center gap-1 px-1.5 pb-1.5">
@@ -402,7 +396,7 @@
     </div>
   </div>
 
-  <CompactContextSheet bind:open={compactOpen} {hostId} {sessionId} />
+  <CompactContextSheet bind:open={compactOpen} {sessionId} />
 
   <QueuedMessagesSheet
     bind:open={queueOpen}
@@ -415,7 +409,7 @@
   <Sheet.Root bind:open={modelOpen}>
     <Sheet.BottomContent class="max-h-[82dvh]">
       <SheetHeader title="model" />
-      <SessionSettingsView {hostId} {sessionId} onError={() => {}} filterKeys={["model"]} />
+      <SessionSettingsView {sessionId} onError={() => {}} filterKeys={["model"]} />
     </Sheet.BottomContent>
   </Sheet.Root>
 </div>

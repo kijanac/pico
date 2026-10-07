@@ -21,7 +21,7 @@
       as="font"
       type="font/woff2"
       crossorigin
-      href="/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2"
+      href="/node_modules/@fontsource-variable/recursive/files/recursive-latin-mono-normal.woff2"
     />
     <script>
       (() => {
@@ -30,6 +30,7 @@
         const resolved = mode === "light" ? "light" : mode === "dark" ? "dark" : systemDark ? "dark" : "light";
         document.documentElement.classList.toggle("dark", resolved === "dark");
         if (mode === "light" || mode === "dark") document.documentElement.dataset.theme = mode;
+        if (localStorage.getItem("pico.palette") === "brass") document.documentElement.dataset.palette = "brass";
       })();
     </script>
     <title>Pico</title>

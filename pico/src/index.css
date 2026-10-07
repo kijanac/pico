@@ -1,50 +1,59 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn-svelte/tailwind.css";
-@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/recursive/mono.css";
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Type is Recursive, one variable family: its MONO axis runs from sans (what
+ * people and the model write) to mono (machine text). A 1.2 scale from a 16px
+ * body; steps of a turn sit close together, turns further apart. Every color
+ * is `light-dark(light, dark)`, resolved by `color-scheme`. Palettes: Pico's
+ * (default) and brass (`data-palette="brass"`).
+ */
 @theme {
-  --font-mono:
-    "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-sans:
-    "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: "Recursive Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: var(--font-mono);
+  --font-prose: "Recursive Variable", ui-sans-serif, system-ui, sans-serif;
 
-  --font-weight-readable: 450;
-
-  --type-label: 0.6875rem;
+  --type-label: 0.6944rem;
   --type-label--line-height: 1.35;
-  --type-meta: 0.75rem;
+  --type-meta: 0.8333rem;
   --type-meta--line-height: 1.45;
-  --type-copy: 0.8125rem;
+  --type-copy: 0.8333rem;
   --type-copy--line-height: 1.55;
   --type-title: 0.875rem;
   --type-title--line-height: 1.2;
-  --type-message: 0.9375rem;
-  --type-message--line-height: 1.65;
-  --type-input: 0.9375rem;
+  --type-message: 1rem;
+  --type-message--line-height: 1.6;
+  --type-input: 1rem;
   --type-input--line-height: 1.5;
-  --type-code: 0.75rem;
+  --type-code: 0.8125rem;
   --type-code--line-height: 1.5;
 
-  --color-bg: #0a0a0a;
-  --color-surface: #131313;
-  --color-surface-2: #1a1a1a;
-  --color-border: rgba(255, 255, 255, 0.06);
-  --color-border-strong: rgba(255, 255, 255, 0.12);
+  --spacing-turn: 1.5rem;
+  --spacing-step: 0.5rem;
 
-  --color-fg: #ededed;
-  --color-fg-muted: rgba(237, 237, 237, 0.55);
-  --color-fg-faint: rgba(237, 237, 237, 0.32);
+  /* Warm paper and terracotta / near-black and acid lime. */
+  --color-bg: light-dark(#fbf3ea, #0a0a0a);
+  --color-surface: light-dark(#f3dfc4, #131313);
+  --color-surface-2: light-dark(#ebcfb8, #1a1a1a);
+  --color-border: light-dark(rgba(37, 18, 12, 0.12), rgba(255, 255, 255, 0.06));
+  --color-border-strong: light-dark(rgba(37, 18, 12, 0.22), rgba(255, 255, 255, 0.12));
 
-  --color-accent: #d4ff3a;
-  --color-accent-dim: rgba(212, 255, 58, 0.18);
+  --color-fg: light-dark(#25120c, #ededed);
+  --color-fg-muted: light-dark(rgba(37, 18, 12, 0.66), rgba(237, 237, 237, 0.55));
+  --color-fg-faint: light-dark(rgba(37, 18, 12, 0.42), rgba(237, 237, 237, 0.32));
 
-  --color-danger: #ff6b6b;
-  --color-warn: #f5c451;
-  --color-code-bg: #0d1117;
-  --color-code-fg: #e6edf3;
+  --color-accent: light-dark(#c76f4a, #d4ff3a);
+  --color-accent-dim: light-dark(rgba(199, 111, 74, 0.2), rgba(212, 255, 58, 0.18));
+
+  --color-danger: light-dark(#b33a34, #ff6b6b);
+  --color-warn: light-dark(#99593f, #f5c451);
+  --color-warning: light-dark(#99593f, #d97706);
+  --color-code-bg: light-dark(#fff8ee, #0d1117);
+  --color-code-fg: light-dark(#25120c, #e6edf3);
 
   --color-background: var(--color-bg);
   --color-foreground: var(--color-fg);
@@ -65,10 +74,10 @@
   --color-ring: var(--color-accent);
   --color-error-foreground: var(--color-danger);
 
-  --color-diff-add: #5fb55f;
-  --color-diff-add-bg: rgba(80, 200, 120, 0.08);
-  --color-diff-remove: #e07070;
-  --color-diff-remove-bg: rgba(224, 112, 112, 0.08);
+  --color-diff-add: light-dark(#2f7d45, #5fb55f);
+  --color-diff-add-bg: light-dark(rgba(47, 125, 69, 0.1), rgba(80, 200, 120, 0.08));
+  --color-diff-remove: light-dark(#b33a34, #e07070);
+  --color-diff-remove-bg: light-dark(rgba(179, 58, 52, 0.1), rgba(224, 112, 112, 0.08));
 
   --radius-sm: 3px;
   --radius-md: 5px;
@@ -84,55 +93,32 @@
 }
 
 :root {
+  color-scheme: light dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
   color-scheme: dark;
 }
 
-@media (prefers-color-scheme: light) {
-  :root:not(.dark):not([data-theme="dark"]) {
-    color-scheme: light;
-    --color-bg: #fbf3ea;
-    --color-surface: #f3dfc4;
-    --color-surface-2: #ebcfb8;
-    --color-border: rgba(37, 18, 12, 0.12);
-    --color-border-strong: rgba(37, 18, 12, 0.22);
-    --color-fg: #25120c;
-    --color-fg-muted: rgba(37, 18, 12, 0.66);
-    --color-fg-faint: rgba(37, 18, 12, 0.42);
-    --color-accent: #c76f4a;
-    --color-accent-dim: rgba(199, 111, 74, 0.20);
-    --color-danger: #b33a34;
-    --color-warn: #99593f;
-    --color-warning: #99593f;
-    --color-code-bg: #fff8ee;
-    --color-code-fg: #25120c;
-    --color-diff-add: #2f7d45;
-    --color-diff-add-bg: rgba(47, 125, 69, 0.10);
-    --color-diff-remove: #b33a34;
-    --color-diff-remove-bg: rgba(179, 58, 52, 0.10);
-  }
-}
-
-:root[data-theme="light"] {
-  color-scheme: light;
-  --color-bg: #fbf3ea;
-  --color-surface: #f3dfc4;
-  --color-surface-2: #ebcfb8;
-  --color-border: rgba(37, 18, 12, 0.12);
-  --color-border-strong: rgba(37, 18, 12, 0.22);
-  --color-fg: #25120c;
-  --color-fg-muted: rgba(37, 18, 12, 0.66);
-  --color-fg-faint: rgba(37, 18, 12, 0.42);
-  --color-accent: #c76f4a;
-  --color-accent-dim: rgba(199, 111, 74, 0.20);
-  --color-danger: #b33a34;
-  --color-warn: #99593f;
-  --color-warning: #99593f;
-  --color-code-bg: #fff8ee;
-  --color-code-fg: #25120c;
-  --color-diff-add: #2f7d45;
-  --color-diff-add-bg: rgba(47, 125, 69, 0.10);
-  --color-diff-remove: #b33a34;
-  --color-diff-remove-bg: rgba(179, 58, 52, 0.10);
+/* Brass on warm graphite / canvas, as tether has it. */
+:root[data-palette="brass"] {
+  --color-bg: light-dark(#f4f0e6, #0d0c0a);
+  --color-surface: light-dark(#ebe5d6, #161511);
+  --color-surface-2: light-dark(#e2dac7, #1e1c17);
+  --color-border: light-dark(rgb(40 33 15 / 0.12), rgb(255 240 200 / 0.08));
+  --color-border-strong: light-dark(rgb(40 33 15 / 0.24), rgb(255 240 200 / 0.17));
+  --color-fg: light-dark(#1f1b12, #ece7dc);
+  --color-fg-muted: light-dark(rgb(31 27 18 / 0.68), rgb(236 231 220 / 0.62));
+  --color-fg-faint: light-dark(rgb(31 27 18 / 0.42), rgb(236 231 220 / 0.36));
+  --color-accent: light-dark(#7d5a00, #d7a512);
+  --color-accent-dim: light-dark(rgb(125 90 0 / 0.16), rgb(215 165 18 / 0.18));
+  --color-code-bg: light-dark(#fbf8f1, #12110e);
+  --color-code-fg: light-dark(#1f1b12, #ece7dc);
+  /* Warnings are orange: amber would read as the brass accent. */
+  --color-warn: light-dark(#b4532a, #f08a4b);
+  --color-warning: light-dark(#b4532a, #f08a4b);
 }
 
 @utility type-label {
@@ -185,6 +171,7 @@
     background: var(--color-bg);
     color: var(--color-fg);
     font-family: var(--font-mono);
+    font-variation-settings: "MONO" 1;
     font-feature-settings: "calt", "liga", "ss01";
     font-variant-ligatures: contextual;
     font-optical-sizing: auto;
@@ -546,7 +533,16 @@
 }
 
 @layer components {
+  .font-prose,
   .streaming-md {
+    font-variation-settings: "MONO" 0;
+  }
+  .streaming-md :is(code, pre) {
+    font-variation-settings: "MONO" 1;
+  }
+
+  .streaming-md {
+    font-family: var(--font-prose);
     max-width: 70ch;
     word-break: break-word;
   }
@@ -603,8 +599,8 @@
     border-radius: var(--radius-sm);
     padding: 0.7em 0.8em;
     overflow-x: hidden;
-    font-size: 0.9em;
-    line-height: 1.5;
+    font-size: var(--type-code);
+    line-height: var(--type-code--line-height);
 
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -679,8 +675,8 @@
     border-radius: var(--radius-sm);
     padding: 0.7em 0.8em;
     overflow-x: hidden;
-    font-size: 0.9em;
-    line-height: 1.5;
+    font-size: var(--type-code);
+    line-height: var(--type-code--line-height);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     word-break: break-word;

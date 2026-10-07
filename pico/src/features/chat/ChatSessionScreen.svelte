@@ -14,7 +14,7 @@
   import ExtensionNotifications from "@/features/chat/components/ExtensionNotifications.svelte";
   import type { SessionStats } from "@pico/protocol";
   import { getSessionStats } from "@/features/chat/api";
-  import { runOnHost } from "@/shared/lib/rpc-client";
+  import { runRpc } from "@/shared/lib/rpc-client";
   import { createLatest } from "@/shared/lib/latest";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
   import { cwdDisplayName } from "@/shared/lib/path-display";
@@ -25,8 +25,8 @@
   import { warmHighlighter } from "@/shared/lib/highlighter";
   import { markSessionOpen } from "@/shared/lib/session-open-timing";
 
-  let { hostId, sessionId }: { hostId: string; sessionId: string } = $props();
-  const timingId = $derived(`${hostId}:${sessionId}`);
+  let { sessionId }: { sessionId: string } = $props();
+  const timingId = $derived(sessionId);
 
   let stats = $state<SessionStats>();
   let composerHeight = $state(0);
@@ -35,8 +35,7 @@
   const statsRequest = createLatest();
   let lastContextUsageInvalidationVersion = activeSessionState.contextUsageInvalidationVersion;
 
-  const sessionItem = $derived(sessionListState.sessions.find((candidate) => candidate.hostId === hostId && candidate.session.id === sessionId) ?? null);
-  const session = $derived(sessionItem?.session ?? null);
+  const session = $derived(sessionListState.sessions.find((candidate) => candidate.id === sessionId) ?? null);
   const contextStats = $derived.by(() => {
     if (stats?.sessionId !== sessionId || !stats.contextUsage) return undefined;
     return {
@@ -59,7 +58,7 @@
 
   onMount(() => {
     markSessionOpen(timingId, "route-mounted");
-    const session = createChatSessionState(hostId, sessionId);
+    const session = createChatSessionState(sessionId);
     session.start();
     warmHighlighter();
     return () => session.stop();
@@ -75,7 +74,6 @@
   });
 
   $effect(() => {
-    hostId;
     sessionId;
     activeSessionState.contextUsageVersion;
     void loadStats();
@@ -84,7 +82,7 @@
   async function loadStats(): Promise<void> {
     const token = statsRequest.begin();
     try {
-      const next = await runOnHost(hostId, getSessionStats(sessionId));
+      const next = await runRpc(getSessionStats(sessionId));
       if (statsRequest.isCurrent(token)) {
         stats = next;
         if (
@@ -116,19 +114,19 @@
         <div class="flex min-w-0 items-center gap-2">
           <StatusDot tone={statusDotTone} active={statusDotActive} label={activeSessionState.status} />
           <div class="min-w-0 flex-1">
-            <div class="type-title truncate font-medium">{session.title}</div>
+            <div class="type-title font-prose truncate font-medium">{session.title}</div>
             <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">
-              {cwdDisplayName(session.cwd)}{#if sessionItem} · {sessionItem.hostName}{/if}
+              {cwdDisplayName(session.cwd)}
             </div>
           </div>
         </div>
       {:else}
-        <div class="type-title truncate font-medium">session</div>
+        <div class="type-title font-prose truncate font-medium">session</div>
         <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">{activeSessionState.connectionStatus}</div>
       {/if}
     </div>
     <div class="flex w-12 justify-end">
-      <SessionAgentActions {hostId} {sessionId} />
+      <SessionAgentActions {sessionId} />
     </div>
   </header>
 
@@ -143,7 +141,7 @@
     </div>
   {:else}
     <div class="relative min-h-0 flex-1 overflow-hidden">
-      <MessageList {hostId} {sessionId} bottomInset={composerHeight} />
+      <MessageList {sessionId} bottomInset={composerHeight} />
       <div
         class="composer-scroll-scrim pointer-events-none absolute inset-x-0 bottom-0 z-10"
         style={`height: ${composerHeight}px`}
@@ -151,7 +149,7 @@
       ></div>
       <div bind:clientHeight={composerHeight} class="pointer-events-none absolute inset-x-0 bottom-0 z-30">
         <ExtensionNotifications />
-        <InputBar {hostId} {sessionId} {contextStats} />
+        <InputBar {sessionId} {contextStats} />
       </div>
     </div>
   {/if}

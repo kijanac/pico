@@ -12,7 +12,7 @@
   import TreeView from "@/features/chat/actions/TreeView.svelte";
   import { Button } from "@/shared/ui/button";
 
-  let { hostId, sessionId }: { hostId: string; sessionId: string } = $props();
+  let { sessionId }: { sessionId: string } = $props();
 
   const actions = createAgentActionsState();
 
@@ -22,7 +22,7 @@
     await tick();
 
     try {
-      if (await exportSessionHtml(hostId, sessionId)) actions.done();
+      if (await exportSessionHtml(sessionId)) actions.done();
     } catch (error) {
       actions.setOpen(true);
       actions.setError(hostIssueSummary(error));
@@ -58,13 +58,13 @@
         onExport={exportToHtml}
       />
     {:else if actions.view === "settings"}
-      <SessionSettingsView {hostId} {sessionId} onError={actions.setError} excludeKeys={["model"]} />
+      <SessionSettingsView {sessionId} onError={actions.setError} excludeKeys={["model"]} />
     {:else if actions.view === "tree"}
-      <TreeView {hostId} {sessionId} onDone={actions.done} onError={actions.setError} />
+      <TreeView {sessionId} onDone={actions.done} onError={actions.setError} />
     {:else if actions.view === "info"}
-      <SessionInfoView {hostId} {sessionId} />
+      <SessionInfoView {sessionId} />
     {:else if actions.view === "auth"}
-      <ProviderAuthView {hostId} onError={actions.setError} class="px-3 py-3" />
+      <ProviderAuthView onError={actions.setError} class="px-3 py-3" />
     {/if}
   </AgentActionSheet>
 {/if}

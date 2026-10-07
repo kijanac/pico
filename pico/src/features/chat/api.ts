@@ -1,5 +1,4 @@
 import type { ExtensionUiResponseValue, ImageContent, SendMode } from "@pico/protocol";
-import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 import { sessionExportHtmlUrl } from "@/shared/lib/host-http";
 import { rpc } from "@/shared/lib/rpc-client";
 
@@ -33,11 +32,8 @@ export const getSessionHistory = (sessionId: string, before: string, limit?: num
 const safeFilenamePart = (value: string): string =>
   value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "session";
 
-export async function exportSessionHtml(hostId: string, sessionId: string): Promise<boolean> {
-  const host = hostRegistryState.getHost(hostId);
-  if (!host) throw new Error(`Pico host not found: ${hostId}`);
-  const url = sessionExportHtmlUrl(host.url, sessionId);
-  const response = await fetch(url);
+export async function exportSessionHtml(sessionId: string): Promise<boolean> {
+  const response = await fetch(sessionExportHtmlUrl(sessionId));
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: response.statusText }));
     throw new Error(`export failed (${response.status}): ${body.error ?? "unknown"}`);

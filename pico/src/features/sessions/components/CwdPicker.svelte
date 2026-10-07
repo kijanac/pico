@@ -2,15 +2,14 @@
   import { Check, ChevronLeft, ChevronRight, Folder, Home } from "@lucide/svelte";
   import { Effect } from "effect";
   import type { FsListing } from "@pico/protocol/rpc";
-  import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
   import { listDirectories } from "@/features/sessions/api";
   import ActionRow from "@/shared/components/ActionRow.svelte";
   import { classifyHostFailure } from "@/shared/lib/host-issues";
-  import { runOnHost } from "@/shared/lib/rpc-client";
+  import { runRpc } from "@/shared/lib/rpc-client";
   import { createLatest } from "@/shared/lib/latest";
   import { Button } from "@/shared/ui/button";
 
-  let { hostId, initial, onSelect }: { hostId: string; initial?: string; onSelect: (path: string) => void } = $props();
+  let { initial, onSelect }: { initial?: string; onSelect: (path: string) => void } = $props();
 
   // svelte-ignore state_referenced_locally
   let path = $state<string | undefined>(initial);
@@ -20,7 +19,6 @@
   const listingRequest = createLatest();
 
   $effect(() => {
-    hostId;
     void load(path);
   });
 
@@ -28,15 +26,7 @@
     const token = listingRequest.begin();
     loading = true;
     error = null;
-    const host = hostRegistryState.getHost(hostId);
-    if (!host) {
-      error = "Pico host not found.";
-      loading = false;
-      return;
-    }
-    await runOnHost(
-      hostId,
-      listDirectories(nextPath).pipe(
+    await runRpc(listDirectories(nextPath).pipe(
         Effect.tap((nextListing) =>
           Effect.sync(() => {
             if (!listingRequest.isCurrent(token) || nextPath !== path) return;
@@ -44,7 +34,7 @@
           }),
         ),
         Effect.catchAll((caught) =>
-          classifyHostFailure(caught, { url: host.url }).pipe(
+          classifyHostFailure(caught).pipe(
             Effect.andThen((issue) =>
               Effect.sync(() => {
                 if (!listingRequest.isCurrent(token) || nextPath !== path) return;

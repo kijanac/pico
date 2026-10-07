@@ -10,10 +10,10 @@
   import AssistantErrorBanner from "@/features/chat/components/AssistantErrorBanner.svelte";
   import { navigateSessionTree } from "@/features/chat/api";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
-  import { runOnHost } from "@/shared/lib/rpc-client";
+  import { runRpc } from "@/shared/lib/rpc-client";
   import { copyText as copyClipboardText } from "@/shared/mobile/clipboard";
 
-  let { msg, hostId, sessionId }: { msg: AssistantMessage; hostId: string; sessionId: string } = $props();
+  let { msg, sessionId }: { msg: AssistantMessage; sessionId: string } = $props();
 
   let copied = $state(false);
   let detailsOpen = $state(false);
@@ -36,7 +36,7 @@
     branching = true;
     branchError = null;
     try {
-      await runOnHost(hostId, navigateSessionTree(sessionId, { entryId: msg.id }));
+      await runRpc(navigateSessionTree(sessionId, { entryId: msg.id }));
     } catch (error) {
       branchError = hostIssueSummary(error);
     } finally {
@@ -45,7 +45,7 @@
   }
 </script>
 
-<div class="type-message font-readable px-3 py-1.5 text-[color:var(--color-fg)]">
+<div class="type-message px-3 text-[color:var(--color-fg)]">
   {#if msg.text.length > 0}
     <StreamingMarkdown text={msg.text} done={!msg.streaming} />
   {/if}

@@ -3,19 +3,17 @@
   import type { ActionErrorHandler } from "./types";
   import { getSessionSettings, patchSessionSetting } from "@/features/chat/api";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
-  import { runOnHost } from "@/shared/lib/rpc-client";
+  import { runRpc } from "@/shared/lib/rpc-client";
   import ActionRow from "@/shared/components/ActionRow.svelte";
 
   type SessionControl = SessionControls["controls"][number];
 
   let {
-    hostId,
     sessionId,
     onError,
     filterKeys,
     excludeKeys,
   }: {
-    hostId: string;
     sessionId: string;
     onError: ActionErrorHandler;
     filterKeys?: readonly string[];
@@ -39,7 +37,7 @@
   async function loadSettings(): Promise<void> {
     loading = true;
     try {
-      settings = await runOnHost(hostId, getSessionSettings(sessionId));
+      settings = await runRpc(getSessionSettings(sessionId));
     } catch (error) {
       onError(hostIssueSummary(error));
     } finally {
@@ -54,7 +52,7 @@
     onError(null);
     if (previous) settings = patchLocal(previous, key, value);
     try {
-      settings = await runOnHost(hostId, patchSessionSetting(sessionId, key, value));
+      settings = await runRpc(patchSessionSetting(sessionId, key, value));
     } catch (error) {
       onError(hostIssueSummary(error));
       settings = previous;

@@ -12,7 +12,7 @@ import {
   type Mutable,
 } from "@pico/protocol/log";
 import { sendMessage } from "@/features/chat/api";
-import { runOnHost } from "@/shared/lib/rpc-client";
+import { runRpc } from "@/shared/lib/rpc-client";
 
 // A message on its way: shown as pending until pi's entry with its cid (or a
 // queue item) arrives. Retries reuse the cid, so the host can't double-send.
@@ -48,7 +48,6 @@ interface SessionLog {
 }
 
 const logs = $state<Record<string, SessionLog>>({});
-let activeHostId = $state<string | null>(null);
 let activeSessionId = $state<string | null>(null);
 
 const emptyEntries: LogEntry[] = [];
@@ -67,24 +66,20 @@ const SEND_TIMEOUT_MS = 10_000;
 // cids with a POST on the wire, so a reconnect or a tap doesn't send another.
 const inflight = new Set<string>();
 
-const activeLog = $derived(activeHostId && activeSessionId ? logs[logKey(activeHostId, activeSessionId)] : undefined);
+const activeLog = $derived(activeSessionId ? logs[activeSessionId] : undefined);
 
-function logKey(hostId: string, sessionId: string): string {
-  return `${hostId}:${sessionId}`;
-}
+const outboxKey = (sessionId: string) => `chat:outbox:${sessionId}`;
 
-const outboxKey = (hostId: string, sessionId: string) => `chat:outbox:${hostId}:${sessionId}`;
-
-function loadOutbox(hostId: string, sessionId: string): OutboxItem[] {
+function loadOutbox(sessionId: string): OutboxItem[] {
   try {
-    return JSON.parse(localStorage.getItem(outboxKey(hostId, sessionId)) ?? "[]") as OutboxItem[];
+    return JSON.parse(localStorage.getItem(outboxKey(sessionId)) ?? "[]") as OutboxItem[];
   } catch {
     return [];
   }
 }
 
-function saveOutbox(hostId: string, sessionId: string, outbox: readonly OutboxItem[]): void {
-  const key = outboxKey(hostId, sessionId);
+function saveOutbox(sessionId: string, outbox: readonly OutboxItem[]): void {
+  const key = outboxKey(sessionId);
   try {
     if (outbox.length === 0) localStorage.removeItem(key);
     else localStorage.setItem(key, JSON.stringify(outbox));
@@ -96,18 +91,17 @@ function saveOutbox(hostId: string, sessionId: string, outbox: readonly OutboxIt
   }
 }
 
-function getLog(hostId: string, sessionId: string): SessionLog {
-  const key = logKey(hostId, sessionId);
-  logs[key] ??= {
+function getLog(sessionId: string): SessionLog {
+  logs[sessionId] ??= {
     ...emptyLog(),
     leaf: null,
     live: emptyLive(),
     streaming: null,
     streamingCalls: [],
-    outbox: loadOutbox(hostId, sessionId),
+    outbox: loadOutbox(sessionId),
     activityVersion: 0,
   };
-  return logs[key];
+  return logs[sessionId];
 }
 
 // Shows a running tool's live output on its row until its result arrives.
@@ -152,9 +146,9 @@ function arrivedAfterBase(log: SessionLog, item: OutboxItem): boolean {
   return log.entries.slice(from + 1).some((row) => row.kind === "user" && (row.text === item.text || row.text.startsWith(`${item.text}\n\n`)));
 }
 
-function applyStatus(hostId: string, sessionId: string, status: SendStatus): void {
+function applyStatus(sessionId: string, status: SendStatus): void {
   // A log dropped from the cache since; its outbox is reconciled on reopening.
-  const log = logs[logKey(hostId, sessionId)];
+  const log = logs[sessionId];
   const item = log?.outbox.find((candidate) => candidate.cid === status.cid);
   if (!item) return;
   if (status.state === "delivered" || status.state === "handled" || status.state === "cleared") {
@@ -164,32 +158,32 @@ function applyStatus(hostId: string, sessionId: string, status: SendStatus): voi
     if (status.error) item.error = status.error;
     else delete item.error;
   }
-  saveOutbox(hostId, sessionId, log.outbox);
+  saveOutbox(sessionId, log.outbox);
 }
 
-async function post(hostId: string, sessionId: string, cid: string): Promise<void> {
-  const log = logs[logKey(hostId, sessionId)];
+async function post(sessionId: string, cid: string): Promise<void> {
+  const log = logs[sessionId];
   const item = log?.outbox.find((candidate) => candidate.cid === cid);
   if (!item || inflight.has(cid)) return;
   inflight.add(cid);
   item.tries += 1;
   item.state = "sending";
   delete item.error;
-  saveOutbox(hostId, sessionId, log.outbox);
+  saveOutbox(sessionId, log.outbox);
   const attempt = item.tries;
   const timer = setTimeout(() => {
     if (item.state !== "sending" || item.tries !== attempt) return;
     item.state = "failed";
-    saveOutbox(hostId, sessionId, log.outbox);
+    saveOutbox(sessionId, log.outbox);
   }, SEND_TIMEOUT_MS);
   try {
     const { text, mode, images, base } = item;
-    applyStatus(hostId, sessionId, await runOnHost(hostId, sendMessage(sessionId, { cid, text, mode, images, base, retry: attempt > 1 })));
+    applyStatus(sessionId, await runRpc(sendMessage(sessionId, { cid, text, mode, images, base, retry: attempt > 1 })));
   } catch (error) {
     // Only a deleted session is final; anything else (the network, a host
     // restarting) retries on reconnect.
     if ((error as { _tag?: string })._tag === "SessionNotFound") {
-      applyStatus(hostId, sessionId, { cid, state: "failed", error: "the session was deleted" });
+      applyStatus(sessionId, { cid, state: "failed", error: "the session was deleted" });
     }
   } finally {
     clearTimeout(timer);
@@ -198,31 +192,31 @@ async function post(hostId: string, sessionId: string, cid: string): Promise<voi
 }
 
 // After a sync: what the host reports, else resend what it never answered.
-function reconcileOutbox(hostId: string, sessionId: string, log: SessionLog, sends: readonly SendStatus[]): void {
-  for (const status of sends) applyStatus(hostId, sessionId, status);
+function reconcileOutbox(sessionId: string, log: SessionLog, sends: readonly SendStatus[]): void {
+  for (const status of sends) applyStatus(sessionId, status);
   const known = new Set(sends.map((status) => status.cid));
   for (const item of log.outbox) {
     if (known.has(item.cid)) continue;
     // Unknown to the host: never answered, or the host restarted since.
-    if (item.state === "sending" || item.state === "started" || (item.state === "failed" && !item.error)) void post(hostId, sessionId, item.cid);
+    if (item.state === "sending" || item.state === "started" || (item.state === "failed" && !item.error)) void post(sessionId, item.cid);
     else if (item.state === "queued" || item.state === "held") {
-      if (arrivedAfterBase(log, item)) applyStatus(hostId, sessionId, { cid: item.cid, state: "delivered" });
+      if (arrivedAfterBase(log, item)) applyStatus(sessionId, { cid: item.cid, state: "delivered" });
       else item.state = "lost";
     }
   }
-  saveOutbox(hostId, sessionId, log.outbox);
+  saveOutbox(sessionId, log.outbox);
 }
 
-function applyEntries(hostId: string, sessionId: string, log: SessionLog, entries: readonly Entry[]): void {
+function applyEntries(sessionId: string, log: SessionLog, entries: readonly Entry[]): void {
   for (const entry of entries) {
     applyEntry(log, entry);
     endLiveItem(log.live, entry);
-    if (entry.type === "user" && entry.cid) applyStatus(hostId, sessionId, { cid: entry.cid, state: "delivered" });
+    if (entry.type === "user" && entry.cid) applyStatus(sessionId, { cid: entry.cid, state: "delivered" });
   }
 }
 
-function apply(hostId: string, sessionId: string, message: ServerMessage): void {
-  const log = getLog(hostId, sessionId);
+function apply(sessionId: string, message: ServerMessage): void {
+  const log = getLog(sessionId);
   switch (message.t) {
     case "sync":
       if (message.reset) {
@@ -230,18 +224,18 @@ function apply(hostId: string, sessionId: string, message: ServerMessage): void 
         log.more = message.more;
       }
       log.live = message.live as SessionLog["live"];
-      applyEntries(hostId, sessionId, log, message.entries);
+      applyEntries(sessionId, log, message.entries);
       log.leaf = message.leaf;
       for (const tool of log.live.tools) overlayTool(log, tool);
       if (!log.live.running) reconcileOrphanedToolCalls(log);
-      reconcileOutbox(hostId, sessionId, log, message.sends);
+      reconcileOutbox(sessionId, log, message.sends);
       break;
     case "entries":
-      applyEntries(hostId, sessionId, log, message.entries);
+      applyEntries(sessionId, log, message.entries);
       log.leaf = message.leaf;
       break;
     case "send":
-      applyStatus(hostId, sessionId, message);
+      applyStatus(sessionId, message);
       break;
     case "meta":
       return;
@@ -294,18 +288,16 @@ export const chatLogState = {
     return activeLog?.more;
   },
 
-  activate(hostId: string, sessionId: string): void {
-    activeHostId = hostId;
+  activate(sessionId: string): void {
     activeSessionId = sessionId;
-    const key = logKey(hostId, sessionId);
-    const at = recentLogKeys.indexOf(key);
+    const at = recentLogKeys.indexOf(sessionId);
     if (at >= 0) recentLogKeys.splice(at, 1);
-    recentLogKeys.push(key);
+    recentLogKeys.push(sessionId);
     for (const stale of recentLogKeys.splice(0, Math.max(0, recentLogKeys.length - MAX_CACHED_LOGS))) {
       delete logs[stale];
     }
     // Trim a reopened log to its newest rows, starting at a user message.
-    const log = logs[key];
+    const log = logs[sessionId];
     if (!log || log.entries.length <= KEEP_ROWS * 1.5) return;
     const start = log.entries.findIndex((row, index) => index >= log.entries.length - KEEP_ROWS && row.kind === "user");
     if (start <= 0) return;
@@ -315,15 +307,15 @@ export const chatLogState = {
   },
 
   // What the live socket connects with: the bookmark and the unconfirmed sends.
-  connectParams(hostId: string, sessionId: string): { head: string | null; cids: string[] } {
-    const log = getLog(hostId, sessionId);
+  connectParams(sessionId: string): { head: string | null; cids: string[] } {
+    const log = getLog(sessionId);
     return { head: log.leaf, cids: log.outbox.map((item) => item.cid) };
   },
 
   apply,
 
-  prependHistory(hostId: string, sessionId: string, page: HistoryPage): number {
-    const log = getLog(hostId, sessionId);
+  prependHistory(sessionId: string, page: HistoryPage): number {
+    const log = getLog(sessionId);
     const older = emptyLog();
     for (const entry of page.entries) applyEntry(older, entry);
     const rows = older.entries.filter((row) => !log.indexById.has(row.id));
@@ -334,25 +326,25 @@ export const chatLogState = {
     return rows.length;
   },
 
-  send(hostId: string, sessionId: string, message: { text: string; mode: SendMode; images?: ImageContent[] }): void {
-    const log = getLog(hostId, sessionId);
+  send(sessionId: string, message: { text: string; mode: SendMode; images?: ImageContent[] }): void {
+    const log = getLog(sessionId);
     const cid = crypto.randomUUID();
     log.outbox.push({ cid, ...message, base: log.leaf, state: "sending", tries: 0 });
     log.activityVersion += 1;
-    void post(hostId, sessionId, cid);
+    void post(sessionId, cid);
   },
 
   retry(cid: string): void {
-    if (activeHostId && activeSessionId) void post(activeHostId, activeSessionId, cid);
+    if (activeSessionId) void post(activeSessionId, cid);
   },
 
   // Drops a failed send and returns it, for the composer.
   discard(cid: string): OutboxItem | undefined {
     const log = activeLog;
     const item = log?.outbox.find((candidate) => candidate.cid === cid);
-    if (!log || !item || !activeHostId || !activeSessionId) return undefined;
+    if (!log || !item || !activeSessionId) return undefined;
     log.outbox = log.outbox.filter((candidate) => candidate !== item);
-    saveOutbox(activeHostId, activeSessionId, log.outbox);
+    saveOutbox(activeSessionId, log.outbox);
     return item;
   },
 };

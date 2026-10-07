@@ -7,9 +7,8 @@
   <SessionsView
     sessions={sessionListState.sessions}
     refreshing={sessionListState.refreshing}
-    hostIssues={sessionListState.hostIssues}
+    error={sessionListState.error}
     archivedView={sessionListState.archivedView}
-    visibleCount={sessionListState.visibleCount}
     interactive={false}
     onRefresh={async () => {}}
   />

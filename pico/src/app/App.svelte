@@ -81,7 +81,7 @@
     <SessionsPage />
   {:else if route.id === "session"}
     {#await loadSession() then { default: SessionPage }}
-      <SessionPage hostId={route.params.hostId} id={route.params.id} />
+      <SessionPage id={route.params.id} />
     {/await}
   {:else if route.id === "settings"}
     {#await loadSettings() then { default: SettingsPage }}

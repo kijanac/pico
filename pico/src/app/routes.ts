@@ -1,6 +1,6 @@
 const routes = [
   { id: "sessions", path: "/" },
-  { id: "session", path: "/h/:hostId/s/:id" },
+  { id: "session", path: "/s/:id" },
   { id: "settings", path: "/settings" },
 ] as const;
 
@@ -41,7 +41,7 @@ const compiledRoutes = routes.map((route) => ({
 
 export const routePaths = {
   sessions: pathFor("sessions"),
-  session: (hostId: string, id: string) => pathFor("session", { hostId, id }),
+  session: (id: string) => pathFor("session", { id }),
   settings: pathFor("settings"),
 } as const;
 
