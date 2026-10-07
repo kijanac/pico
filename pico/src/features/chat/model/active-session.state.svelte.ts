@@ -120,10 +120,13 @@ export const activeSessionState = {
     connectionStatus = status;
   },
 
-  respondToExtensionUi(id: string, value: string | boolean | null): void {
-    if (!activeSessionId) return;
-    void runRpc(answerExtensionUi(activeSessionId, id, value)).catch(() => {});
-    chatLogState.apply(activeSessionId, { t: "ui_done", id });
+  // The prompt stays until the host has the answer; a failure throws, for
+  // the sheet to show.
+  async respondToExtensionUi(id: string, value: string | boolean | null): Promise<void> {
+    const sessionId = activeSessionId;
+    if (!sessionId) return;
+    await runRpc(answerExtensionUi(sessionId, id, value));
+    chatLogState.apply(sessionId, { t: "ui_done", id });
   },
 
   dismissExtensionNotification(): void {

@@ -50,6 +50,15 @@
           ? "danger"
           : "muted",
   );
+  const connectionLabel = $derived(
+    {
+      offline: "offline",
+      connecting: "connecting…",
+      reconnecting: "reconnecting…",
+      connected: null,
+      gone: "gone",
+    }[activeSessionState.connectionStatus],
+  );
   const statusDotActive = $derived(activeSessionState.status === "thinking" || activeSessionState.status === "tool");
 
   onMount(() => {
@@ -109,14 +118,15 @@
             <StatusDot tone={statusDotTone} active={statusDotActive} label={activeSessionState.status} />
             <div class="min-w-0 flex-1">
               <div class="type-title font-prose truncate font-medium">{session.title}</div>
-              <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">
-                {cwdDisplayName(session.cwd)}
+              <!-- Until caught up, what the connection is doing instead of the folder. -->
+              <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]" aria-live="polite">
+                {connectionLabel ?? cwdDisplayName(session.cwd)}
               </div>
             </div>
           </div>
         {:else}
           <div class="type-title font-prose truncate font-medium">session</div>
-          <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">{activeSessionState.connectionStatus}</div>
+          <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">{connectionLabel ?? "connected"}</div>
         {/if}
       </div>
       <div class="flex w-12 justify-end">

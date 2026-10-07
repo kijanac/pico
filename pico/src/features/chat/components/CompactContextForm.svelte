@@ -1,10 +1,13 @@
 <script lang="ts">
   import { compactSession } from "@/features/chat/api";
+  import { shortFailureText } from "@/shared/lib/host-issues";
   import { runRpc } from "@/shared/lib/rpc-client";
   import { Button } from "@/shared/ui/button";
   import { Textarea } from "@/shared/ui/textarea";
 
-  let { sessionId, onStart }: { sessionId: string; onStart: () => void } = $props();
+  // The sheet closes at once (the transcript shows compaction running); a
+  // failure is reported back to the composer.
+  let { sessionId, onStart, onError }: { sessionId: string; onStart: () => void; onError: (message: string) => void } = $props();
 
   let instructions = $state("");
 
@@ -12,7 +15,7 @@
     const customInstructions = instructions;
     onStart();
     void runRpc(compactSession(sessionId, customInstructions)).catch((error) => {
-      console.warn("[compact-context] compaction request failed:", error);
+      onError(`compaction failed · ${shortFailureText(error)}`);
     });
   }
 </script>

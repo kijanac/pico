@@ -7,6 +7,7 @@
   import { Textarea } from "@/shared/ui/textarea";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
+  import { shortFailureText } from "@/shared/lib/host-issues";
 
   let textValue = $state("");
   let sheetOpen = $state(false);
@@ -30,9 +31,22 @@
     if (request && activeRequestId === request.id && !sheetOpen) respond(null);
   });
 
-  function respond(value: string | boolean | null): void {
-    if (!request) return;
-    activeSessionState.respondToExtensionUi(request.id, value);
+  // Answering keeps the prompt (and what was typed) until the host has it.
+  let answering = $state(false);
+  let answerError = $state<string | null>(null);
+
+  async function respond(value: string | boolean | null): Promise<void> {
+    if (!request || answering) return;
+    answering = true;
+    answerError = null;
+    try {
+      await activeSessionState.respondToExtensionUi(request.id, value);
+    } catch (error) {
+      answerError = `not sent · ${shortFailureText(error)}`;
+      sheetOpen = true;
+    } finally {
+      answering = false;
+    }
   }
 </script>
 
@@ -52,6 +66,9 @@
 
 <Sheet.Root bind:open={sheetOpen}>
   <Sheet.BottomContent class="max-h-[82dvh]">
+    {#if answerError}
+      <p class="type-meta px-3 pt-2 text-[color:var(--color-danger)]" role="alert">{answerError}</p>
+    {/if}
     {#if shown}
       {#if shown.kind === "confirm"}
         <SheetHeader title={shown.title} />
@@ -60,10 +77,10 @@
             {@render detailBlock(shown.message)}
           {/if}
           <div class="grid grid-cols-2 gap-2 pt-1">
-            <Button type="button" variant="outline" aria-label="No" onclick={() => respond(false)}>
+            <Button type="button" variant="outline" aria-label="No" disabled={answering} onclick={() => respond(false)}>
               <X class="size-4" />
             </Button>
-            <Button type="button" aria-label="Yes" onclick={() => respond(true)}>
+            <Button type="button" aria-label="Yes" disabled={answering} onclick={() => respond(true)}>
               <Check class="size-4" />
             </Button>
           </div>
@@ -79,11 +96,12 @@
                 type="button"
                 variant="outline"
                 class="h-auto w-full justify-start whitespace-normal py-2.5 text-left"
+                disabled={answering}
                 onclick={() => respond(option)}>{option}</Button
               >
             {/each}
           </div>
-          <Button type="button" variant="ghost" class="w-full" onclick={() => respond(null)}>cancel</Button>
+          <Button type="button" variant="ghost" class="w-full" disabled={answering} onclick={() => respond(null)}>cancel</Button>
         </div>
       {:else if shown.kind === "input"}
         <SheetHeader title={shown.title} />
@@ -94,8 +112,8 @@
             <Input type="text" class="type-copy h-10" placeholder={shown.placeholder ?? ""} bind:value={textValue} />
           {/if}
           <div class="grid grid-cols-2 gap-2 pt-1">
-            <Button type="button" variant="outline" onclick={() => respond(null)}>cancel</Button>
-            <Button type="button" onclick={() => respond(textValue)}>submit</Button>
+            <Button type="button" variant="outline" disabled={answering} onclick={() => respond(null)}>cancel</Button>
+            <Button type="button" disabled={answering} onclick={() => respond(textValue)}>submit</Button>
           </div>
         </div>
       {/if}

@@ -25,7 +25,8 @@ export interface OutboxItem {
   // file, in case a restart made it forget the cid.
   base: string | null;
   // lost: it was queued when the host restarted (pi's queue isn't saved).
-  // failed without `error`: no answer in time; it retries on reconnect.
+  // failed without `error`: unconfirmed (no answer in time, or the request
+  // failed on the way); the host may have it. It retries on reconnect.
   state: "sending" | "started" | "queued" | "held" | "failed" | "lost";
   error?: string;
   tries: number;
@@ -183,10 +184,14 @@ async function post(sessionId: string, cid: string): Promise<void> {
     const { text, mode, images, base } = item;
     applyStatus(sessionId, await runRpc(sendMessage(sessionId, { cid, text, mode, images, base, retry: attempt > 1 })));
   } catch (error) {
-    // Only a deleted session is final; anything else (the network, a host
-    // restarting) retries on reconnect.
+    // Only a deleted session is final. Anything else (the network, a host
+    // restarting) is unconfirmed, as when no answer comes in time: it says so
+    // now rather than staying "sending", and retries on reconnect or a tap.
     if ((error as { _tag?: string })._tag === "SessionNotFound") {
       applyStatus(sessionId, { cid, state: "failed", error: "the session was deleted" });
+    } else if (item.state === "sending" && item.tries === attempt) {
+      item.state = "failed";
+      saveOutbox(sessionId, log.outbox);
     }
   } finally {
     clearTimeout(timer);

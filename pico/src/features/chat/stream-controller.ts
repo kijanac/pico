@@ -68,13 +68,22 @@ export class SessionStreamController {
 
         const exit = yield* Effect.gen(function* () {
           const client = yield* PicoSessionClient;
-          self.#everConnected = true;
           markSessionOpen(sessionId, "ws-connected");
-          self.#setConnectionStatus("connected");
-          delay = RECONNECT_MIN_MS;
           yield* client.session
             .live({ id: sessionId, ...chatLogState.connectParams(sessionId) })
-            .pipe(Stream.runForEach((message) => Effect.sync(() => self.#handle(message))));
+            .pipe(
+              Stream.runForEach((message) =>
+                Effect.sync(() => {
+                  // Connected means caught up: each connection starts with a sync.
+                  if (message.t === "sync") {
+                    self.#everConnected = true;
+                    self.#setConnectionStatus("connected");
+                    delay = RECONNECT_MIN_MS;
+                  }
+                  self.#handle(message);
+                }),
+              ),
+            );
         }).pipe(
           Effect.provide(sessionClientLayer),
           Effect.catchTag("SessionNotFound", () =>

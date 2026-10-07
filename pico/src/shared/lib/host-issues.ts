@@ -85,6 +85,13 @@ export function diagnoseHostFailure(error: unknown, refine: (issue: HostIssue) =
   return classifyHostIssue(error);
 }
 
+// One line, for a failure shown beside its control: the host's or pi's own
+// error text when there is one, else the kind of failure.
+export function shortFailureText(error: unknown): string {
+  const issue = classifyHostIssue(error);
+  return issue.kind === "generic" ? issue.message : issue.title;
+}
+
 export function issueText(issue: HostIssue): string {
   return `${issue.title}: ${issue.message}`;
 }

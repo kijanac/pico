@@ -11,6 +11,7 @@
   import { createLongPress } from "@/shared/gestures/long-press";
   import { interruptSession } from "@/features/chat/api";
   import { runRpc } from "@/shared/lib/rpc-client";
+  import { shortFailureText } from "@/shared/lib/host-issues";
   import { formatCost } from "@/shared/lib/format";
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
   import { Button } from "@/shared/ui/button";
@@ -156,8 +157,30 @@
     clearChatDraft(sessionId);
   }
 
-  function interrupt(): void {
-    void runRpc(interruptSession(sessionId)).catch(() => {});
+  // Stopping until the run ends; a failed request says so above the composer.
+  let stopping = $state(false);
+  // A composer action that failed (stop, compaction), until the next one or a tap.
+  let actionError = $state<string | null>(null);
+  let modelError = $state<string | null>(null);
+
+  $effect(() => {
+    if (!busy) stopping = false;
+  });
+
+  $effect(() => {
+    if (modelOpen) untrack(() => (modelError = null));
+  });
+
+  async function interrupt(): Promise<void> {
+    if (stopping) return;
+    stopping = true;
+    actionError = null;
+    try {
+      await runRpc(interruptSession(sessionId));
+    } catch (error) {
+      stopping = false;
+      actionError = `couldn't stop · ${shortFailureText(error)}`;
+    }
   }
 
   // Tap sends/steers; long-press queues a follow-up — pi's alt+enter, as a touch gesture.
@@ -307,6 +330,12 @@
 </script>
 
 <div class="pointer-events-auto relative z-20 shrink-0" style:padding-bottom={bottomPadding}>
+  {#if actionError}
+    <div class="column type-meta flex items-baseline gap-2 px-3 pt-1 text-[color:var(--color-danger)]" role="alert">
+      <span class="min-w-0 flex-1">{actionError}</span>
+      <button type="button" class="shrink-0 text-[color:var(--color-fg-muted)] active:opacity-70" onclick={() => (actionError = null)}>dismiss</button>
+    </div>
+  {/if}
   {#if slashCommands.query !== null}
     <SlashCommandSuggestions
       entries={slashCommands.matches}
@@ -397,7 +426,7 @@
       {/if}
 
       {#if busy}
-        <Button type="button" variant="outline" size="icon" onclick={interrupt} aria-label="Stop" title="Stop the current turn" class="shrink-0 rounded-[var(--radius-sm)] active:opacity-80">
+        <Button type="button" variant="outline" size="icon" onclick={interrupt} disabled={stopping} aria-label={stopping ? "Stopping" : "Stop"} title={stopping ? "Stopping…" : "Stop the current turn"} class="shrink-0 rounded-[var(--radius-sm)] active:opacity-80">
           <Square class="size-3" fill="currentColor" />
         </Button>
       {/if}
@@ -417,7 +446,7 @@
     </div>
   </div>
 
-  <CompactContextSheet bind:open={compactOpen} {sessionId} />
+  <CompactContextSheet bind:open={compactOpen} {sessionId} onError={(message) => (actionError = message)} />
 
   <QueuedMessagesSheet
     bind:open={queueOpen}
@@ -430,7 +459,10 @@
   <Sheet.Root bind:open={modelOpen}>
     <Sheet.BottomContent class="max-h-[82dvh]">
       <SheetHeader title="model" />
-      <SessionSettingsView {sessionId} onError={() => {}} filterKeys={["model"]} />
+      {#if modelError}
+        <p class="type-meta px-3 pt-2 text-[color:var(--color-danger)]" role="alert">{modelError}</p>
+      {/if}
+      <SessionSettingsView {sessionId} onError={(message) => (modelError = message)} filterKeys={["model"]} />
     </Sheet.BottomContent>
   </Sheet.Root>
 </div>

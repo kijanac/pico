@@ -63,9 +63,10 @@
   {/if}
 
   {#if outbox && failed}
-    <div class="type-meta mt-1 flex max-w-[85%] items-baseline justify-end gap-2 text-right text-[color:var(--color-danger)]">
+    <!-- Without an error, delivery is unconfirmed: the host may have it, and a retry can't send it twice. -->
+    <div class="type-meta mt-1 flex max-w-[85%] items-baseline justify-end gap-2 text-right text-[color:var(--color-danger)]" aria-live="polite">
       <button type="button" class="active:opacity-70" onclick={() => chatLogState.retry(outbox.cid)}>
-        {outbox.state === "lost" ? "not sent: the host restarted · send again" : `not delivered${outbox.error ? `: ${outbox.error}` : ""} · tap to retry`}
+        {outbox.state === "lost" ? "not sent: the host restarted · send again" : outbox.error ? `not delivered: ${outbox.error} · tap to retry` : "not confirmed · tap to retry"}
       </button>
       <button type="button" class="text-[color:var(--color-fg-muted)] active:opacity-70" onclick={() => discard(outbox.cid)}>edit</button>
     </div>
