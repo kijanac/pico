@@ -1,13 +1,10 @@
 import { strict as assert } from "node:assert";
-import { once } from "node:events";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
-import { HttpClient, HttpClientRequest, Socket } from "@effect/platform";
+import { HttpClient, HttpClientRequest, HttpServer, Socket } from "@effect/platform";
 import { RpcClient } from "@effect/rpc";
-import { Chunk, Duration, Effect, Exit, Layer, ManagedRuntime, Scope, Stream } from "effect";
+import { Chunk, Context, Duration, Effect, Exit, Layer, ManagedRuntime, Scope, Stream } from "effect";
 import type { WireEvent } from "@pico/protocol";
 import { picoHttpProtocol, picoSocketProtocol } from "@pico/protocol/client";
 import { PicoRpc, PicoSessionRpc } from "@pico/protocol/rpc";
@@ -28,11 +25,6 @@ process.env.PICO_OWNER = "smoke@example.test";
 process.env.PI_CODING_AGENT_DIR = join(tempRoot, "agent");
 
 const authHeaders = { "tailscale-user-login": "smoke@example.test" };
-
-function addressInfo(serverAddress: string | AddressInfo | null): AddressInfo {
-  assert(serverAddress && typeof serverAddress !== "string", "server did not expose a TCP address");
-  return serverAddress;
-}
 
 // Sends the Tailscale identity header the host normally receives from `tailscale serve`.
 function makeClientRuntime(baseUrl: string) {
@@ -55,20 +47,12 @@ function makeSessionRuntime(baseUrl: string) {
 }
 
 try {
-  const { launchHttpServer } = await import("../src/host.ts");
-
-  let resolveServer: (server: Server) => void;
-  const serverReady = new Promise<Server>((resolve) => {
-    resolveServer = resolve;
-  });
-  const running = launchHttpServer(0, "127.0.0.1", (server) => resolveServer(server));
-  const server = await serverReady;
+  const { hostLayer } = await import("../src/host.ts");
+  const hostScope = Effect.runSync(Scope.make());
+  const host = await Effect.runPromise(Layer.buildWithScope(hostLayer(0), hostScope));
+  const baseUrl = HttpServer.formatAddress(Context.get(host, HttpServer.HttpServer).address);
 
   try {
-    await once(server, "listening");
-    const address = addressInfo(server.address());
-    const baseUrl = `http://127.0.0.1:${address.port}`;
-
     const health = await fetch(`${baseUrl}/healthz`);
     assert.equal(health.status, 200);
     assert.equal(await health.text(), "ok");
@@ -173,7 +157,7 @@ try {
 
     console.log("Pico host smoke tests passed");
   } finally {
-    await running.stop();
+    await Effect.runPromise(Scope.close(hostScope, Exit.void));
   }
 } finally {
   rmSync(tempRoot, { recursive: true, force: true });

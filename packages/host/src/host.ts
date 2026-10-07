@@ -1,7 +1,7 @@
-import { Cause, Effect, Fiber, Layer } from "effect";
-import { HttpApiBuilder } from "@effect/platform";
+import { Effect, Layer } from "effect";
+import { HttpApiBuilder, HttpServer } from "@effect/platform";
 import { NodeContext, NodeHttpServer } from "@effect/platform-node";
-import { createServer, type Server } from "node:http";
+import { createServer } from "node:http";
 import { DB_PATH, HOST_INSECURE_NO_AUTH, USE_MOCK } from "./config.ts";
 import { AppLayer } from "./runtime.ts";
 import { PicoHostApi } from "./http/api.ts";
@@ -13,96 +13,36 @@ import { RpcRoutesLive, SessionWsRoutesLive } from "./http/rpc.ts";
 import { WebRoutesLive } from "./http/web.ts";
 import { TracingLive } from "./tracing.ts";
 
-export interface PicoHostOptions {
-  readonly host?: string;
-  readonly port?: number;
-}
+// Logs once the server is listening, and again when it shuts down.
+const LifecycleLogLive = Layer.scopedDiscard(
+  Effect.gen(function* () {
+    if (HOST_INSECURE_NO_AUTH) {
+      yield* Effect.logWarning("auth_disabled").pipe(
+        Effect.annotateLogs({ reason: "PICO_HOST_INSECURE_NO_AUTH=1: anyone who can reach the port has full access" }),
+      );
+    }
+    const url = yield* HttpServer.addressFormattedWith(Effect.succeed);
+    yield* Effect.logInfo("host_started").pipe(
+      Effect.annotateLogs({ url, db: DB_PATH, pi: USE_MOCK ? "mock" : "live" }),
+    );
+    yield* Effect.addFinalizer(() => Effect.logInfo("host_stopping"));
+  }),
+);
 
-export interface PicoHostHandle {
-  readonly host: string;
-  readonly port: number;
-  readonly url: string;
-  close: () => Promise<void>;
-}
-
-const DEFAULT_PORT = 7777;
-const DEFAULT_HOST = "127.0.0.1";
-
-export interface LaunchedHttpServer {
-  readonly stop: () => Promise<void>;
-}
-
-export function launchHttpServer(
-  port: number,
-  host: string,
-  onServer?: (server: Server) => void,
-): LaunchedHttpServer {
-  // Created eagerly for a stable reference; listen happens when the layer builds.
-  const server = createServer();
-  onServer?.(server);
-
-  const ApiLive = HttpApiBuilder.api(PicoHostApi).pipe(Layer.provide(SystemApiLive));
-
-  // The app is served from this origin, so there is no CORS to configure.
-  const ServerLive = HttpApiBuilder.serve(authMiddleware).pipe(
+// The whole host as one Layer: main.ts launches it on :7777, the smoke test on
+// port 0. It binds loopback only; Tailscale Serve is the sole ingress (auth.ts).
+// HttpServer stays in the output so callers can read the bound address.
+export const hostLayer = (port: number) =>
+  HttpApiBuilder.serve(authMiddleware).pipe(
     Layer.provide(HttpApiBuilder.middleware(compress)),
     Layer.provide(RpcRoutesLive),
     Layer.provide(SessionWsRoutesLive),
     Layer.provide(RawRoutesLive),
     Layer.provide(WebRoutesLive),
-    Layer.provide(ApiLive),
-    Layer.provide(NodeHttpServer.layer(() => server, { port, host })),
+    Layer.provide(HttpApiBuilder.api(PicoHostApi).pipe(Layer.provide(SystemApiLive))),
+    Layer.merge(LifecycleLogLive),
+    Layer.provideMerge(NodeHttpServer.layer(createServer, { port, host: "127.0.0.1" })),
+    Layer.provide(AppLayer),
+    Layer.provide(NodeContext.layer),
+    Layer.provide(TracingLive),
   );
-
-  const program = Effect.gen(function* () {
-    yield* Layer.build(ServerLive);
-    yield* Effect.never;
-  }).pipe(
-    Effect.provide(AppLayer),
-    Effect.provide(NodeContext.layer),
-    // No-op unless PICO_HOST_OTEL=1 (then spans print to the console).
-    Effect.provide(TracingLive),
-    Effect.scoped,
-    Effect.tapErrorCause((cause) => Effect.logError(`http server failed: ${Cause.pretty(cause)}`)),
-  );
-
-  const fiber = Effect.runFork(program);
-
-  // Interrupting the fiber closes the scope, running the layer finalizers
-  // (server shutdown + SessionManager teardown).
-  const stop = () => Effect.runPromise(Fiber.interrupt(fiber)).then(() => undefined);
-
-  return { stop };
-}
-
-export function startPicoHost(options: PicoHostOptions = {}): PicoHostHandle {
-  const port = options.port ?? DEFAULT_PORT;
-  const host = options.host ?? DEFAULT_HOST;
-
-  if (HOST_INSECURE_NO_AUTH) {
-    Effect.runFork(
-      Effect.logWarning(
-        "PICO_HOST_INSECURE_NO_AUTH=1 — Tailscale identity checks are DISABLED. Anyone who can reach this port has full access. Local dev only.",
-      ),
-    );
-  }
-
-  const server = launchHttpServer(port, host);
-  const url = `http://${host}:${port}`;
-  let closed = false;
-
-  Effect.runFork(
-    Effect.logInfo("host_started").pipe(
-      Effect.annotateLogs({ url, db: DB_PATH, pi: USE_MOCK ? "mock" : "live" }),
-    ),
-  );
-
-  const close = async () => {
-    if (closed) return;
-    closed = true;
-    await Effect.runPromise(Effect.logInfo("host_stopping"));
-    await server.stop();
-  };
-
-  return { host, port, url, close };
-}
