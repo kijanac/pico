@@ -60,5 +60,4 @@ Phones catch up from pi's own entries, using the last entry id they have.
 | --- | --- |
 | `PICO_OWNER` | Tailscale login allowed to use the host. Required unless auth is off. |
 | `PICO_HOST_DB` | SQLite path; its directory also holds HTML exports. Required. |
-| `PICO_WORKSPACES_DIR` | Root the directory picker starts from. Required. |
 | `PICO_HOST_INSECURE_NO_AUTH` | `=1` disables the identity check. Local dev only. |

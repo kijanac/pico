@@ -14,12 +14,13 @@
   let renameTarget = $state<SessionMeta | null>(null);
   let deleteTarget = $state<SessionMeta | null>(null);
   let openSwipeSessionId = $state<string | null>(null);
+  const recentFolders = $derived([...new Set(sessionListState.sessions.map((session) => session.cwd))]);
 
   onMount(() => {
     sessionListState.refresh().catch(() => {});
   });
 
-  async function createSession(input: { cwd: string; title: string }): Promise<void> {
+  async function createSession(input: { cwd: string; title?: string }): Promise<void> {
     const session = await sessionListState.create(input);
     newSessionOpen = false;
     navigateTo(routePaths.session(session.id));
@@ -74,7 +75,7 @@
   onDelete={requestDelete}
 />
 
-<NewSessionSheet bind:open={newSessionOpen} creating={sessionListState.creating} onCreate={createSession} />
+<NewSessionSheet bind:open={newSessionOpen} creating={sessionListState.creating} folders={recentFolders} onCreate={createSession} />
 
 {#if renameTarget}
   <RenameSheet

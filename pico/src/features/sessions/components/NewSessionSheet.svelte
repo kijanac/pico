@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ChevronLeft, Folder, Plus } from "@lucide/svelte";
   import CwdPicker from "@/features/sessions/components/CwdPicker.svelte";
+  import { cwdDisplayName } from "@/shared/lib/path-display";
   import { Button } from "@/shared/ui/button";
   import { Input } from "@/shared/ui/input";
   import * as Sheet from "@/shared/ui/sheet";
@@ -8,34 +9,31 @@
   let {
     open = $bindable(false),
     creating = false,
+    folders = [],
     onCreate,
   }: {
     open: boolean;
     creating?: boolean;
-    onCreate: (opts: { cwd: string; title: string }) => void;
+    // Folders of recent sessions, most recent first.
+    folders?: readonly string[];
+    onCreate: (opts: { cwd: string; title?: string }) => void;
   } = $props();
 
   let cwd = $state<string | undefined>();
+  const otherFolders = $derived(folders.filter((folder) => folder !== cwd).slice(0, 5));
+
+  // Starts where you last worked.
+  $effect(() => {
+    if (open && cwd === undefined) cwd = folders[0];
+  });
   let title = $state("");
   let pickerOpen = $state(false);
-
-  const effectiveTitle = $derived.by(() => {
-    const trimmed = title.trim();
-    if (trimmed.length > 0) return trimmed;
-    return cwd ? basename(cwd) : "";
-  });
 
   const canCreate = $derived(!!cwd && !creating);
 
   function handleCreate(): void {
     if (!cwd || !canCreate) return;
-    onCreate({ cwd, title: effectiveTitle });
-  }
-
-  function basename(path: string): string {
-    const trimmed = path.replace(/\/+$/, "");
-    const index = trimmed.lastIndexOf("/");
-    return index >= 0 ? trimmed.slice(index + 1) : trimmed;
+    onCreate({ cwd, title: title.trim() || undefined });
   }
 </script>
 
@@ -82,9 +80,26 @@
           </Button>
         </label>
 
+        {#if otherFolders.length > 0}
+          <div>
+            <div class="label mb-1">recent</div>
+            {#each otherFolders as folder (folder)}
+              <button
+                type="button"
+                onclick={() => (cwd = folder)}
+                class="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-3 py-1.5 text-left active:bg-[color:var(--color-surface)]"
+              >
+                <Folder class="size-3.5 shrink-0 text-[color:var(--color-fg-muted)]" />
+                <span class="type-copy shrink-0">{cwdDisplayName(folder)}</span>
+                <span class="type-meta min-w-0 flex-1 truncate text-[color:var(--color-fg-faint)]">{folder}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+
         <div>
           <label class="label mb-1.5 block" for="session_title">title</label>
-          <Input id="session_title" type="text" bind:value={title} placeholder={cwd ? basename(cwd) : "session title"} class="h-10" />
+          <Input id="session_title" type="text" bind:value={title} placeholder="optional" class="h-10" />
         </div>
 
       </div>

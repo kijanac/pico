@@ -21,7 +21,6 @@ async function liveOverRealPi() {
   vi.resetModules();
   const dir = mkdtempSync(join(tmpdir(), "pico-live-"));
   process.env.PICO_HOST_DB = join(dir, "host.db");
-  process.env.PICO_WORKSPACES_DIR = dir;
   process.env.PICO_HOST_INSECURE_NO_AUTH = "1";
   const { makeLive } = await import("../src/pi.ts");
 

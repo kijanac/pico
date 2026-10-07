@@ -11,7 +11,6 @@ async function freshAuth(opts: { insecure?: boolean; owner?: string } = {}): Pro
   vi.resetModules();
   const dir = mkdtempSync(join(tmpdir(), "pico-auth-"));
   process.env.PICO_HOST_DB = join(dir, "host.db");
-  process.env.PICO_WORKSPACES_DIR = dir;
   if (opts.insecure) process.env.PICO_HOST_INSECURE_NO_AUTH = "1";
   else delete process.env.PICO_HOST_INSECURE_NO_AUTH;
   if (opts.owner === undefined) delete process.env.PICO_OWNER;

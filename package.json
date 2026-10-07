@@ -7,7 +7,7 @@
     "node": ">=26.1.0"
   },
   "scripts": {
-    "dev:host": "PICO_HOST_DB=data/pico-host.db PICO_WORKSPACES_DIR=. PICO_HOST_INSECURE_NO_AUTH=1 pnpm --filter @pico/host dev",
+    "dev:host": "PICO_HOST_DB=data/pico-host.db PICO_HOST_INSECURE_NO_AUTH=1 pnpm --filter @pico/host dev",
     "dev:web": "pnpm --filter pico dev",
     "build": "pnpm --filter @pico/protocol build && pnpm --filter @pico/host build && pnpm --filter pico build",
     "redeploy": "git pull --ff-only && pnpm install --frozen-lockfile && pnpm build && systemctl --user daemon-reload && systemctl --user restart pico",

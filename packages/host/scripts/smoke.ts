@@ -30,7 +30,6 @@ const workspaceDir = join(tempRoot, "workspace");
 mkdirSync(workspaceDir, { recursive: true });
 
 process.env.PICO_HOST_DB = join(tempRoot, "pico-host.db");
-process.env.PICO_WORKSPACES_DIR = workspaceDir;
 process.env.PICO_OWNER = "smoke@example.test";
 process.env.PI_CODING_AGENT_DIR = join(tempRoot, "agent");
 // pi runs as in production, with pi-ai's scripted model as its default.

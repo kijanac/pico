@@ -11,7 +11,6 @@ async function withStore<A>(run: (store: import("../src/store.ts").Store["Type"]
   vi.resetModules();
   const dir = mkdtempSync(join(tmpdir(), "pico-store-"));
   process.env.PICO_HOST_DB = join(dir, "host.db");
-  process.env.PICO_WORKSPACES_DIR = dir;
   process.env.PICO_HOST_INSECURE_NO_AUTH = "1";
   const { Store, StoreLive } = await import("../src/store.ts");
   return Effect.runPromise(
