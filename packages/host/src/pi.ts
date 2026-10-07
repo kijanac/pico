@@ -7,10 +7,15 @@ import * as Stream from "effect/Stream";
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
+  createCodemodeExtension,
+  createMcpExtension,
+  createToolSearchExtension,
   ModelRuntime,
   SessionManager as PiSessionManager,
   type AgentSession,
+  type CreateAgentSessionFromServicesOptions,
   type AgentSessionEvent,
+  type InlineExtension,
   type SessionEntry,
   type SessionStats as PiSdkSessionStats,
 } from "@earendil-works/pi-coding-agent";
@@ -98,11 +103,48 @@ export const getAgentModelRuntime = (): Promise<ModelRuntime> =>
     throw error;
   });
 
+// Where sessions come from: pi's own setup, or the mock's scripted model.
+export interface PiSetup {
+  readonly modelRuntime: () => Promise<ModelRuntime>;
+  // pi's settings and resources; pi's own (~/.pi/agent) when unset.
+  readonly agentDir?: string;
+  readonly newSessionManager: (cwd: string) => PiSessionManager;
+  // A saved session's file, to resume it.
+  readonly findSession: (cwd: string, id: string) => string | undefined;
+  // Options every session gets.
+  readonly sessionOptions?: (runtime: ModelRuntime) => Pick<CreateAgentSessionFromServicesOptions, "model" | "tools">;
+}
+
+// The extensions pi's CLI loads into every session (MCP servers, codemode,
+// tool search); the SDK leaves them to the host. Same defaults as the CLI's.
+// Its llama.cpp extension isn't exported.
+const builtInExtensions: InlineExtension[] = [
+  { name: "codemode", factory: createCodemodeExtension(), replaceable: true, builtin: true },
+  { name: "tool-search", factory: createToolSearchExtension(), replaceable: true, builtin: true },
+  { name: "mcp", factory: createMcpExtension(), replaceable: true, builtin: true },
+];
+
 // Same order as pi's CLI: the cwd's services (settings, resources, extensions
 // and any providers they register), then the session from them.
-const openAgentSession = async (cwd: string, sessionManager: PiSessionManager): Promise<AgentSession> => {
-  const services = await createAgentSessionServices({ cwd, modelRuntime: await getAgentModelRuntime() });
-  const { session } = await createAgentSessionFromServices({ services, sessionManager });
+const openAgentSession = async (
+  setup: PiSetup,
+  cwd: string,
+  sessionManager: PiSessionManager,
+  reason: "startup" | "resume",
+): Promise<AgentSession> => {
+  const modelRuntime = await setup.modelRuntime();
+  const services = await createAgentSessionServices({
+    cwd,
+    agentDir: setup.agentDir,
+    modelRuntime,
+    resourceLoaderOptions: { extensionFactories: builtInExtensions },
+  });
+  const { session } = await createAgentSessionFromServices({
+    services,
+    sessionManager,
+    sessionStartEvent: { type: "session_start", reason },
+    ...setup.sessionOptions?.(modelRuntime),
+  });
   return session;
 };
 
@@ -746,6 +788,8 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
   const onEvent = (event: AgentSessionEvent) => {
     // Entries pi saved since its last notification come before this one.
     pump();
+    // Calls a tool makes itself (codemode) show inside that tool's row, as in pi's TUI.
+    if ("parentToolCallId" in event && event.parentToolCallId) return;
     switch (event.type) {
       case "message_start":
         if (event.message.role === "assistant") {
@@ -997,16 +1041,22 @@ const wirePiSession = (
           },
           catch: (e) => new PiError({ message: `navigateTree failed: ${String(e)}`, cause: e }),
         }),
+      // As pi's runtime does: extensions hear the session end (MCP closes its
+      // servers), then it is disposed.
       close: () =>
-        Effect.sync(() => {
+        Effect.promise(async () => {
           live.close();
           extensionUi.close();
+          if (piSession.extensionRunner.hasHandlers("session_shutdown")) {
+            await piSession.extensionRunner.emit({ type: "session_shutdown", reason: "quit" }).catch(() => {});
+          }
           piSession.dispose();
         }),
     };
   });
 
 const makeLiveSession = (
+  setup: PiSetup,
   opts: {
     cwd: string;
     title: string;
@@ -1016,12 +1066,7 @@ const makeLiveSession = (
 ): Effect.Effect<PiSession, PiError> =>
   Effect.gen(function* () {
     const piSession = yield* Effect.tryPromise<AgentSession, PiError>({
-      try: async () => {
-        const sessionManager = PI_EPHEMERAL
-          ? PiSessionManager.inMemory(opts.cwd)
-          : PiSessionManager.create(opts.cwd);
-        return openAgentSession(opts.cwd, sessionManager);
-      },
+      try: () => openAgentSession(setup, opts.cwd, setup.newSessionManager(opts.cwd), "startup"),
       catch: (e) => new PiError({ message: `create session failed: ${String(e)}`, cause: e }),
     });
 
@@ -1040,6 +1085,7 @@ const makeLiveSession = (
   });
 
 const makeResumedSession = (
+  setup: PiSetup,
   storedRecord: SessionRecord,
   hooks: LiveHooks,
   fs: FileSystem.FileSystem,
@@ -1050,10 +1096,9 @@ const makeResumedSession = (
       PiError | SessionNotFound
     >({
       try: async () => {
-        // findById only reads headers; list() parses every transcript in the cwd.
-        const path = PiSessionManager.findById(storedRecord.cwd, storedRecord.id);
+        const path = setup.findSession(storedRecord.cwd, storedRecord.id);
         if (!path) throw new SessionNotFound({ id: storedRecord.id });
-        return openAgentSession(storedRecord.cwd, PiSessionManager.open(path));
+        return openAgentSession(setup, storedRecord.cwd, PiSessionManager.open(path), "resume");
       },
       catch: (e) => {
         if (e instanceof SessionNotFound) return e;
@@ -1076,13 +1121,21 @@ const makeResumedSession = (
   });
 
 
-export const PiClientLive = Layer.effect(
-  PiClient,
-  Effect.map(FileSystem.FileSystem, (fs) =>
-    PiClient.of({
-      create: (opts, hooks) => makeLiveSession(opts, hooks, fs),
-      resume: (storedRecord, hooks) => makeResumedSession(storedRecord, hooks, fs),
-    }),
-  ),
-);
+export const makePiClient = (setup: PiSetup) =>
+  Layer.effect(
+    PiClient,
+    Effect.map(FileSystem.FileSystem, (fs) =>
+      PiClient.of({
+        create: (opts, hooks) => makeLiveSession(setup, opts, hooks, fs),
+        resume: (storedRecord, hooks) => makeResumedSession(setup, storedRecord, hooks, fs),
+      }),
+    ),
+  );
+
+export const PiClientLive = makePiClient({
+  modelRuntime: getAgentModelRuntime,
+  newSessionManager: (cwd) => (PI_EPHEMERAL ? PiSessionManager.inMemory(cwd) : PiSessionManager.create(cwd)),
+  // findById only reads headers; list() parses every transcript in the cwd.
+  findSession: (cwd, id) => PiSessionManager.findById(cwd, id),
+});
 

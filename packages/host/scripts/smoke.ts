@@ -122,13 +122,6 @@ try {
     const savedProviders = await call(client.auth.saveApiKey({ providerId: "openrouter", apiKey: "sk-smoke-test" }));
     assert.equal(savedProviders.providers.find((provider) => provider.id === "openrouter")?.configured, true);
 
-    const exportRes = await fetch(`${baseUrl}/sessions/${encodeURIComponent(session.id)}/export.html`, {
-      headers: authHeaders,
-    });
-    assert.equal(exportRes.status, 200);
-    assert.match(exportRes.headers.get("content-type") ?? "", /^text\/html/);
-    assert.match(await exportRes.text(), /<!doctype html>/i);
-
     // The live channel: a sync from the phone's bookmark, then changes. Sends go
     // over HTTP and are safe to repeat.
     const sessionRuntime = makeSessionRuntime(baseUrl);
@@ -171,6 +164,13 @@ try {
     assert(messages.some((message) => message.t === "out"), "tool output streams live");
     assert(messages.some((message) => message.t === "d"), "reply text streams live");
 
+    // pi exports a session once it has a conversation.
+    const exportRes = await fetch(`${baseUrl}/sessions/${encodeURIComponent(session.id)}/export.html`, {
+      headers: authHeaders,
+    });
+    assert.equal(exportRes.status, 200);
+    assert.match(exportRes.headers.get("content-type") ?? "", /^text\/html/);
+    assert.match(await exportRes.text(), /<!doctype html>/i);
     const leaf = [...messages].reverse().find((message) => message.t === "entries")?.leaf ?? null;
     const [caughtUp] = await liveUntil(leaf, () => true);
     assert(caughtUp?.t === "sync" && !caughtUp.reset && caughtUp.entries.length === 0, "a current phone gets nothing to catch up");
