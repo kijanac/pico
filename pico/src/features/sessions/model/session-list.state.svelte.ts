@@ -10,34 +10,43 @@ import {
 } from "@/features/sessions/api";
 import { clearChatDraft } from "@/features/chat/model/chat-draft";
 import { type PicoClient, runRpc } from "@/shared/lib/rpc-client";
-import { classifyHostFailure, classifyHostIssue, type HostIssue } from "@/shared/lib/host-issues";
+import { diagnoseHostFailure, type HostIssue } from "@/shared/lib/host-issues";
 
-let sessionList = $state<SessionMeta[]>([]);
+type View = "active" | "archived";
+
+// One list per view, so switching shows that view's own rows (or loading),
+// never the other's. null: not loaded yet.
+const lists = $state<Record<View, SessionMeta[] | null>>({ active: null, archived: null });
 let issue = $state<HostIssue | null>(null);
 let archivedView = $state(false);
 let refreshing = $state(false);
 let creating = $state(false);
 let mutatingSessionId = $state<string | null>(null);
+// Bumped by every refresh and failure, so a late answer can't win.
+let refreshes = 0;
+let failures = 0;
 
-const sessions = $derived([...sessionList].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)));
+const view = (): View => (archivedView ? "archived" : "active");
+const sessions = $derived([...(lists[view()] ?? [])].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)));
 
-async function recordError(caught: unknown): Promise<void> {
-  try {
-    issue = await runRpc(classifyHostFailure(caught));
-  } catch {
-    issue = classifyHostIssue(caught);
-  }
+function recordError(caught: unknown): void {
+  const failure = ++failures;
+  issue = diagnoseHostFailure(caught, (better) => {
+    if (failure === failures && issue) issue = better;
+  });
 }
 
 function removeLocal(sessionId: string): void {
-  const index = sessionList.findIndex((session) => session.id === sessionId);
-  if (index !== -1) sessionList.splice(index, 1);
+  for (const list of Object.values(lists)) {
+    const index = list?.findIndex((session) => session.id === sessionId) ?? -1;
+    if (index !== -1) list!.splice(index, 1);
+  }
 }
 
+// Into the list for its view, if that list is loaded; out of the other.
 function replaceSession(session: SessionMeta): void {
-  const index = sessionList.findIndex((candidate) => candidate.id === session.id);
-  if (index === -1) sessionList.unshift(session);
-  else sessionList[index] = session;
+  removeLocal(session.id);
+  lists[session.archived ? "archived" : "active"]?.unshift(session);
 }
 
 async function mutate<A, E>(sessionId: string, effect: Effect.Effect<A, E, PicoClient>): Promise<A> {
@@ -48,7 +57,7 @@ async function mutate<A, E>(sessionId: string, effect: Effect.Effect<A, E, PicoC
     issue = null;
     return result;
   } catch (caught) {
-    await recordError(caught);
+    recordError(caught);
     throw caught;
   } finally {
     mutatingSessionId = null;
@@ -67,16 +76,24 @@ export const sessionListState = {
   upsert: replaceSession,
   removeLocal,
 
+  // The stored list at once, then the list after pi's files are checked. A
+  // failure keeps what's shown.
   async refresh(): Promise<void> {
+    const refresh = ++refreshes;
+    const target = view();
     refreshing = true;
     try {
-      sessionList = [...(await runRpc(loadSessionList({ archived: archivedView })))];
+      const stored = await runRpc(loadSessionList({ archived: target === "archived" }));
+      // An empty store may just not be indexed yet: wait for the fresh list.
+      if (refresh === refreshes && stored.length > 0) lists[target] = [...stored];
+      const fresh = await runRpc(loadSessionList({ archived: target === "archived", fresh: true }));
+      if (refresh !== refreshes) return;
+      lists[target] = [...fresh];
       issue = null;
     } catch (caught) {
-      sessionList = [];
-      await recordError(caught);
+      if (refresh === refreshes) recordError(caught);
     } finally {
-      refreshing = false;
+      if (refresh === refreshes) refreshing = false;
     }
   },
 
@@ -107,7 +124,7 @@ export const sessionListState = {
   },
 
   setArchived(sessionId: string, archived: boolean): Promise<SessionMeta> {
-    return mutate(sessionId, setSessionArchived(sessionId, archived).pipe(Effect.tap(() => Effect.sync(() => removeLocal(sessionId)))));
+    return mutate(sessionId, setSessionArchived(sessionId, archived).pipe(Effect.tap((session) => Effect.sync(() => replaceSession(session)))));
   },
 
   delete(sessionId: string): Promise<void> {

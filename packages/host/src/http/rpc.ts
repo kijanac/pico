@@ -32,7 +32,7 @@ const onProvider = <A>(
 ) => Effect.flatMap(ProviderAuth, f).pipe(Effect.mapError(toRequestError));
 
 const HandlersLive = PicoRpc.toLayer({
-  "sessions.list": ({ archived }) => Effect.flatMap(SessionManager, (m) => m.list({ archived })),
+  "sessions.list": ({ archived, fresh }) => Effect.flatMap(SessionManager, (m) => m.list({ archived }, fresh)),
   "sessions.create": (input) => Effect.flatMap(SessionManager, (m) => m.create(input)).pipe(Effect.mapError(toRequestError)),
   "sessions.patch": ({ id, ...patch }) => onSessions((m) => m.patch(id, patch)),
   "sessions.remove": ({ id }) => onSessions((m) => m.remove(id)),

@@ -1,16 +1,16 @@
 <script lang="ts">
-  import type { SessionStats } from "@pico/protocol";
-  import { getSessionStats } from "@/features/chat/api";
-  import { runRpc } from "@/shared/lib/rpc-client";
+  import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { formatCost, formatTokens } from "@/shared/lib/format";
 
   let { sessionId }: { sessionId: string } = $props();
 
-  let stats = $state<SessionStats | null>(null);
+  // Shared with the chat header: shown at once if loaded, refreshed on open.
+  const stats = $derived(activeSessionState.stats.value);
   let loading = $state(false);
   let error = $state<string | null>(null);
 
   $effect(() => {
+    sessionId;
     void loadStats();
   });
 
@@ -18,7 +18,7 @@
     loading = true;
     error = null;
     try {
-      stats = await runRpc(getSessionStats(sessionId));
+      await activeSessionState.stats.load(sessionId);
     } catch (caught) {
       error = String(caught);
     } finally {
@@ -32,7 +32,7 @@
 </script>
 
 <div class="flex-1 overflow-y-auto px-3 py-3">
-  {#if loading}<div class="type-copy text-[color:var(--color-fg-muted)]">loading session info…</div>{/if}
+  {#if loading && !stats}<div class="type-copy text-[color:var(--color-fg-muted)]">loading session info…</div>{/if}
   {#if error}<div class="type-copy text-[color:var(--color-danger)]">{error}</div>{/if}
   {#if stats}
     <div class="type-copy space-y-2">

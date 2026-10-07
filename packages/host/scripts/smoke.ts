@@ -112,7 +112,7 @@ try {
     assert.equal(fsListing.path, workspaceDir);
     assert(Array.isArray(fsListing.entries));
 
-    assert.deepEqual(await call(client.sessions.list({})), []);
+    assert.deepEqual(await call(client.sessions.list({ fresh: true })), []);
 
     const session = await call(client.sessions.create({ cwd: workspaceDir, title: "Smoke session" }));
     assert.equal(typeof session.id, "string");
@@ -202,7 +202,7 @@ try {
     await sessionRuntime.dispose();
 
     await call(client.sessions.remove({ id: session.id }));
-    assert.deepEqual(await call(client.sessions.list({})), []);
+    assert.deepEqual(await call(client.sessions.list({ fresh: true })), []);
 
     // Sessions pi saved without Pico are listed too, under their first message.
     const { SessionManager: PiSessionManager } = await import("@earendil-works/pi-coding-agent");
@@ -210,21 +210,21 @@ try {
     terminal.appendMessage({ role: "user", content: "started in the\nterminal", timestamp: Date.now() });
     terminal.appendMessage(fauxAssistantMessage("Hello."));
     const terminalFile = terminal.getSessionFile()!;
-    const [listed] = await call(client.sessions.list({}));
+    const [listed] = await call(client.sessions.list({ fresh: true }));
     assert.equal(listed?.id, terminal.getSessionId(), "pi's own sessions are listed");
     assert.equal(listed.title, "started in the terminal", "an unnamed session shows its first message");
     await call(client.sessions.patch({ id: listed.id, title: "named in Pico" }));
     assert.equal(PiSessionManager.open(terminalFile).getSessionName(), "named in Pico", "renaming names pi's session");
-    assert.equal((await call(client.sessions.list({})))[0]?.title, "named in Pico");
+    assert.equal((await call(client.sessions.list({ fresh: true })))[0]?.title, "named in Pico");
     await call(client.sessions.remove({ id: listed.id }));
     assert(!existsSync(terminalFile), "deleting a session deletes pi's file");
-    assert.deepEqual(await call(client.sessions.list({})), []);
+    assert.deepEqual(await call(client.sessions.list({ fresh: true })), []);
     const elsewhere = PiSessionManager.create(workspaceDir);
     elsewhere.appendMessage({ role: "user", content: "deleted in the terminal", timestamp: Date.now() });
     elsewhere.appendMessage(fauxAssistantMessage("Hello."));
-    assert.equal((await call(client.sessions.list({}))).length, 1);
+    assert.equal((await call(client.sessions.list({ fresh: true }))).length, 1);
     rmSync(elsewhere.getSessionFile()!);
-    assert.deepEqual(await call(client.sessions.list({})), [], "a session deleted outside Pico leaves the list");
+    assert.deepEqual(await call(client.sessions.list({ fresh: true })), [], "a session deleted outside Pico leaves the list");
 
     await clientRuntime.runPromise(Scope.close(clientScope, Exit.void));
     await clientRuntime.dispose();

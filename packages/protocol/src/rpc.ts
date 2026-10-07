@@ -38,7 +38,8 @@ const SessionFail = Schema.Union(SessionNotFound, RequestError);
 const Trimmed = Schema.NonEmptyTrimmedString;
 
 export const PicoRpc = RpcGroup.make(
-  Rpc.make("sessions.list", { payload: { archived: Schema.optional(Schema.Boolean) }, success: Schema.Array(SessionMeta), error: RequestError }),
+  // The stored list, at once; `fresh` first checks pi's session files for changes.
+  Rpc.make("sessions.list", { payload: { archived: Schema.optional(Schema.Boolean), fresh: Schema.optional(Schema.Boolean) }, success: Schema.Array(SessionMeta), error: RequestError }),
   Rpc.make("sessions.create", { payload: { cwd: Trimmed, title: Schema.optional(Trimmed) }, success: SessionMeta, error: RequestError }),
   Rpc.make("sessions.patch", { payload: { id: Schema.String, title: Schema.optional(Trimmed), archived: Schema.optional(Schema.Boolean) }, success: SessionMeta, error: SessionFail }),
   Rpc.make("sessions.remove", { payload: { id: Schema.String }, error: SessionFail }),

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import AppShell from "@/app/shell/AppShell.svelte";
+  import RouteShell from "@/app/shell/RouteShell.svelte";
+  import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
   import SessionsPage from "@/routes/sessions/SessionsPage.svelte";
   import { consumeNavKind, currentPath, resolveRoute, type RouteMatch } from "@/app/routes";
   import { themeState } from "@/shared/theme/theme.svelte";
@@ -90,12 +92,21 @@
   {#if route.id === "sessions"}
     <SessionsPage />
   {:else if route.id === "session"}
-    {#await loadSession() then { default: SessionPage }}
+    {@const title = sessionListState.sessions.find((session) => session.id === route.params.id)?.title ?? "session"}
+    {#await loadSession()}
+      <RouteShell {title} />
+    {:then { default: SessionPage }}
       <SessionPage id={route.params.id} />
+    {:catch}
+      <RouteShell {title} failed />
     {/await}
   {:else if route.id === "settings"}
-    {#await loadSettings() then { default: SettingsPage }}
+    {#await loadSettings()}
+      <RouteShell title="settings" />
+    {:then { default: SettingsPage }}
       <SettingsPage />
+    {:catch}
+      <RouteShell title="settings" failed />
     {/await}
   {:else}
     <main class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">

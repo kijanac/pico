@@ -12,10 +12,6 @@
   import SessionAgentActions from "@/features/chat/components/SessionAgentActions.svelte";
   import ExtensionUiSheet from "@/features/chat/components/ExtensionUiSheet.svelte";
   import ExtensionNotifications from "@/features/chat/components/ExtensionNotifications.svelte";
-  import type { SessionStats } from "@pico/protocol";
-  import { getSessionStats } from "@/features/chat/api";
-  import { runRpc } from "@/shared/lib/rpc-client";
-  import { createLatest } from "@/shared/lib/latest";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
   import { cwdDisplayName } from "@/shared/lib/path-display";
   import StatusDot from "@/shared/components/StatusDot.svelte";
@@ -28,11 +24,11 @@
   let { sessionId }: { sessionId: string } = $props();
   const timingId = $derived(sessionId);
 
-  let stats = $state<SessionStats>();
+  // Shared with the session info sheet.
+  const stats = $derived(activeSessionState.stats.value);
   let composerHeight = $state(0);
   let forceUnknownContext = $state(false);
   let invalidatedAtUsageVersion = 0;
-  const statsRequest = createLatest();
   let lastContextUsageInvalidationVersion = activeSessionState.contextUsageInvalidationVersion;
 
   const session = $derived(sessionListState.sessions.find((candidate) => candidate.id === sessionId) ?? null);
@@ -80,19 +76,16 @@
   });
 
   async function loadStats(): Promise<void> {
-    const token = statsRequest.begin();
     try {
-      const next = await runRpc(getSessionStats(sessionId));
-      if (statsRequest.isCurrent(token)) {
-        stats = next;
-        if (
-          forceUnknownContext &&
-          activeSessionState.contextUsageVersion > invalidatedAtUsageVersion &&
-          next.contextUsage &&
-          next.contextUsage.percent !== null
-        ) {
-          forceUnknownContext = false;
-        }
+      const next = await activeSessionState.stats.load(sessionId);
+      if (
+        next &&
+        forceUnknownContext &&
+        activeSessionState.contextUsageVersion > invalidatedAtUsageVersion &&
+        next.contextUsage &&
+        next.contextUsage.percent !== null
+      ) {
+        forceUnknownContext = false;
       }
     } catch {
     }

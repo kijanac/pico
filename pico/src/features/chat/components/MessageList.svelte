@@ -21,7 +21,9 @@
   const STICK_THRESHOLD_PX = 64;
   const INITIAL_VISIBLE_ENTRIES = 120;
   const REVEAL_ENTRIES = 60;
-  const LOAD_EARLIER_MARGIN_PX = 120;
+  // Earlier history is fetched this many screens before the reader reaches
+  // it, so it arrives in time over a phone connection.
+  const LOAD_EARLIER_SCREENS = 1.5;
 
   let scroller = $state<HTMLDivElement | null>(null);
   let topSentinel = $state<HTMLDivElement | null>(null);
@@ -31,6 +33,7 @@
   let visibleCount = $state(INITIAL_VISIBLE_ENTRIES);
   let pagingEnabled = $state(false);
   let loadingEarlier = false;
+  let earlierFailed = $state(false);
   let expectedEarlierEntryGrowth = 0;
   let lastEntryCount = $state(chatLogState.entries.length);
   let lastActivityVersion = $state(chatLogState.activityVersion);
@@ -247,10 +250,18 @@
 
       await tick();
       restoreScrollAnchor(anchor);
+    } catch {
+      // Shown at the top with a retry; the observer waits for it.
+      earlierFailed = true;
+      return;
     } finally {
       loadingEarlier = false;
     }
+    // Still within reach of the top: keep going.
+    if (scroller && !stuckToBottom && hasEarlierEntries && scroller.scrollTop < earlierLead()) void revealEarlierEntries();
   }
+
+  const earlierLead = () => (scroller?.clientHeight ?? 0) * LOAD_EARLIER_SCREENS;
 
   function onScroll(): void {
     const stuck = distanceFromBottom() < STICK_THRESHOLD_PX;
@@ -329,10 +340,10 @@
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (stuckToBottom) return;
+        if (stuckToBottom || earlierFailed) return;
         if (entries.some((entry) => entry.isIntersecting)) void revealEarlierEntries();
       },
-      { root: scroller, rootMargin: `${LOAD_EARLIER_MARGIN_PX}px 0px 0px 0px` },
+      { root: scroller, rootMargin: `${Math.round(earlierLead())}px 0px 0px 0px` },
     );
     observer.observe(topSentinel);
 
@@ -369,6 +380,12 @@
   <div bind:this={scroller} onscroll={onScroll} class="scroll-momentum h-full overflow-y-auto py-2" style={`padding-bottom: calc(${bottomInset}px + 0.5rem)`}>
     {#if hasEarlierEntries}
       <div bind:this={topSentinel} class="h-px" aria-hidden="true"></div>
+    {/if}
+    {#if earlierFailed}
+      <div class="column type-meta flex items-center justify-center gap-2 px-3 py-2 text-[color:var(--color-fg-muted)]">
+        earlier messages didn't load
+        <button type="button" class="underline active:opacity-70" onclick={() => { earlierFailed = false; void revealEarlierEntries(); }}>retry</button>
+      </div>
     {/if}
     <div bind:this={rowList}>
       {#each displayRows as row, index (row.key)}

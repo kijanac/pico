@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, untrack } from "svelte";
   import { ArrowUp, ImagePlus, ListTodo, Square } from "@lucide/svelte";
-  import type { ImageContent, SessionControls, SessionStats } from "@pico/protocol";
+  import type { ImageContent, SessionStats } from "@pico/protocol";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
   import { queuedMessageActionsState } from "@/features/chat/model/queued-message-actions.state.svelte";
@@ -9,7 +9,7 @@
   import { pickImages } from "@/shared/mobile/image-picker";
   import { cloneImageContent, filesToImageContent } from "@/shared/mobile/image-content";
   import { createLongPress } from "@/shared/gestures/long-press";
-  import { getSessionSettings, interruptSession } from "@/features/chat/api";
+  import { interruptSession } from "@/features/chat/api";
   import { runRpc } from "@/shared/lib/rpc-client";
   import { formatCost } from "@/shared/lib/format";
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
@@ -35,7 +35,7 @@
     contextStats?: { cost: number; usage: NonNullable<SessionStats["contextUsage"]> };
   } = $props();
 
-  let controls = $state<SessionControls | null>(null);
+  const controls = $derived(activeSessionState.controls.value);
   let modelOpen = $state(false);
 
   let textarea = $state<HTMLTextAreaElement | null>(null);
@@ -86,19 +86,13 @@
     images.length = 0;
   }
 
-  async function loadControls(): Promise<void> {
-    try {
-      controls = await runRpc(getSessionSettings(sessionId));
-    } catch {
-      controls = null;
-    }
-  }
 
-  // Refresh the model chip on session change and after the picker sheet closes.
+  // The model chip, loaded with the chat. The model sheet shares this copy and
+  // updates it from its change, so closing the sheet needs no reload; a failed
+  // load keeps the chip as it was.
   $effect(() => {
     sessionId;
-    if (modelOpen) return;
-    untrack(() => void loadControls());
+    untrack(() => void activeSessionState.controls.load(sessionId).catch(() => {}));
   });
 
   $effect(() => {

@@ -45,7 +45,8 @@ export class SessionManager extends Context.Tag("SessionManager")<
       cwd: string;
       title?: string;
     }) => Effect.Effect<SessionMeta, PiError>;
-    readonly list: (filter?: { archived?: boolean }) => Effect.Effect<SessionMeta[]>;
+    // fresh: re-read pi's session files that changed first; otherwise the stored list.
+    readonly list: (filter?: { archived?: boolean }, fresh?: boolean) => Effect.Effect<SessionMeta[]>;
     readonly subscribe: (
       id: string,
       head: string | null,
@@ -265,8 +266,8 @@ const make = Effect.gen(function* () {
     Effect.forkScoped,
   );
 
-  const list = (filter?: { archived?: boolean }) =>
-    Effect.zipRight(index, Effect.map(store.listSessions(filter), (records) => records.map(toSessionMeta)));
+  const list = (filter?: { archived?: boolean }, fresh = false) =>
+    Effect.zipRight(fresh ? index : Effect.void, Effect.map(store.listSessions(filter), (records) => records.map(toSessionMeta)));
 
   const subscribe = (id: string, head: string | null, cids: readonly string[]) =>
     Stream.unwrapScoped(

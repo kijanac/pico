@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { SessionControls } from "@pico/protocol";
   import type { ActionErrorHandler } from "./types";
-  import { getSessionSettings, patchSessionSetting } from "@/features/chat/api";
+  import { patchSessionSetting } from "@/features/chat/api";
+  import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
   import { runRpc } from "@/shared/lib/rpc-client";
   import ActionRow from "@/shared/components/ActionRow.svelte";
@@ -21,7 +22,9 @@
   } = $props();
 
   let saving = $state<string | null>(null);
-  let settings = $state<SessionControls | null>(null);
+  // The open session's controls, shared with the composer's model chip: shown
+  // at once if already loaded, and refreshed on open.
+  const settings = $derived(activeSessionState.controls.value);
   let loading = $state(false);
 
   const visibleControls = $derived(
@@ -37,7 +40,7 @@
   async function loadSettings(): Promise<void> {
     loading = true;
     try {
-      settings = await runRpc(getSessionSettings(sessionId));
+      await activeSessionState.controls.load(sessionId);
     } catch (error) {
       onError(hostIssueSummary(error));
     } finally {
@@ -50,12 +53,12 @@
     const previous = settings;
     saving = key;
     onError(null);
-    if (previous) settings = patchLocal(previous, key, value);
+    if (previous) activeSessionState.controls.set(sessionId, patchLocal(previous, key, value));
     try {
-      settings = await runRpc(patchSessionSetting(sessionId, key, value));
+      activeSessionState.controls.set(sessionId, await runRpc(patchSessionSetting(sessionId, key, value)));
     } catch (error) {
       onError(hostIssueSummary(error));
-      settings = previous;
+      if (previous) activeSessionState.controls.set(sessionId, previous);
       await loadSettings();
     } finally {
       saving = null;
@@ -76,7 +79,7 @@
 </script>
 
 <div class="flex-1 overflow-y-auto px-3 py-3">
-  {#if loading}<div class="type-copy text-[color:var(--color-fg-muted)]">loading settings…</div>{/if}
+  {#if loading && !settings}<div class="type-copy text-[color:var(--color-fg-muted)]">loading settings…</div>{/if}
   {#if settings}
     <div class="space-y-4">
       {#each visibleControls as control (control.key)}

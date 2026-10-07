@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { cancelAuthLogin, getAuthLoginJob, listAuthProviders, saveAuthApiKey, startAuthLogin, submitAuthLoginInput } from "@/features/auth/api";
-import { classifyHostFailure, hostIssueSummary } from "@/shared/lib/host-issues";
+import { diagnoseHostFailure, hostIssueSummary, issueText } from "@/shared/lib/host-issues";
 import { runRpc } from "@/shared/lib/rpc-client";
 
 type AuthProviders = Effect.Effect.Success<ReturnType<typeof listAuthProviders>>;
@@ -41,17 +41,27 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   let savingApiKey = $state(false);
   let startingProviderId = $state<string | null>(null);
 
+  // Every message goes through here, so a failure's later, sharper diagnosis
+  // can't replace a newer message or a cleared one.
+  let messages = 0;
+  const showError = (message: string | null) => {
+    messages += 1;
+    opts.onError(message);
+  };
   const reportFailure = (error: unknown) =>
-    classifyHostFailure(error).pipe(
-      Effect.andThen((issue) => Effect.sync(() => opts.onError(`${issue.title}: ${issue.message}`))),
-    );
+    Effect.sync(() => {
+      const mine = messages + 1;
+      showError(issueText(diagnoseHostFailure(error, (better) => {
+        if (mine === messages) opts.onError(issueText(better));
+      })));
+    });
 
   async function loadProviders(): Promise<void> {
     loading = true;
     try {
       await runRpc(
         listAuthProviders().pipe(
-          Effect.tap((result) => Effect.sync(() => { providers = result.providers; opts.onError(null); })),
+          Effect.tap((result) => Effect.sync(() => { providers = result.providers; showError(null); })),
           Effect.catchAll(reportFailure),
         ),
       );
@@ -64,16 +74,16 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     if (provider.authType === "api_key") {
       apiKeyProvider = provider;
       apiKeyInput = "";
-      opts.onError(null);
+      showError(null);
       return;
     }
     if (provider.authType === "setup") {
-      opts.onError(hostIssueSummary({ hostErrorCode: "provider_auth_missing" }));
+      showError(hostIssueSummary({ hostErrorCode: "provider_auth_missing" }));
       return;
     }
     if (startingProviderId) return;
     startingProviderId = provider.id;
-    opts.onError(null);
+    showError(null);
     try {
       await runRpc(
         startAuthLogin(provider.id).pipe(
@@ -90,7 +100,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     if (!apiKeyProvider || savingApiKey) return;
     const provider = apiKeyProvider;
     savingApiKey = true;
-    opts.onError(null);
+    showError(null);
     try {
       await runRpc(
         saveAuthApiKey(provider.id, apiKeyInput).pipe(
@@ -124,7 +134,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     if (!current) return;
     await runRpc(
       submitAuthLoginInput(current.id, value).pipe(
-        Effect.tap((next) => Effect.sync(() => { job = next; input = ""; opts.onError(null); })),
+        Effect.tap((next) => Effect.sync(() => { job = next; input = ""; showError(null); })),
         Effect.catchAll(reportFailure),
       ),
     );
@@ -135,7 +145,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     if (!current) return;
     await runRpc(
       cancelAuthLogin(current.id).pipe(
-        Effect.tap(() => Effect.sync(() => { job = null; opts.onError(null); })),
+        Effect.tap(() => Effect.sync(() => { job = null; showError(null); })),
         Effect.catchAll(reportFailure),
       ),
     );
@@ -155,7 +165,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
     selectApiKeyProvider(provider: AuthProvider | null) {
       apiKeyProvider = provider;
       apiKeyInput = "";
-      opts.onError(null);
+      showError(null);
     },
     loadProviders,
     start,

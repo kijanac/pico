@@ -4,7 +4,7 @@
   import type { FsListing } from "@pico/protocol/rpc";
   import { listDirectories } from "@/features/sessions/api";
   import ActionRow from "@/shared/components/ActionRow.svelte";
-  import { classifyHostFailure } from "@/shared/lib/host-issues";
+  import { diagnoseHostFailure, issueText } from "@/shared/lib/host-issues";
   import { runRpc } from "@/shared/lib/rpc-client";
   import { createLatest } from "@/shared/lib/latest";
   import { Button } from "@/shared/ui/button";
@@ -34,14 +34,13 @@
           }),
         ),
         Effect.catchAll((caught) =>
-          classifyHostFailure(caught).pipe(
-            Effect.andThen((issue) =>
-              Effect.sync(() => {
-                if (!listingRequest.isCurrent(token) || nextPath !== path) return;
-                error = `${issue.title}: ${issue.message}`;
-              }),
-            ),
-          ),
+          Effect.sync(() => {
+            const current = () => listingRequest.isCurrent(token) && nextPath === path;
+            if (!current()) return;
+            error = issueText(diagnoseHostFailure(caught, (better) => {
+              if (current() && error) error = issueText(better);
+            }));
+          }),
         ),
       ),
     );

@@ -75,9 +75,22 @@ export function providerAuthMissingIssue(): HostIssue {
   return hostIssueForCode("provider_auth_missing");
 }
 
-export function hostIssueSummary(error: unknown): string {
-  const issue = classifyHostIssue(error);
+// What to show for a failure: at once, from the error itself; then, for an
+// untyped failure, `refine` gets a sharper answer when the host's health is
+// known (starting, or unreachable). The probe can take seconds on a bad
+// network, so nothing waits for it; callers drop a refinement that arrives
+// after something newer.
+export function diagnoseHostFailure(error: unknown, refine: (issue: HostIssue) => void): HostIssue {
+  if (!hostErrorCodeOf(error)) void Effect.runPromise(classifyHostFailure(error)).then(refine);
+  return classifyHostIssue(error);
+}
+
+export function issueText(issue: HostIssue): string {
   return `${issue.title}: ${issue.message}`;
+}
+
+export function hostIssueSummary(error: unknown): string {
+  return issueText(classifyHostIssue(error));
 }
 
 export function hostIssueForCode(code: HostErrorCode): HostIssue {

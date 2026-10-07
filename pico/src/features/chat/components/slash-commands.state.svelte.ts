@@ -1,8 +1,6 @@
 import { untrack } from "svelte";
 import type { Commands, CommandEntry } from "@pico/protocol";
-import { listSessionCommands } from "@/features/chat/api";
-import { runRpc } from "@/shared/lib/rpc-client";
-import { createLatest } from "@/shared/lib/latest";
+import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
 
 export type { CommandEntry };
 
@@ -27,19 +25,26 @@ export function createSlashCommandsState(
   text: () => string,
   cursor: () => number,
 ): SlashCommandsState {
-  let commands = $state<Commands | null>(null);
+  // Fetched with the composer, before the first "/", into the open session's
+  // shared copy. After a failure, typing retries.
+  const commands = $derived(activeSessionState.commands.value);
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let attemptedFor = $state<string | null>(null);
-  const loadRequest = createLatest();
+  let failedQuery: string | null = null;
   let selectedIndex = $state(0);
 
   const query = $derived(slashCommandQuery(text(), cursor()));
   const matches = $derived(matchCommands(commands, query ?? ""));
 
   $effect(() => {
-    if (query === null || loading || attemptedFor === sessionId()) return;
-    untrack(() => void load());
+    sessionId();
+    untrack(() => void load(null));
+  });
+
+  $effect(() => {
+    if (query === null || commands || loading || query === failedQuery) return;
+    const typed = query;
+    untrack(() => void load(typed));
   });
 
   $effect(() => {
@@ -48,24 +53,17 @@ export function createSlashCommandsState(
     selectedIndex = 0;
   });
 
-  async function load(): Promise<void> {
-    const currentSession = sessionId();
-    const token = loadRequest.begin();
+  async function load(forQuery: string | null): Promise<void> {
     loading = true;
     error = null;
-
     try {
-      const next = await runRpc(listSessionCommands(currentSession));
-      if (!loadRequest.isCurrent(token)) return;
-      commands = next;
+      await activeSessionState.commands.load(sessionId());
+      failedQuery = null;
     } catch (caught) {
-      if (!loadRequest.isCurrent(token)) return;
       error = String(caught);
+      failedQuery = forQuery;
     } finally {
-      if (loadRequest.isCurrent(token)) {
-        attemptedFor = currentSession;
-        loading = false;
-      }
+      loading = false;
     }
   }
 

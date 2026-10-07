@@ -2,6 +2,8 @@ import { rpc } from "@/shared/lib/rpc-client";
 
 export interface LoadSessionListOptions {
   archived?: boolean;
+  // Check pi's session files for changes first, rather than the stored list.
+  fresh?: boolean;
 }
 
 export interface CreateSessionInput {
@@ -11,7 +13,7 @@ export interface CreateSessionInput {
 }
 
 export const loadSessionList = (opts?: LoadSessionListOptions) =>
-  rpc((c) => c.sessions.list({ archived: opts?.archived }));
+  rpc((c) => c.sessions.list({ archived: opts?.archived, fresh: opts?.fresh }));
 
 export const createSession = (input: CreateSessionInput) => rpc((c) => c.sessions.create(input));
 
