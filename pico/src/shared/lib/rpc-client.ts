@@ -31,7 +31,7 @@ export const rpc = <A, E>(
 
 // Rejects with the underlying typed error (HostError / RpcClientError / …) rather
 // than a wrapping FiberFailure, so callers can classify it.
-export const runAt = async <A, E>(baseUrl: string, effect: Effect.Effect<A, E, PicoClient>): Promise<A> => {
+const runAt = async <A, E>(baseUrl: string, effect: Effect.Effect<A, E, PicoClient>): Promise<A> => {
   const exit = await runtimeFor(baseUrl).runPromiseExit(effect);
   if (Exit.isSuccess(exit)) return exit.value;
   throw Cause.squash(exit.cause);
@@ -42,9 +42,6 @@ export const runOnHost = async <A, E>(hostId: string, effect: Effect.Effect<A, E
   if (!host) throw new Error(`Pico host not found: ${hostId}`);
   return runAt(host.url, effect);
 };
-
-export const runHost = <A, E>(effect: Effect.Effect<A, E, PicoClient>): Promise<A> =>
-  runOnHost(hostRegistryState.defaultHostId, effect);
 
 const makeSessionClient = RpcClient.make(PicoSessionRpc);
 export type PicoSessionClientService = Effect.Effect.Success<typeof makeSessionClient>;

@@ -1,5 +1,0 @@
-{
-  "$schema": "https://shadcn-svelte.com/schema.json",
-  "deprecated": true,
-  "note": "Legacy solid-ui config replaced by components.json for shadcn-svelte."
-}

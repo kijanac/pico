@@ -1,4 +1,3 @@
-import { haptics } from "@/shared/mobile/haptics";
 
 const THRESHOLD = 64;
 const MAX_PULL = 110;
@@ -15,7 +14,6 @@ export function createPullToRefresh(container: HTMLElement, options: PullToRefre
   let pull = 0;
   let refreshing = false;
   let startY: number | null = null;
-  let crossed = false;
   let destroyed = false;
 
   const reducedMotion = (): boolean => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -52,7 +50,6 @@ export function createPullToRefresh(container: HTMLElement, options: PullToRefre
     const touch = event.touches[0];
     if (!touch) return;
     startY = touch.clientY;
-    crossed = false;
   }
 
   function onTouchMove(event: TouchEvent): void {
@@ -67,12 +64,6 @@ export function createPullToRefresh(container: HTMLElement, options: PullToRefre
     }
     const eased = Math.min(MAX_PULL, dy * RUBBER_BAND);
     setPull(eased);
-    if (eased >= THRESHOLD && !crossed) {
-      crossed = true;
-      haptics.light();
-    } else if (eased < THRESHOLD && crossed) {
-      crossed = false;
-    }
   }
 
   function onTouchEnd(): void {
@@ -97,7 +88,6 @@ export function createPullToRefresh(container: HTMLElement, options: PullToRefre
       setPull(0);
     }
     startY = null;
-    crossed = false;
   }
 
   container.addEventListener("touchstart", onTouchStart, { passive: true });

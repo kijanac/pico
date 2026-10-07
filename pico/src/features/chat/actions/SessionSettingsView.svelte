@@ -4,7 +4,6 @@
   import { getSessionSettings, patchSessionSetting } from "@/features/chat/api";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
   import { runOnHost } from "@/shared/lib/rpc-client";
-  import { haptics } from "@/shared/mobile/haptics";
   import ActionRow from "@/shared/components/ActionRow.svelte";
 
   type SessionControl = SessionControls["controls"][number];
@@ -56,7 +55,6 @@
     if (previous) settings = patchLocal(previous, key, value);
     try {
       settings = await runOnHost(hostId, patchSessionSetting(sessionId, key, value));
-      haptics.success();
     } catch (error) {
       onError(hostIssueSummary(error));
       settings = previous;

@@ -6,7 +6,6 @@
   import NewSessionSheet from "@/features/sessions/components/NewSessionSheet.svelte";
   import RenameSheet from "@/features/sessions/components/RenameSheet.svelte";
   import SessionsView from "@/features/sessions/components/SessionsView.svelte";
-  import { haptics } from "@/shared/mobile/haptics";
   import { markSessionOpen } from "@/shared/lib/session-open-timing";
   import { Button } from "@/shared/ui/button";
   import * as Dialog from "@/shared/ui/dialog";
@@ -30,19 +29,16 @@
     if (!renameTarget) return;
     await sessionListState.rename(renameTarget.hostId, renameTarget.session.id, title);
     renameTarget = null;
-    haptics.success();
   }
 
   async function toggleArchive(item: HostSessionMeta): Promise<void> {
     await sessionListState.setArchived(item.hostId, item.session.id, !item.session.archived);
-    haptics.success();
   }
 
   async function confirmDelete(): Promise<void> {
     if (!deleteTarget) return;
     await sessionListState.delete(deleteTarget.hostId, deleteTarget.session.id);
     deleteTarget = null;
-    haptics.heavy();
   }
 
   function requestRename(item: HostSessionMeta): void {
@@ -80,7 +76,7 @@
   onDelete={requestDelete}
 />
 
-<NewSessionSheet bind:open={newSessionOpen} hosts={hostRegistryState.hosts} defaultHostId={hostRegistryState.defaultHostId} creating={sessionListState.creating} onCreate={createSession} />
+<NewSessionSheet bind:open={newSessionOpen} hostId={hostRegistryState.defaultHostId} creating={sessionListState.creating} onCreate={createSession} />
 
 {#if renameTarget}
   <RenameSheet

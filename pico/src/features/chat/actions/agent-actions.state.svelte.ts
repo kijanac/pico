@@ -1,4 +1,3 @@
-import { haptics } from "@/shared/mobile/haptics";
 import type { AgentActionView } from "./types";
 
 export interface AgentActionsState {
@@ -30,7 +29,6 @@ export function createAgentActionsState(): AgentActionsState {
   }
 
   function done(): void {
-    haptics.success();
     close();
   }
 

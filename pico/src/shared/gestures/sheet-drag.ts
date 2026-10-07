@@ -1,4 +1,3 @@
-import { haptics } from "@/shared/mobile/haptics";
 
 const DISMISS_DISTANCE_RATIO = 0.33;
 const DISMISS_VELOCITY = 0.5; // px/ms downward
@@ -86,7 +85,6 @@ export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) 
 
   function dismiss(height: number): void {
     settled = true;
-    haptics.light();
     const shade = overlay();
     const finish = () => {
       // Inline override stops the data-closed slide/fade replaying over the dragged position.

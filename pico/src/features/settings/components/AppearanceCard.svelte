@@ -10,7 +10,7 @@
   ];
 
   function choose(mode: ThemeMode): void {
-    void themeState.setMode(mode);
+    themeState.setMode(mode);
   }
 </script>
 

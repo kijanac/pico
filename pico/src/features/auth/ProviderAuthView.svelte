@@ -11,17 +11,15 @@
   let {
     hostId,
     onError,
-    onConfigured,
     class: className = "",
   }: {
-    hostId?: string;
+    hostId: string;
     onError: (message: string | null) => void;
-    onConfigured?: () => void;
     class?: string;
   } = $props();
 
   // svelte-ignore state_referenced_locally
-  const auth = createProviderAuthState({ hostId, onError, onConfigured });
+  const auth = createProviderAuthState({ hostId, onError });
   const missingProviderIssue = providerAuthMissingIssue();
   const configuredProviderCount = $derived(auth.providers.filter((provider) => provider.configured).length);
 

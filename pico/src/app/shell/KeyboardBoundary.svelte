@@ -4,10 +4,9 @@
 
   let { children }: { children?: import("svelte").Snippet } = $props();
 
-  const bottomInset = $derived(keyboardState.height);
-
+  // On :root because the bottom sheet that reads it is portaled out of this tree.
   $effect(() => {
-    document.documentElement.style.setProperty("--keyboard-bottom-inset", `${bottomInset}px`);
+    document.documentElement.style.setProperty("--keyboard-bottom-inset", `${keyboardState.height}px`);
     return () => document.documentElement.style.removeProperty("--keyboard-bottom-inset");
   });
 
@@ -16,10 +15,6 @@
   });
 </script>
 
-<div
-  class="flex min-h-0 flex-1 flex-col"
-  style:--keyboard-bottom-inset={`${bottomInset}px`}
-  style:padding-bottom={`${bottomInset}px`}
->
+<div class="flex min-h-0 flex-1 flex-col" style:padding-bottom={`${keyboardState.height}px`}>
   {@render children?.()}
 </div>

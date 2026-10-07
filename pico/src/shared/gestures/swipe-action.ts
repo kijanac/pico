@@ -1,4 +1,3 @@
-import { haptics } from "@/shared/mobile/haptics";
 
 const SWIPE_THRESHOLD_PX = 44;
 const AXIS_LOCK_PX = 10;
@@ -80,14 +79,12 @@ export function createSwipeActionRow(surface: HTMLElement, options: SwipeActionO
   function finishSwipe(commitAllowed = true): void {
     if (!tracking && dragOffset === null) return;
     const nextOpen = commitAllowed && offset() > SWIPE_THRESHOLD_PX;
-    const buzz = nextOpen && !startOpen;
 
     tracking = false;
     dragging = false;
     setDragOffset(null);
 
     if (nextOpen) {
-      if (buzz) haptics.medium();
       options.onOpen();
     } else {
       options.onClose();

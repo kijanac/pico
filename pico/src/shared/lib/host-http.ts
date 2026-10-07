@@ -2,7 +2,7 @@
 // (opened directly by the browser). RPC goes through rpc-client.ts; the live
 // session stream through the WS-RPC client (PicoSessionClient).
 import { FetchHttpClient, HttpClient } from "@effect/platform";
-import { Data, Effect } from "effect";
+import { Effect } from "effect";
 
 // Host reachability, split by failure mode so callers don't over-claim a cause:
 //   healthy     – 2xx
@@ -10,12 +10,6 @@ import { Data, Effect } from "effect";
 //                 warming up — what a single short probe false-negatives on)
 //   unreachable – transport failure (DNS/refused/TLS): a genuine "can't connect"
 export type HostReachability = "healthy" | "starting" | "unreachable";
-
-// Carries a non-healthy verdict across the run boundary as a typed value —
-// discriminated by `instanceof`, not sniffed off an `unknown`.
-export class HostNotReady extends Data.TaggedError("HostNotReady")<{
-  readonly reachability: "starting" | "unreachable";
-}> {}
 
 // Patient, retried probe. HttpClient's typed RequestError/ResponseError split +
 // Effect.timeout give the three buckets; it provides its own client layer, so it

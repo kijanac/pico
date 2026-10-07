@@ -1,93 +1,45 @@
 export type ThemeMode = "system" | "light" | "dark";
-export type ResolvedTheme = "light" | "dark";
 
-export const THEME_PREFERENCE_KEY = "pico.theme";
+// index.html applies the saved mode before first paint from the same key.
+const STORAGE_KEY = "pico.theme";
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
-let mode = $state<ThemeMode>("system");
-let resolved = $state<ResolvedTheme>(systemTheme());
-let loaded = $state(false);
-let initialized = false;
-let mediaQuery: MediaQueryList | null = null;
+let mode = $state<ThemeMode>(savedMode());
+
+function savedMode(): ThemeMode {
+  try {
+    const value = localStorage.getItem(STORAGE_KEY);
+    return value === "light" || value === "dark" ? value : "system";
+  } catch {
+    return "system";
+  }
+}
+
+function applyTheme(): void {
+  const root = document.documentElement;
+  root.classList.toggle("dark", mode === "dark" || (mode === "system" && darkQuery.matches));
+  if (mode === "system") delete root.dataset.theme;
+  else root.dataset.theme = mode;
+}
 
 export const themeState = {
   get mode() {
     return mode;
   },
 
-  get resolved() {
-    return resolved;
-  },
-
-  get loaded() {
-    return loaded;
-  },
-
+  // Applies the mode and follows the OS appearance while it is "system".
   init(): void {
-    initThemeSync();
+    darkQuery.addEventListener("change", applyTheme);
+    applyTheme();
   },
 
-  load(): Promise<void> {
-    return loadThemePreference();
-  },
-
-  setMode(nextMode: ThemeMode): Promise<void> {
-    return setThemeMode(nextMode);
+  setMode(next: ThemeMode): void {
+    mode = next;
+    applyTheme();
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      // Storage can be unavailable; the choice still applies for this visit.
+    }
   },
 };
-
-export function initThemeSync(): void {
-  if (initialized || typeof window === "undefined") return;
-  initialized = true;
-  mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-  mediaQuery.addEventListener("change", () => {
-    if (mode === "system") applyTheme(mode);
-  });
-  applyTheme(mode);
-}
-
-export async function loadThemePreference(): Promise<void> {
-  initThemeSync();
-  const saved = normalizeThemeMode(localStorageTheme());
-  mode = saved;
-  applyTheme(mode);
-  loaded = true;
-}
-
-export async function setThemeMode(nextMode: ThemeMode): Promise<void> {
-  mode = nextMode;
-  applyTheme(mode);
-  try {
-    window.localStorage.setItem(THEME_PREFERENCE_KEY, mode);
-  } catch {
-  }
-}
-
-function applyTheme(nextMode: ThemeMode): void {
-  if (typeof document === "undefined") return;
-  resolved = resolveTheme(nextMode);
-  document.documentElement.classList.toggle("dark", resolved === "dark");
-  if (nextMode === "system") delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = nextMode;
-}
-
-function resolveTheme(nextMode: ThemeMode): ResolvedTheme {
-  if (nextMode === "light" || nextMode === "dark") return nextMode;
-  return systemTheme();
-}
-
-function systemTheme(): ResolvedTheme {
-  if (typeof window === "undefined") return "dark";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function localStorageTheme(): string | null {
-  try {
-    return window.localStorage.getItem(THEME_PREFERENCE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function normalizeThemeMode(value: string | null | undefined): ThemeMode {
-  return value === "light" || value === "dark" || value === "system" ? value : "system";
-}

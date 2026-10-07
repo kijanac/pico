@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, untrack } from "svelte";
-  import { ArrowUp, ImagePlus, ListTodo, Plus, Square } from "@lucide/svelte";
+  import { ArrowUp, ImagePlus, ListTodo, Square } from "@lucide/svelte";
   import type { ImageContent, SessionControls, SessionStats } from "@pico/protocol";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
@@ -9,7 +9,6 @@
   import { keyboardState } from "@/shared/mobile/keyboard.svelte";
   import { pickImages } from "@/shared/mobile/image-picker";
   import { cloneImageContent, filesToImageContent } from "@/shared/mobile/image-content";
-  import { haptics } from "@/shared/mobile/haptics";
   import { createLongPress } from "@/shared/gestures/long-press";
   import { clearSessionQueue, getSessionQueue, getSessionSettings } from "@/features/chat/api";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
@@ -51,7 +50,6 @@
   let holding = $state(false);
   let ignoreNextSendClick = false;
   let sendPointerId: number | null = null;
-  let actionsOpen = $state(false);
   let compactOpen = $state(false);
   let queueOpen = $state(false);
   let images = $state<ImageContent[]>([]);
@@ -59,9 +57,6 @@
   let queueError = $state<string | null>(null);
   let clearing = $state(false);
   const queueRequest = createLatest();
-  const draftLoadRequest = createLatest();
-  let draftLoadedFor = $state<string | null>(null);
-  let draftEditVersion = 0;
   let lastRecallRequestId = 0;
 
   const slashCommands = createSlashCommandsState(
@@ -118,9 +113,10 @@
   });
 
   $effect(() => {
-    const key = `${hostId}:${sessionId}`;
+    hostId;
+    sessionId;
     untrack(() => {
-      void restoreDraft(hostId, sessionId, key);
+      restoreDraft();
       void syncQueue();
     });
   });
@@ -130,7 +126,6 @@
     if (!request || request.hostId !== hostId || request.sessionId !== sessionId || request.id === lastRecallRequestId) return;
 
     lastRecallRequestId = request.id;
-    draftEditVersion += 1;
     value = request.text;
     cursor = request.text.length;
     replaceImages(request.images);
@@ -141,28 +136,14 @@
   });
 
   $effect(() => {
-    const key = `${hostId}:${sessionId}`;
+    const draftHostId = hostId;
+    const draftSessionId = sessionId;
     const draftText = value;
-    if (draftLoadedFor !== key) return;
-
     const timer = window.setTimeout(() => {
-      void saveChatDraft(hostId, sessionId, draftText);
+      saveChatDraft(draftHostId, draftSessionId, draftText);
     }, DRAFT_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
-  });
-
-  $effect(() => {
-    if (!actionsOpen) return;
-
-    const closeOnOutsidePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Element && target.closest("[data-input-actions]")) return;
-      actionsOpen = false;
-    };
-
-    window.addEventListener("pointerdown", closeOnOutsidePointerDown, { capture: true });
-    return () => window.removeEventListener("pointerdown", closeOnOutsidePointerDown, { capture: true });
   });
 
   function autosize(node: HTMLTextAreaElement, _value: string) {
@@ -179,21 +160,10 @@
     cursor = node.selectionStart ?? value.length;
   }
 
-  async function restoreDraft(nextHostId: string, nextSessionId: string, key: string): Promise<void> {
-    const token = draftLoadRequest.begin();
-    const editVersion = draftEditVersion;
-    draftLoadedFor = null;
-    value = "";
+  function restoreDraft(): void {
+    value = loadChatDraft(hostId, sessionId);
     cursor = 0;
     clearImages();
-
-    const draftText = await loadChatDraft(nextHostId, nextSessionId).catch(() => "");
-    if (!draftLoadRequest.isCurrent(token) || key !== `${hostId}:${sessionId}`) return;
-
-    if (draftEditVersion === editVersion) {
-      value = draftText;
-    }
-    draftLoadedFor = key;
   }
 
   function submit(mode: "steer" | "follow_up"): void {
@@ -213,8 +183,7 @@
     value = "";
     cursor = 0;
     clearImages();
-    void clearChatDraft(hostId, sessionId);
-    haptics.light();
+    clearChatDraft(hostId, sessionId);
   }
 
   function interrupt(): void {
@@ -229,7 +198,6 @@
     onCancel: () => (holding = false),
     onLongPress: () => {
       holding = false;
-      haptics.medium();
       submit("follow_up");
     },
   });
@@ -242,7 +210,7 @@
   function handleSendPointerDown(event: PointerEvent): void {
     if (!hasSendable || !canSend) return;
 
-    // Keep the textarea focused so the native keyboard/WebView layout doesn't
+    // Keep the textarea focused so the on-screen keyboard and layout don't
     // move under the finger before the tap completes.
     event.preventDefault();
     clearSendPointerListeners();
@@ -287,7 +255,6 @@
   function applyCommandCompletion(completion: SlashCommandCompletion): void {
     value = completion.value;
     cursor = completion.cursor;
-    draftEditVersion += 1;
     requestAnimationFrame(() => {
       textarea?.focus();
       textarea?.setSelectionRange(completion.cursor, completion.cursor);
@@ -305,28 +272,18 @@
     return true;
   }
 
-  function toggleActions(): void {
-    actionsOpen = !actionsOpen;
-  }
-
-  async function runAction(action: () => void | Promise<void>): Promise<void> {
-    actionsOpen = false;
-    await action();
-  }
-
   function addImages(next: readonly ImageContent[]): void {
     const cloned = cloneImageContent(next);
     if (!cloned) return;
     images.push(...cloned);
     if (images.length > MAX_IMAGES) images.splice(MAX_IMAGES);
-    draftEditVersion += 1;
   }
 
   async function attachImages(): Promise<void> {
     try {
       const remaining = MAX_IMAGES - images.length;
       if (remaining <= 0) return;
-      addImages(await pickImages({ limit: remaining }));
+      addImages(await pickImages(remaining));
     } catch (error) {
       console.warn("[input-bar] image pick failed:", error);
     }
@@ -348,7 +305,6 @@
   function removeImage(index: number): void {
     if (index < 0 || index >= images.length) return;
     images.splice(index, 1);
-    draftEditVersion += 1;
   }
 
   async function syncQueue(options: { showLoading?: boolean } = {}): Promise<void> {
@@ -410,7 +366,6 @@
       bind:value
       use:autosize={value}
       oninput={(event) => {
-        draftEditVersion += 1;
         updateCursor(event.currentTarget);
       }}
       onpaste={(event) => void handlePaste(event)}
@@ -435,19 +390,9 @@
     ></textarea>
 
     <div class="flex items-center gap-1 px-1.5 pb-1.5">
-      <div class="relative shrink-0" data-input-actions>
-        {#if actionsOpen}
-          <div class="absolute bottom-[calc(100%+0.75rem)] left-0 z-40 flex flex-col gap-1.5">
-            {@render ActionFab("Attach image", images.length >= MAX_IMAGES, () => runAction(attachImages))}
-          </div>
-        {/if}
-        <Button type="button" variant="ghost" size="icon" onpointerdown={(event) => event.preventDefault()} onclick={toggleActions} class="relative rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="More input actions" title="More input actions" aria-expanded={actionsOpen}>
-          {#if actionsOpen}
-            <span class="absolute h-7 w-7 rotate-45 rounded-[var(--radius-sm)] bg-[color:var(--color-surface-2)]" aria-hidden="true"></span>
-          {/if}
-          <Plus class={`relative size-4 transition-transform ${actionsOpen ? "rotate-45" : ""}`} />
-        </Button>
-      </div>
+      <Button type="button" variant="ghost" size="icon" onpointerdown={(event) => event.preventDefault()} onclick={attachImages} disabled={images.length >= MAX_IMAGES} class="shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Attach image" title="Attach image">
+        <ImagePlus class="size-4" />
+      </Button>
 
       {#if modelLabel}
         <button
@@ -526,9 +471,3 @@
     </Sheet.BottomContent>
   </Sheet.Root>
 </div>
-
-{#snippet ActionFab(label: string, disabled: boolean, onClick: () => void | Promise<void>)}
-  <button type="button" onpointerdown={(event) => event.preventDefault()} onclick={() => void onClick()} {disabled} class="flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)] shadow-lg shadow-black/20 backdrop-blur-md active:opacity-85 disabled:border-[color:var(--color-border)] disabled:bg-[color:var(--color-surface)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-60" aria-label={label} title={label}>
-    <ImagePlus class="size-4" />
-  </button>
-{/snippet}

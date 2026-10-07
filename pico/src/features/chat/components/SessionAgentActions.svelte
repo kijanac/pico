@@ -3,9 +3,9 @@
   import { MoreHorizontal } from "@lucide/svelte";
   import { createAgentActionsState } from "@/features/chat/actions/agent-actions.state.svelte";
   import { exportSessionHtml } from "@/features/chat/api";
+  import ProviderAuthView from "@/features/auth/ProviderAuthView.svelte";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
   import AgentActionSheet from "@/features/chat/actions/AgentActionSheet.svelte";
-  import AuthView from "@/features/chat/actions/AuthView.svelte";
   import MenuView from "@/features/chat/actions/MenuView.svelte";
   import SessionInfoView from "@/features/chat/actions/SessionInfoView.svelte";
   import SessionSettingsView from "@/features/chat/actions/SessionSettingsView.svelte";
@@ -64,7 +64,7 @@
     {:else if actions.view === "info"}
       <SessionInfoView {hostId} {sessionId} />
     {:else if actions.view === "auth"}
-      <AuthView {hostId} onError={actions.setError} />
+      <ProviderAuthView {hostId} onError={actions.setError} class="px-3 py-3" />
     {/if}
   </AgentActionSheet>
 {/if}

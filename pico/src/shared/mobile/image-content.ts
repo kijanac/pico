@@ -14,7 +14,7 @@ export function imageDataUrl(image: ImageContent): string {
   return `data:${image.mimeType};base64,${image.data}`;
 }
 
-export async function blobToImageContent(blob: Blob): Promise<ImageContent> {
+async function blobToImageContent(blob: Blob): Promise<ImageContent> {
   const normalized = await normalizeImageBlob(blob);
   return {
     type: "image",

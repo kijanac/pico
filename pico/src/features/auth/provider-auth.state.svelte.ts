@@ -2,17 +2,15 @@ import { Effect } from "effect";
 import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 import { cancelAuthLogin, getAuthLoginJob, listAuthProviders, saveAuthApiKey, startAuthLogin, submitAuthLoginInput } from "@/features/auth/api";
 import { classifyHostFailure, hostIssueSummary } from "@/shared/lib/host-issues";
-import { type PicoClient, runHost, runOnHost } from "@/shared/lib/rpc-client";
-import { haptics } from "@/shared/mobile/haptics";
+import { type PicoClient, runOnHost } from "@/shared/lib/rpc-client";
 
 type AuthProviders = Effect.Effect.Success<ReturnType<typeof listAuthProviders>>;
 type AuthProvider = AuthProviders["providers"][number];
 type AuthLoginJob = Effect.Effect.Success<ReturnType<typeof startAuthLogin>>;
 
 export interface ProviderAuthStateOptions {
-  hostId?: string;
+  hostId: string;
   onError: (message: string | null) => void;
-  onConfigured?: () => void;
 }
 
 export interface ProviderAuthState {
@@ -45,11 +43,8 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
   let savingApiKey = $state(false);
   let startingProviderId = $state<string | null>(null);
 
-  const hostUrl = () => {
-    const hostId = opts.hostId ?? hostRegistryState.defaultHostId;
-    return hostId ? hostRegistryState.getHost(hostId)?.url : undefined;
-  };
-  const run = <A, E>(effect: Effect.Effect<A, E, PicoClient>) => opts.hostId ? runOnHost(opts.hostId, effect) : runHost(effect);
+  const hostUrl = () => hostRegistryState.getHost(opts.hostId)?.url;
+  const run = <A, E>(effect: Effect.Effect<A, E, PicoClient>) => runOnHost(opts.hostId, effect);
 
   const reportFailure = (error: unknown) =>
     classifyHostFailure(error, { url: hostUrl() }).pipe(
@@ -108,8 +103,6 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
             providers = result.providers;
             apiKeyProvider = null;
             apiKeyInput = "";
-            opts.onConfigured?.();
-            haptics.success();
           })),
           Effect.catchAll(reportFailure),
         ),
@@ -128,11 +121,7 @@ export function createProviderAuthState(opts: ProviderAuthStateOptions): Provide
         Effect.catchAll(reportFailure),
       ),
     );
-    if (job?.status === "success") {
-      haptics.success();
-      await loadProviders();
-      opts.onConfigured?.();
-    }
+    if (job?.status === "success") await loadProviders();
   }
 
   async function submit(value = input): Promise<void> {

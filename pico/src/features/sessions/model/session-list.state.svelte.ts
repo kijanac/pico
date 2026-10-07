@@ -203,7 +203,7 @@ export const sessionListState = {
       hostId,
       sessionId,
       deleteSessionRequest(sessionId).pipe(
-        Effect.tap(() => Effect.promise(() => clearChatDraft(hostId, sessionId).catch(() => undefined))),
+        Effect.tap(() => Effect.sync(() => clearChatDraft(hostId, sessionId))),
         Effect.tap(() => Effect.sync(() => removeLocal(hostId, sessionId))),
         Effect.asVoid,
       ),

@@ -1,10 +1,10 @@
+import { on } from "svelte/events";
 import { hostRegistryState } from "@/features/hosts/host-registry.state.svelte";
 import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
 import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
 import { retryState } from "@/features/chat/model/retry-state.svelte";
 import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
 import { SessionStreamController } from "@/features/chat/stream-controller";
-import { appLifecycle } from "@/shared/mobile/lifecycle.svelte";
 import { markSessionOpen } from "@/shared/lib/session-open-timing";
 
 export interface ChatSessionState {
@@ -20,14 +20,13 @@ export interface ChatSessionState {
 export function createChatSessionState(hostId: string, sessionId: string): ChatSessionState {
   let controller = $state<SessionStreamController | null>(null);
   let connected = $state(false);
-  let lastResumeTick = $state(appLifecycle.resumeTick);
 
-  $effect(() => {
-    const tick = appLifecycle.resumeTick;
-    if (tick === lastResumeTick) return;
-    lastResumeTick = tick;
-    controller?.reconnect();
-  });
+  // iOS suspends a backgrounded home-screen app; coming back must reconnect.
+  $effect(() =>
+    on(document, "visibilitychange", () => {
+      if (document.visibilityState === "visible") controller?.reconnect();
+    }),
+  );
 
   async function start(): Promise<void> {
     if (controller) return;

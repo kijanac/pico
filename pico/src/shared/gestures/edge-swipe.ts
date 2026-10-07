@@ -1,4 +1,3 @@
-import { haptics } from "@/shared/mobile/haptics";
 
 const EDGE_WIDTH = 32;
 const LOCK_DISTANCE = 10;
@@ -26,7 +25,6 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
   let startedAt = 0;
   let tracking = false;
   let dragging = false;
-  let thresholdBuzzed = false;
   let navTimer: number | undefined;
   let settleTimer: number | undefined;
 
@@ -47,13 +45,6 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
     options.preview.style.transform = `translate3d(${(progress - 1) * PREVIEW_PARALLAX_PX}px, 0, 0) scale(${0.985 + progress * 0.015})`;
     options.preview.style.opacity = String(0.74 + progress * 0.26);
     options.shade.style.opacity = String(0.18 * (1 - progress));
-
-    if (!thresholdBuzzed && progress >= 1) {
-      thresholdBuzzed = true;
-      haptics.medium();
-    } else if (thresholdBuzzed && progress < 0.72) {
-      thresholdBuzzed = false;
-    }
   }
 
   function reset(): void {
@@ -63,7 +54,6 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
     }
     tracking = false;
     dragging = false;
-    thresholdBuzzed = false;
     options.page.classList.remove("edge-swipe-dragging", "edge-swipe-settling");
     options.preview.classList.remove("edge-swipe-dragging", "edge-swipe-settling");
     options.page.style.transform = "";
@@ -106,7 +96,6 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
     startedAt = performance.now();
     tracking = true;
     dragging = false;
-    thresholdBuzzed = false;
     options.page.classList.remove("edge-swipe-settling");
     options.preview.classList.remove("edge-swipe-settling");
   }
@@ -161,7 +150,6 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
     options.preview.classList.add("edge-swipe-settling");
 
     if (shouldComplete) {
-      haptics.light();
       if (prefersReducedMotion()) {
         options.page.style.transform = "";
         options.preview.style.transform = "";

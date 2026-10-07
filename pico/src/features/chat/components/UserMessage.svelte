@@ -6,7 +6,6 @@
   import { chatLogState, isLocalEcho } from "@/features/chat/model/chat-log.state.svelte";
   import { chatQueueState } from "@/features/chat/model/chat-queue.state.svelte";
   import { queuedMessageActionsState } from "@/features/chat/model/queued-message-actions.state.svelte";
-  import { haptics } from "@/shared/mobile/haptics";
   import { hostIssueSummary } from "@/shared/lib/host-issues";
   import { runOnHost } from "@/shared/lib/rpc-client";
 
@@ -21,7 +20,6 @@
   const images = $derived(msg.images ?? []);
 
   function retry(): void {
-    haptics.light();
     chatLogState.retryLocalEcho(msg.id);
   }
 
@@ -36,7 +34,6 @@
       if (options.recall) {
         queuedMessageActionsState.recall(hostId, sessionId, message.text, message.mode, message.images);
       }
-      haptics.light();
     } catch (error) {
       queueActionError = hostIssueSummary(error);
     } finally {

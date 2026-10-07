@@ -1,31 +1,14 @@
-import { getJsonPreference, removePreference, setJsonPreference } from "@/shared/mobile/preferences";
-
-type StoredChatDraft = {
-  text: string;
-  updatedAt: number;
-  version: 1;
-};
-
 const draftKey = (hostId: string, sessionId: string): string => `chat:draft:${hostId}:${sessionId}`;
 
-export async function loadChatDraft(hostId: string, sessionId: string): Promise<string> {
-  const draft = await getJsonPreference<Partial<StoredChatDraft> | null>(draftKey(hostId, sessionId), null);
-  return typeof draft?.text === "string" ? draft.text : "";
+export function loadChatDraft(hostId: string, sessionId: string): string {
+  return localStorage.getItem(draftKey(hostId, sessionId)) ?? "";
 }
 
-export async function saveChatDraft(hostId: string, sessionId: string, text: string): Promise<void> {
-  if (text.trim().length === 0) {
-    await clearChatDraft(hostId, sessionId);
-    return;
-  }
-
-  await setJsonPreference(draftKey(hostId, sessionId), {
-    text,
-    updatedAt: Date.now(),
-    version: 1,
-  } satisfies StoredChatDraft);
+export function saveChatDraft(hostId: string, sessionId: string, text: string): void {
+  if (text.trim()) localStorage.setItem(draftKey(hostId, sessionId), text);
+  else clearChatDraft(hostId, sessionId);
 }
 
-export async function clearChatDraft(hostId: string, sessionId: string): Promise<void> {
-  await removePreference(draftKey(hostId, sessionId));
+export function clearChatDraft(hostId: string, sessionId: string): void {
+  localStorage.removeItem(draftKey(hostId, sessionId));
 }

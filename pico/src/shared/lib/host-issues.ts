@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { isHostErrorCode, type HostErrorCode } from "@pico/protocol";
-import { healthcheckHost, HostNotReady } from "@/shared/lib/host-http";
+import { healthcheckHost } from "@/shared/lib/host-http";
 
 export type HostIssueKind =
   | "host-unreachable"
@@ -21,7 +21,7 @@ export interface HostIssueOptions {
   readonly url?: string;
 }
 
-export function hostErrorCodeOf(error: unknown): HostErrorCode | undefined {
+function hostErrorCodeOf(error: unknown): HostErrorCode | undefined {
   if (isHostErrorCode(error)) return error;
   if (typeof error === "object" && error !== null && "hostErrorCode" in error) {
     const code = (error as { hostErrorCode: unknown }).hostErrorCode;
@@ -57,12 +57,11 @@ function hostStartingIssue(): HostIssue {
 // Map a non-healthy reachability to an issue. "unreachable" is a genuine transport
 // failure (so the Tailscale/host-unreachable copy is warranted); "starting" is a
 // slow/booting host that we must NOT mislabel as "Tailscale not connected".
-export function reachabilityIssue(reachability: "starting" | "unreachable", options: HostIssueOptions = {}): HostIssue {
+function reachabilityIssue(reachability: "starting" | "unreachable", options: HostIssueOptions = {}): HostIssue {
   return reachability === "unreachable" ? hostIssueForCode("host_unreachable", options) : hostStartingIssue();
 }
 
 export function classifyHostIssue(error: unknown, options: HostIssueOptions = {}): HostIssue {
-  if (error instanceof HostNotReady) return reachabilityIssue(error.reachability, options);
   const code = hostErrorCodeOf(error);
   return code ? hostIssueForCode(code, options) : genericIssue(error);
 }
@@ -140,7 +139,7 @@ export function hostIssueForCode(code: HostErrorCode, options: HostIssueOptions 
         steps: [
           tailnetUrl
             ? "Open Tailscale on this phone and confirm it is connected to the same tailnet as the host."
-            : "Check that the host URL is correct, including `https://` or `http://`.",
+            : "Check that this device can reach the host.",
           "On the host, run `systemctl --user status pico` to confirm it is running.",
           tailnetUrl
             ? "Confirm Tailscale Serve is enabled and points to the Pico host port."

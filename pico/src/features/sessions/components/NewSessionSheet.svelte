@@ -1,27 +1,22 @@
 <script lang="ts">
   import { ChevronLeft, Folder, Plus } from "@lucide/svelte";
   import CwdPicker from "@/features/sessions/components/CwdPicker.svelte";
-  import type { HostProfile } from "@/features/hosts/host-registry.state.svelte";
-  import ActionRow from "@/shared/components/ActionRow.svelte";
   import { Button } from "@/shared/ui/button";
   import { Input } from "@/shared/ui/input";
   import * as Sheet from "@/shared/ui/sheet";
 
   let {
     open = $bindable(false),
-    hosts,
-    defaultHostId,
+    hostId,
     creating = false,
     onCreate,
   }: {
     open: boolean;
-    hosts: readonly HostProfile[];
-    defaultHostId: string | null;
+    hostId: string;
     creating?: boolean;
     onCreate: (opts: { hostId: string; cwd: string; title: string }) => void;
   } = $props();
 
-  let hostId = $state<string | null>(null);
   let cwd = $state<string | undefined>();
   let title = $state("");
   let pickerOpen = $state(false);
@@ -32,20 +27,10 @@
     return cwd ? basename(cwd) : "";
   });
 
-  const canCreate = $derived(!!hostId && !!cwd && !creating);
-
-  $effect(() => {
-    if (!hostId || !hosts.some((host) => host.id === hostId)) hostId = defaultHostId;
-  });
-
-  function chooseHost(nextHostId: string): void {
-    if (nextHostId === hostId) return;
-    hostId = nextHostId;
-    cwd = undefined;
-  }
+  const canCreate = $derived(!!cwd && !creating);
 
   function handleCreate(): void {
-    if (!hostId || !cwd || !canCreate) return;
+    if (!cwd || !canCreate) return;
     onCreate({ hostId, cwd, title: effectiveTitle });
   }
 
@@ -72,43 +57,21 @@
     </Sheet.Header>
 
     {#if pickerOpen}
-      {#if hostId}
-        <CwdPicker
+      <CwdPicker
         {hostId}
         initial={cwd}
         onSelect={(path) => {
           cwd = path;
           pickerOpen = false;
         }}
-        />
-      {/if}
+      />
     {:else}
       <div class="flex-1 space-y-3 overflow-y-auto px-3 pb-3">
-        {#if hosts.length > 1}
-          <div>
-            <div class="label mb-1.5">host</div>
-            <div class="overflow-hidden rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
-              {#each hosts as host (host.id)}
-                <ActionRow disabled={creating} onclick={() => chooseHost(host.id)} class="gap-3 active:bg-[color:var(--color-surface-2)]">
-                  <span class="min-w-0 flex-1">
-                    <span class="type-copy block truncate text-[color:var(--color-fg)]">{host.name}</span>
-                    <span class="type-meta mt-0.5 block truncate text-[color:var(--color-fg-muted)]">{host.url}</span>
-                  </span>
-                  {#if host.id === hostId}<span class="type-meta text-[color:var(--color-accent)]">selected</span>{/if}
-                </ActionRow>
-              {:else}
-                <div class="type-copy px-3 py-3 text-[color:var(--color-fg-muted)]">no hosts connected</div>
-              {/each}
-            </div>
-          </div>
-        {/if}
-
         <label class="block">
           <div class="label mb-1.5">cwd</div>
           <Button
             type="button"
             variant="outline"
-            disabled={!hostId}
             onclick={() => (pickerOpen = true)}
             class="h-auto w-full justify-start gap-2 rounded-[var(--radius-md)] border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2.5 text-left active:bg-[color:var(--color-surface-2)]"
           >

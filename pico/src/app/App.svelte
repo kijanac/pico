@@ -4,7 +4,7 @@
   import { consumeNavKind, currentPath, resolveRoute, type RouteMatch } from "@/app/routes";
   import { themeState } from "@/shared/theme/theme.svelte";
 
-  // Chunks load from local disk in Capacitor, so lazy routes cost ~nothing.
+  // Routes load on first visit to keep the initial download small.
   function lazy<T>(load: () => Promise<T>): () => Promise<T> {
     let cached: Promise<T> | null = null;
     return () => {
@@ -66,7 +66,6 @@
 
   onMount(() => {
     themeState.init();
-    void themeState.load();
 
     window.addEventListener("popstate", syncRoute);
     return () => {
