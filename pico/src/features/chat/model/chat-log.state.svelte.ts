@@ -45,6 +45,8 @@ interface SessionLog {
   streamingCalls: Mutable<ToolCallMessage>[];
   outbox: OutboxItem[];
   activityVersion: number;
+  // The host's first sync has arrived.
+  synced: boolean;
 }
 
 const logs = $state<Record<string, SessionLog>>({});
@@ -100,6 +102,7 @@ function getLog(sessionId: string): SessionLog {
     streamingCalls: [],
     outbox: loadOutbox(sessionId),
     activityVersion: 0,
+    synced: false,
   };
   return logs[sessionId];
 }
@@ -229,6 +232,7 @@ function apply(sessionId: string, message: ServerMessage): void {
       for (const tool of log.live.tools) overlayTool(log, tool);
       if (!log.live.running) reconcileOrphanedToolCalls(log);
       reconcileOutbox(sessionId, log, message.sends);
+      log.synced = true;
       break;
     case "entries":
       applyEntries(sessionId, log, message.entries);
@@ -286,6 +290,10 @@ export const chatLogState = {
 
   get more() {
     return activeLog?.more;
+  },
+
+  get synced() {
+    return activeLog?.synced ?? false;
   },
 
   activate(sessionId: string): void {

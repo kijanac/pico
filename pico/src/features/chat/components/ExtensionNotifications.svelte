@@ -19,7 +19,7 @@
     type="button"
     onpointerdown={(event) => event.preventDefault()}
     onclick={() => activeSessionState.dismissExtensionNotification()}
-    class="pointer-events-auto flex w-full items-center border-t border-[color:var(--color-border)] bg-[color:var(--color-bg)]/90 px-3 py-2 text-left backdrop-blur-md active:bg-[color:var(--color-surface)]"
+    class="pointer-events-auto flex w-full items-center border-t border-[color:var(--color-border)] bg-[color:var(--color-bg)]/90 px-3 py-2 text-left active:bg-[color:var(--color-surface)]"
   >
     <span
       class="type-meta min-w-0 flex-1 truncate {notice.level === 'error'

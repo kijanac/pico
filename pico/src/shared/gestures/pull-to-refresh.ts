@@ -57,7 +57,8 @@ export function createPullToRefresh(container: HTMLElement, options: PullToRefre
     const touch = event.touches[0];
     if (!touch) return;
     const dy = touch.clientY - startY;
-    if (dy <= 0) {
+    // A row's sideways swipe claimed the touch (it prevents the default).
+    if (dy <= 0 || event.defaultPrevented) {
       setPull(0);
       startY = null;
       return;
@@ -67,9 +68,13 @@ export function createPullToRefresh(container: HTMLElement, options: PullToRefre
   }
 
   function onTouchEnd(): void {
-    if (startY === null || refreshing) {
-      setPull(0);
+    // A touch while refreshing leaves the spinner where it is.
+    if (refreshing) {
       startY = null;
+      return;
+    }
+    if (startY === null) {
+      setPull(0);
       return;
     }
     if (pull >= THRESHOLD) {
@@ -90,10 +95,17 @@ export function createPullToRefresh(container: HTMLElement, options: PullToRefre
     startY = null;
   }
 
+  // The system took the touch: put the list back without refreshing.
+  function onTouchCancel(): void {
+    if (refreshing) return;
+    startY = null;
+    setPull(0);
+  }
+
   container.addEventListener("touchstart", onTouchStart, { passive: true });
   container.addEventListener("touchmove", onTouchMove, { passive: true });
   container.addEventListener("touchend", onTouchEnd, { passive: true });
-  container.addEventListener("touchcancel", onTouchEnd, { passive: true });
+  container.addEventListener("touchcancel", onTouchCancel, { passive: true });
   render();
 
   return {
@@ -102,7 +114,7 @@ export function createPullToRefresh(container: HTMLElement, options: PullToRefre
       container.removeEventListener("touchstart", onTouchStart);
       container.removeEventListener("touchmove", onTouchMove);
       container.removeEventListener("touchend", onTouchEnd);
-      container.removeEventListener("touchcancel", onTouchEnd);
+      container.removeEventListener("touchcancel", onTouchCancel);
       options.indicator.hidden = true;
       options.indicator.style.height = "";
       options.indicator.style.transition = "";

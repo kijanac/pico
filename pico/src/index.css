@@ -236,7 +236,7 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  .msg-cv {
+  .msg-enter {
     animation: message-entry 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
@@ -263,7 +263,6 @@
     grid-area: 1 / 1;
     line-height: 1;
     transform-origin: 50% 50%;
-    will-change: opacity, transform, filter;
   }
 
   .agent-working-glyph__spark--core {
@@ -275,13 +274,11 @@
 
   .agent-working-glyph__spark--trail {
     opacity: 0;
-    filter: blur(0.2px);
     animation: agent-working-trail 1.45s cubic-bezier(0.22, 1, 0.36, 1) infinite;
   }
 
   .agent-working-glyph__spark--halo {
     opacity: 0;
-    filter: blur(0.45px);
     animation: agent-working-halo 1.45s cubic-bezier(0.22, 1, 0.36, 1) infinite;
   }
 
@@ -342,7 +339,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .msg-cv,
+    .msg-enter,
     .agent-working-glyph__spark {
       animation: none;
     }
@@ -392,12 +389,15 @@
     animation: nav-recede 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
+  /* Pop runs its own keyframes forward: `reverse` would also reverse the
+     easing, so the screen would hang and then whip away. */
   .nav-enter-pop {
-    animation: nav-recede 280ms cubic-bezier(0.22, 1, 0.36, 1) both reverse;
+    animation: nav-reveal 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   .nav-exit-pop {
-    animation: nav-slide-in-right 280ms cubic-bezier(0.22, 1, 0.36, 1) both reverse;
+    z-index: 1;
+    animation: nav-slide-out-right 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   @keyframes nav-slide-in-right {
@@ -417,6 +417,26 @@
     to {
       transform: translate3d(-24px, 0, 0) scale(0.985);
       opacity: 0.74;
+    }
+  }
+
+  @keyframes nav-slide-out-right {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(100%, 0, 0);
+    }
+  }
+
+  @keyframes nav-reveal {
+    from {
+      transform: translate3d(-24px, 0, 0) scale(0.985);
+      opacity: 0.74;
+    }
+    to {
+      transform: translate3d(0, 0, 0) scale(1);
+      opacity: 1;
     }
   }
 
@@ -445,6 +465,11 @@
     transform: translate3d(-24px, 0, 0) scale(0.985);
     opacity: 0.74;
     transform-origin: left center;
+  }
+
+  /* Out of sight behind the page until a swipe shows it, so it doesn't paint. */
+  .edge-swipe-preview:not(.edge-swipe-dragging, .edge-swipe-settling) {
+    visibility: hidden;
   }
 
   .edge-swipe-dragging,
@@ -498,18 +523,6 @@
     border-top: 1px solid var(--color-border);
   }
 
-  .caret::after {
-    content: "▍";
-    color: var(--color-accent);
-    margin-left: 2px;
-    animation: caret-blink 1.1s steps(2, start) infinite;
-  }
-  @keyframes caret-blink {
-    to {
-      visibility: hidden;
-    }
-  }
-
   .pulse-accent {
     animation: pulse-accent 1.6s ease-in-out infinite;
   }
@@ -519,16 +532,19 @@
   }
 
   /* Vestibular-safety: the infinite accent pulse (active-session dots, recording
-     mic) and the sheet slide/fade are motion, not information — neutralize them
-     for users who ask for reduced motion. The dot/mic still reads via its solid
-     accent color; sheets still open, just without the translate. */
+     mic) and the sheet and dialog slide/zoom/fade are motion, not information —
+     neutralize them for users who ask for reduced motion. The dot/mic still
+     reads via its solid accent color; sheets and dialogs still open, just
+     without moving. Spinners and press feedback stay: they show state. */
   @media (prefers-reduced-motion: reduce) {
     .pulse-accent {
       animation: none;
       opacity: 1;
     }
     [data-slot="sheet-content"],
-    [data-slot="sheet-overlay"] {
+    [data-slot="sheet-overlay"],
+    [data-slot="dialog-content"],
+    [data-slot="dialog-overlay"] {
       animation: none !important;
     }
   }

@@ -1,7 +1,5 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { slide } from "svelte/transition";
-  import { cubicOut } from "svelte/easing";
   import { Check, FileText, Loader2, Pencil, PlusSquare, Terminal, X } from "@lucide/svelte";
   import { hasToolDetails, type ToolCallMessage } from "@pico/protocol";
   import { shortPath } from "@/shared/lib/format";
@@ -10,14 +8,10 @@
 
   let { msg }: { msg: ToolCallMessage } = $props();
 
-  // Expand/collapse the detail pane with a slide; instant when reduced motion is requested.
-  const detailSlide = (node: HTMLElement) =>
-    slide(node, {
-      duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 160,
-      easing: cubicOut,
-    });
   let open = $state(false);
   let detailScroller: HTMLDivElement | null = $state(null);
+  // Live output follows its end until the reader scrolls up in the pane.
+  let following = true;
 
   const isEdit = $derived(msg.toolKind === "builtin" && msg.tool === "edit");
   const isCustom = $derived(msg.toolKind === "custom");
@@ -26,7 +20,6 @@
   );
   // Being written by the model, or running.
   const live = $derived(msg.status === "running" || msg.status === "pending");
-  const detailScrollStyle = $derived(live ? "height: min(22rem, 48vh)" : "max-height: min(22rem, 48vh)");
   const detailScrollVersion = $derived.by(() => {
     const contentLength = msg.resultContent?.reduce((total, part) => total + (part.type === "text" ? part.text.length : part.data.length), 0) ?? 0;
     const written = msg.toolKind === "builtin" && msg.tool === "write" ? msg.args.content.length : 0;
@@ -49,9 +42,13 @@
     detailScrollVersion;
     if (!live) return;
     void tick().then(() => {
-      if (detailScroller) detailScroller.scrollTop = detailScroller.scrollHeight;
+      if (detailScroller && following) detailScroller.scrollTop = detailScroller.scrollHeight;
     });
   });
+
+  function onDetailScroll(): void {
+    if (detailScroller) following = detailScroller.scrollHeight - detailScroller.scrollTop - detailScroller.clientHeight < 24;
+  }
 
   const label = $derived(msg.toolKind === "builtin" ? msg.tool : msg.tool);
   const summary = $derived.by(() => {
@@ -108,9 +105,8 @@
   {#if open && (isEdit || isCustom || hasResultPane)}
     <div
       bind:this={detailScroller}
-      transition:detailSlide
-      class="scroll-momentum mt-1 overflow-y-auto overscroll-contain rounded-[var(--radius-sm)]"
-      style={detailScrollStyle}
+      onscroll={onDetailScroll}
+      class="scroll-momentum mt-1 max-h-[min(22rem,48vh)] overflow-y-auto overscroll-contain rounded-[var(--radius-sm)]"
       aria-label={`${label} details`}
     >
       {#if isEdit && msg.toolKind === "builtin" && msg.tool === "edit"}

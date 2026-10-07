@@ -46,8 +46,8 @@ export class SessionStreamController {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
+    // Goes offline only if this session is still the open one.
     activeSessionState.deactivate(this.sessionId);
-    this.#setConnectionStatus("offline");
     if (this.#fiber) {
       Effect.runFork(Fiber.interrupt(this.#fiber));
       this.#fiber = null;
@@ -105,6 +105,6 @@ export class SessionStreamController {
   }
 
   #setConnectionStatus(status: ConnectionStatus): void {
-    activeSessionState.setConnectionStatus(status);
+    if (activeSessionState.id === this.sessionId) activeSessionState.setConnectionStatus(status);
   }
 }

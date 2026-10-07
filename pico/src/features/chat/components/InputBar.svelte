@@ -57,7 +57,10 @@
   );
 
   onDestroy(() => {
-    clearSendPointerListeners();
+    // A press in progress dies with the composer instead of sending later.
+    cancelSendPress();
+    // Keep what was typed in the last moments before leaving.
+    saveChatDraft(sessionId, value);
   });
 
   const busy = $derived(activeSessionState.status === "thinking" || activeSessionState.status === "tool");
@@ -176,12 +179,26 @@
   });
 
   function clearSendPointerListeners(): void {
+    window.removeEventListener("pointermove", handleWindowSendPointerMove, { capture: true });
     window.removeEventListener("pointerup", handleWindowSendPointerUp, { capture: true });
     window.removeEventListener("pointercancel", handleWindowSendPointerCancel, { capture: true });
+    window.removeEventListener("blur", cancelSendPress);
   }
 
+  // Ends a press without sending, including the click that may follow it.
+  function cancelSendPress(): void {
+    clearSendPointerListeners();
+    sendPointerId = null;
+    ignoreNextSendClick = true;
+    sendPress.end();
+  }
+
+  // Like a native button, a press that wanders off Send doesn't send.
+  const SEND_SLOP_PX = 12;
+  let sendBounds: DOMRect | null = null;
+
   function handleSendPointerDown(event: PointerEvent): void {
-    if (!hasSendable || !canSend) return;
+    if (event.button !== 0 || !hasSendable || !canSend) return;
 
     // Keep the textarea focused so the on-screen keyboard and layout don't
     // move under the finger before the tap completes.
@@ -189,9 +206,12 @@
     clearSendPointerListeners();
     ignoreNextSendClick = false;
     sendPointerId = event.pointerId;
+    sendBounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
     sendPress.start(event);
+    window.addEventListener("pointermove", handleWindowSendPointerMove, { capture: true });
     window.addEventListener("pointerup", handleWindowSendPointerUp, { capture: true });
     window.addEventListener("pointercancel", handleWindowSendPointerCancel, { capture: true });
+    window.addEventListener("blur", cancelSendPress);
   }
 
   function finishSendPointer(): void {
@@ -203,6 +223,15 @@
     submit("steer");
   }
 
+  function handleWindowSendPointerMove(event: PointerEvent): void {
+    if (event.pointerId !== sendPointerId || !sendBounds) return;
+    const { left, right, top, bottom } = sendBounds;
+    const { clientX: x, clientY: y } = event;
+    if (x < left - SEND_SLOP_PX || x > right + SEND_SLOP_PX || y < top - SEND_SLOP_PX || y > bottom + SEND_SLOP_PX) {
+      cancelSendPress();
+    }
+  }
+
   function handleWindowSendPointerUp(event: PointerEvent): void {
     if (sendPointerId !== null && event.pointerId !== sendPointerId) return;
     event.preventDefault();
@@ -211,9 +240,7 @@
 
   function handleWindowSendPointerCancel(event: PointerEvent): void {
     if (sendPointerId !== null && event.pointerId !== sendPointerId) return;
-    clearSendPointerListeners();
-    sendPointerId = null;
-    sendPress.end();
+    cancelSendPress();
   }
 
   function handleSendClick(): void {

@@ -6,7 +6,8 @@
   import { themeState } from "@/shared/theme/theme.svelte";
 
   // The landing route ships with the entry (no extra round trip on launch);
-  // the others load on first visit.
+  // the others load right after launch, so a first visit doesn't slide in an
+  // empty screen.
   function lazy<T>(load: () => Promise<T>): () => Promise<T> {
     let cached: Promise<T> | null = null;
     return () => {
@@ -36,9 +37,14 @@
   let enterKind = $state<"push" | "pop" | null>(null);
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function reducedMotion(): boolean {
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // The screens slide on phones. With a mouse they'd sweep across a wide
+  // window's empty margins, so desktop navigates instantly.
+  function slides(): boolean {
+    return !window.matchMedia("(prefers-reduced-motion: reduce), (pointer: fine)").matches;
   }
+
+  // The leaving screen stays the same instance, so it slides away as it was.
+  const layers = $derived(leaving ? [leaving.screen, current] : [current]);
 
   function settle(): void {
     if (settleTimer) clearTimeout(settleTimer);
@@ -48,11 +54,11 @@
   }
 
   function syncRoute() {
+    const kind = consumeNavKind();
     const path = currentPath();
     if (path === current.path) return;
 
-    const kind = consumeNavKind();
-    const animate = (kind === "push" || kind === "pop") && !reducedMotion();
+    const animate = (kind === "push" || kind === "pop") && slides();
 
     settle();
     const outgoing = current;
@@ -67,6 +73,10 @@
 
   onMount(() => {
     themeState.init();
+    setTimeout(() => {
+      void loadSession();
+      void loadSettings();
+    });
 
     window.addEventListener("popstate", syncRoute);
     return () => {
@@ -97,27 +107,20 @@
 
 <AppShell>
   <div class="nav-stack">
-    <!-- DOM order controls stacking: push renders the new screen over the old; pop renders the old over the new. -->
-    {#if leaving && leaving.kind === "push"}
-      {#key leaving.screen.key}
-        <div class="screen-layer nav-exit-push" aria-hidden="true" inert>
-          {@render screenContent(leaving.screen.route)}
-        </div>
-      {/key}
-    {/if}
-
-    {#key current.key}
-      <div class="screen-layer" class:nav-enter-push={enterKind === "push"} class:nav-enter-pop={enterKind === "pop"}>
-        {@render screenContent(current.route)}
+    <!-- The leaving screen stays first, so no layer moves in the DOM; a pop's leaving screen stacks above with z-index. -->
+    {#each layers as screen (screen.key)}
+      {@const exit = leaving && screen.key === leaving.screen.key ? leaving.kind : null}
+      <div
+        class="screen-layer"
+        class:nav-exit-push={exit === "push"}
+        class:nav-exit-pop={exit === "pop"}
+        class:nav-enter-push={!exit && enterKind === "push"}
+        class:nav-enter-pop={!exit && enterKind === "pop"}
+        aria-hidden={exit ? "true" : undefined}
+        inert={!!exit}
+      >
+        {@render screenContent(screen.route)}
       </div>
-    {/key}
-
-    {#if leaving && leaving.kind === "pop"}
-      {#key leaving.screen.key}
-        <div class="screen-layer nav-exit-pop" aria-hidden="true" inert>
-          {@render screenContent(leaving.screen.route)}
-        </div>
-      {/key}
-    {/if}
+    {/each}
   </div>
 </AppShell>

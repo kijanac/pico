@@ -11,7 +11,9 @@
   import * as Dialog from "@/shared/ui/dialog";
 
   let newSessionOpen = $state(false);
+  // The target outlives the sheet's open state, so the sheet can slide away.
   let renameTarget = $state<SessionMeta | null>(null);
+  let renameOpen = $state(false);
   let deleteTarget = $state<SessionMeta | null>(null);
   let openSwipeSessionId = $state<string | null>(null);
   const recentFolders = $derived([...new Set(sessionListState.sessions.map((session) => session.cwd))]);
@@ -29,7 +31,7 @@
   async function renameSession(title: string): Promise<void> {
     if (!renameTarget) return;
     await sessionListState.rename(renameTarget.id, title);
-    renameTarget = null;
+    renameOpen = false;
   }
 
   async function toggleArchive(session: SessionMeta): Promise<void> {
@@ -45,6 +47,7 @@
   function requestRename(session: SessionMeta): void {
     openSwipeSessionId = null;
     renameTarget = session;
+    renameOpen = true;
   }
 
   function requestDelete(session: SessionMeta): void {
@@ -79,9 +82,7 @@
 
 {#if renameTarget}
   <RenameSheet
-    bind:open={() => !!renameTarget, (open) => {
-      if (!open) renameTarget = null;
-    }}
+    bind:open={renameOpen}
     initialTitle={renameTarget.title}
     saving={sessionListState.mutatingSessionId === renameTarget.id}
     onSave={renameSession}

@@ -13,12 +13,17 @@
   let activeRequestId = $state<string | null>(null);
   const request = $derived(chatLogState.live.ui[0]);
 
+  // What the sheet shows: kept after the answer, while the sheet slides away.
+  let shown = $state<typeof request>();
+
   $effect(() => {
     const nextId = request?.id ?? null;
     if (nextId === activeRequestId) return;
     activeRequestId = nextId;
     sheetOpen = Boolean(request);
-    textValue = request?.kind === "input" ? (request.initialValue ?? "") : "";
+    if (!request) return;
+    shown = request;
+    textValue = request.kind === "input" ? (request.initialValue ?? "") : "";
   });
 
   $effect(() => {
@@ -47,12 +52,12 @@
 
 <Sheet.Root bind:open={sheetOpen}>
   <Sheet.BottomContent class="max-h-[82dvh]">
-    {#if request}
-      {#if request.kind === "confirm"}
-        <SheetHeader title={request.title} />
+    {#if shown}
+      {#if shown.kind === "confirm"}
+        <SheetHeader title={shown.title} />
         <div class="space-y-3 overflow-y-auto p-3">
-          {#if request.message.trim()}
-            {@render detailBlock(request.message)}
+          {#if shown.message.trim()}
+            {@render detailBlock(shown.message)}
           {/if}
           <div class="grid grid-cols-2 gap-2 pt-1">
             <Button type="button" variant="outline" aria-label="No" onclick={() => respond(false)}>
@@ -63,13 +68,13 @@
             </Button>
           </div>
         </div>
-      {:else if request.kind === "select"}
+      {:else if shown.kind === "select"}
         <!-- No header: select's single `title` carries the whole ask, so it lives in
              the detail block. pt-8 clears the sheet's drag handle + close button. -->
         <div class="space-y-3 overflow-y-auto p-3 pt-8">
-          {@render detailBlock(request.title)}
+          {@render detailBlock(shown.title)}
           <div class="space-y-2 pt-1">
-            {#each request.options as option}
+            {#each shown.options as option}
               <Button
                 type="button"
                 variant="outline"
@@ -80,13 +85,13 @@
           </div>
           <Button type="button" variant="ghost" class="w-full" onclick={() => respond(null)}>cancel</Button>
         </div>
-      {:else if request.kind === "input"}
-        <SheetHeader title={request.title} />
+      {:else if shown.kind === "input"}
+        <SheetHeader title={shown.title} />
         <div class="space-y-3 overflow-y-auto p-3">
-          {#if request.multiline}
-            <Textarea class="type-copy min-h-36" placeholder={request.placeholder ?? ""} bind:value={textValue} />
+          {#if shown.multiline}
+            <Textarea class="type-copy min-h-36" placeholder={shown.placeholder ?? ""} bind:value={textValue} />
           {:else}
-            <Input type="text" class="type-copy h-10" placeholder={request.placeholder ?? ""} bind:value={textValue} />
+            <Input type="text" class="type-copy h-10" placeholder={shown.placeholder ?? ""} bind:value={textValue} />
           {/if}
           <div class="grid grid-cols-2 gap-2 pt-1">
             <Button type="button" variant="outline" onclick={() => respond(null)}>cancel</Button>

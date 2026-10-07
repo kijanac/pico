@@ -50,7 +50,7 @@
     <StreamingMarkdown text={msg.text} done={!msg.streaming} />
   {/if}
   {#if msg.streaming}
-    <span aria-hidden="true" class="ml-0.5 inline-block h-[1em] w-[0.4em] translate-y-[0.15em] animate-pulse bg-[color:var(--color-accent)]"></span>
+    <span aria-hidden="true" class="ml-0.5 inline-block h-[1em] w-[0.4em] translate-y-[0.15em] animate-pulse motion-reduce:animate-none bg-[color:var(--color-accent)]"></span>
   {/if}
 
   {#if showBanner && msg.stopReason}

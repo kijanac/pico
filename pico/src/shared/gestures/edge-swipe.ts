@@ -8,6 +8,9 @@ const COMPLETE_VELOCITY = 0.45;
 const VELOCITY_MIN_DISTANCE = 32;
 const MAX_VERTICAL_DRIFT = 56;
 const COMPLETE_MS = 170;
+// Release speed is measured over the last moments of the swipe; a finger
+// that stopped before lifting has none.
+const VELOCITY_WINDOW_MS = 80;
 const PREVIEW_PARALLAX_PX = 24;
 
 export interface EdgeSwipeOptions {
@@ -22,7 +25,9 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
   let startX = 0;
   let startY = 0;
   let lastX = 0;
-  let startedAt = 0;
+  let lastT = 0;
+  let sampleX = 0;
+  let sampleT = 0;
   let tracking = false;
   let dragging = false;
   let navTimer: number | undefined;
@@ -76,8 +81,9 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
     // let its partial transform poison the next interaction.
     if (tracking) finish(false);
 
+    // From the page's own left edge, which sits inside the safe area in landscape.
     const touch = event.touches[0];
-    if (!touch || touch.clientX > EDGE_WIDTH) return;
+    if (!touch || touch.clientX - options.page.getBoundingClientRect().left > EDGE_WIDTH) return;
 
     options.onPreviewNeeded?.();
 
@@ -93,7 +99,8 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
       settleTimer = undefined;
     }
 
-    startedAt = performance.now();
+    sampleX = lastX;
+    sampleT = lastT = event.timeStamp;
     tracking = true;
     dragging = false;
     options.page.classList.remove("edge-swipe-settling");
@@ -109,7 +116,12 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
     const dx = Math.max(0, touch.clientX - startX);
     const dy = touch.clientY - startY;
     const absDy = Math.abs(dy);
+    if (event.timeStamp - sampleT > VELOCITY_WINDOW_MS) {
+      sampleX = lastX;
+      sampleT = lastT;
+    }
     lastX = touch.clientX;
+    lastT = event.timeStamp;
 
     if (!dragging) {
       if (dx < LOCK_DISTANCE && absDy < LOCK_DISTANCE) return;
@@ -130,8 +142,7 @@ export function createEdgeSwipeBack(options: EdgeSwipeOptions) {
     if (!tracking) return;
 
     const dx = Math.max(0, lastX - startX);
-    const dt = Math.max(performance.now() - startedAt, 1);
-    const velocity = dx / dt;
+    const velocity = performance.now() - lastT > VELOCITY_WINDOW_MS ? 0 : (lastX - sampleX) / Math.max(lastT - sampleT, 1);
     const shouldComplete =
       commitAllowed &&
       dragging &&

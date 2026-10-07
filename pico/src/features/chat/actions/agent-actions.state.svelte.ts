@@ -17,10 +17,10 @@ export function createAgentActionsState(): AgentActionsState {
   let view = $state<AgentActionView>("menu");
   let error = $state<string | null>(null);
 
+  // The view resets when the sheet opens, so a closing sheet keeps showing
+  // what it showed while it slides away.
   function close(): void {
     open = false;
-    view = "menu";
-    error = null;
   }
 
   function back(): void {
@@ -43,8 +43,11 @@ export function createAgentActionsState(): AgentActionsState {
       return error;
     },
     setOpen(next: boolean) {
+      if (next && !open) {
+        view = "menu";
+        error = null;
+      }
       open = next;
-      if (!next) close();
     },
     setView(next: AgentActionView) {
       view = next;

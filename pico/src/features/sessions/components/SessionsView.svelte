@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Archive, ArchiveRestore, Pencil, Plus, Settings as SettingsIcon, Trash2 } from "@lucide/svelte";
+  import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Plus, Settings as SettingsIcon, Trash2 } from "@lucide/svelte";
   import HostIssuePanel from "@/shared/components/HostIssuePanel.svelte";
   import type { SessionMeta } from "@pico/protocol";
   import type { HostIssue } from "@/shared/lib/host-issues";
@@ -169,7 +169,7 @@
 {/snippet}
 
 {#snippet RowContent(item: SessionMeta)}
-  <div class="flex items-center gap-2 bg-[color:var(--color-bg)] px-3 py-3 active:bg-[color:var(--color-surface)]">
+  <div class="group flex items-center gap-2 bg-[color:var(--color-bg)] px-3 py-3 active:bg-[color:var(--color-surface)]">
     <button type="button" class="min-w-0 flex-1 text-left" onclick={() => onOpenSession(item)}>
       <div class="mb-1 flex items-center gap-2">
         <StatusDot tone={sessionStatusTone(item.status)} active={sessionStatusActive(item.status)} label={item.status} />
@@ -181,5 +181,16 @@
         <span class="shrink-0 tabular-nums">{formatCost(item.costUsd)}</span>
       </div>
     </button>
+    {#if interactive}
+      <!-- With a mouse there's no swipe: this reveals the row's actions. -->
+      <button
+        type="button"
+        class="hidden size-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-fine:flex"
+        onclick={() => (openSwipeSessionId = item.id)}
+        aria-label="Session actions"
+      >
+        <MoreHorizontal class="size-4" />
+      </button>
+    {/if}
   </div>
 {/snippet}

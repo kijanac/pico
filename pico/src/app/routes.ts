@@ -135,19 +135,48 @@ function matchSegments(routeSegments: readonly RouteSegment[], pathSegments: rea
 /** swipe means a gesture already animated the change, so the transition layer must not animate again. */
 export type NavKind = "push" | "pop" | "replace" | "swipe";
 
-let pendingNavKind: NavKind | null = null;
+// Each history entry records its depth and the path before it, so going
+// back goes back in history, and a browser Back or Forward animates in its
+// real direction.
+interface NavState {
+  depth: number;
+  back?: string;
+}
 
-/** popstate with no recorded kind is a real browser/system back. */
+// Through globalThis: the module also loads without a window, in tests.
+const navState = (): NavState | null => (globalThis.history?.state as NavState | null) ?? null;
+
+let depth = navState()?.depth ?? 0;
+let pendingNavKind: NavKind | null = null;
+// A history.back() whose popstate hasn't arrived; navigation waits for it.
+let backPending = false;
+
+/** popstate with no recorded kind is the browser's Back or Forward. */
 export function consumeNavKind(): NavKind {
-  const kind = pendingNavKind ?? "pop";
+  const next = navState()?.depth ?? 0;
+  const kind = pendingNavKind ?? (next < depth ? "pop" : "push");
   pendingNavKind = null;
+  backPending = false;
+  depth = next;
   return kind;
 }
 
 export function navigateTo(path: string, kind: NavKind = "push"): void {
-  if (currentPath() === path) return;
+  if (backPending || currentPath() === path) return;
   pendingNavKind = kind;
-  if (kind === "replace") window.history.replaceState({}, "", path);
-  else window.history.pushState({}, "", path);
+  const state = navState();
+  if (kind === "pop" || kind === "swipe") {
+    // popstate follows, and syncs the route.
+    if (state?.back === path) {
+      backPending = true;
+      return window.history.back();
+    }
+    // Opened here directly: nothing to go back to, so don't add an entry.
+    window.history.replaceState({ depth: state?.depth ?? 0 }, "", path);
+  } else if (kind === "replace") {
+    window.history.replaceState(state ?? { depth: 0 }, "", path);
+  } else {
+    window.history.pushState({ depth: (state?.depth ?? 0) + 1, back: currentPath() } satisfies NavState, "", path);
+  }
   window.dispatchEvent(new PopStateEvent("popstate"));
 }

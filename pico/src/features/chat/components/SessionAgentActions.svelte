@@ -42,29 +42,27 @@
   <MoreHorizontal class="size-4" />
 </Button>
 
-{#if actions.open}
-  <AgentActionSheet
-    bind:open={() => actions.open, (open) => actions.setOpen(open)}
-    view={actions.view}
-    error={actions.error}
-    onBack={actions.back}
-  >
-    {#if actions.view === "menu"}
-      <MenuView
-        onAuth={() => actions.setView("auth")}
-        onTree={() => actions.setView("tree")}
-        onSettings={() => actions.setView("settings")}
-        onInfo={() => actions.setView("info")}
-        onExport={exportToHtml}
-      />
-    {:else if actions.view === "settings"}
-      <SessionSettingsView {sessionId} onError={actions.setError} excludeKeys={["model"]} />
-    {:else if actions.view === "tree"}
-      <TreeView {sessionId} onDone={actions.done} onError={actions.setError} />
-    {:else if actions.view === "info"}
-      <SessionInfoView {sessionId} />
-    {:else if actions.view === "auth"}
-      <ProviderAuthView onError={actions.setError} class="px-3 py-3" />
-    {/if}
-  </AgentActionSheet>
-{/if}
+<AgentActionSheet
+  bind:open={() => actions.open, (open) => actions.setOpen(open)}
+  view={actions.view}
+  error={actions.error}
+  onBack={actions.back}
+>
+  {#if actions.view === "menu"}
+    <MenuView
+      onAuth={() => actions.setView("auth")}
+      onTree={() => actions.setView("tree")}
+      onSettings={() => actions.setView("settings")}
+      onInfo={() => actions.setView("info")}
+      onExport={exportToHtml}
+    />
+  {:else if actions.view === "settings"}
+    <SessionSettingsView {sessionId} onError={actions.setError} excludeKeys={["model"]} />
+  {:else if actions.view === "tree"}
+    <TreeView {sessionId} onDone={actions.done} onError={actions.setError} />
+  {:else if actions.view === "info"}
+    <SessionInfoView {sessionId} />
+  {:else if actions.view === "auth"}
+    <ProviderAuthView onError={actions.setError} class="px-3 py-3" />
+  {/if}
+</AgentActionSheet>

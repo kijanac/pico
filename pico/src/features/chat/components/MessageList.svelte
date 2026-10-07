@@ -25,7 +25,7 @@
 
   let scroller = $state<HTMLDivElement | null>(null);
   let topSentinel = $state<HTMLDivElement | null>(null);
-  let bottomSentinel = $state<HTMLDivElement | null>(null);
+  let rowList = $state<HTMLDivElement | null>(null);
   let stuckToBottom = $state(true);
   let hasNewActivity = $state(false);
   let visibleCount = $state(INITIAL_VISIBLE_ENTRIES);
@@ -152,27 +152,35 @@
     hasNewActivity = false;
   }
 
-  function applyScrollToLatest(behavior: ScrollBehavior): void {
-    if (!scroller) return;
-    bottomSentinel?.scrollIntoView({ block: "end", behavior });
-    pinToBottom();
-  }
-
   let settleRaf: number | null = null;
 
-  async function scrollToLatest(behavior: ScrollBehavior = "smooth"): Promise<void> {
+  // Pins to the latest row now and for the next few frames while layout
+  // settles (keyboard, composer), unless the reader scrolls away meanwhile.
+  async function scrollToLatest(): Promise<void> {
     if (!scroller) return;
     await tick();
 
     if (settleRaf !== null) cancelAnimationFrame(settleRaf);
     let remainingFrames = 5;
     const step = () => {
-      applyScrollToLatest(remainingFrames === 5 ? behavior : "auto");
+      settleRaf = null;
+      if (remainingFrames < 5 && !stuckToBottom) return;
+      pinToBottom();
       remainingFrames -= 1;
-      settleRaf = remainingFrames > 0 ? requestAnimationFrame(step) : null;
+      if (remainingFrames > 0) settleRaf = requestAnimationFrame(step);
     };
     step();
   }
+
+  // Rows that arrive after the chat has synced fade in; the snapshot it opens
+  // with, and earlier history loaded above, don't.
+  let rowsArrive = false;
+  const arrive = (node: HTMLElement) => {
+    if (rowsArrive && !loadingEarlier) node.classList.add("msg-enter");
+  };
+  $effect(() => {
+    if (chatLogState.synced) void tick().then(() => (rowsArrive = true));
+  });
 
   function captureScrollAnchor(): ScrollAnchor | null {
     if (!scroller) return null;
@@ -248,7 +256,7 @@
 
   onMount(() => {
     void (async () => {
-      await scrollToLatest("auto");
+      await scrollToLatest();
       requestAnimationFrame(() => {
         pagingEnabled = true;
       });
@@ -265,13 +273,21 @@
       // When the keyboard/composer changes height, keep the latest message pinned
       // only if the user was already following the bottom of the chat.
       if (stuckToBottom || distanceFromBottom() <= STICK_THRESHOLD_PX + lostHeight) {
-        void scrollToLatest("auto");
+        void scrollToLatest();
       }
     });
     if (scroller) resizeObserver.observe(scroller);
 
+    // Rows also grow after they render (an image loads, code is highlighted,
+    // a pane opens): keep following the bottom through that.
+    const growthObserver = new ResizeObserver(() => {
+      if (stuckToBottom) scheduleScrollSync();
+    });
+    if (rowList) growthObserver.observe(rowList);
+
     return () => {
       resizeObserver.disconnect();
+      growthObserver.disconnect();
       if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
       if (settleRaf !== null) cancelAnimationFrame(settleRaf);
     };
@@ -308,7 +324,7 @@
 
   $effect(() => {
     const nextBottomInset = bottomInset;
-    if (nextBottomInset !== lastBottomInset && stuckToBottom) void scrollToLatest("auto");
+    if (nextBottomInset !== lastBottomInset && stuckToBottom) void scrollToLatest();
     lastBottomInset = nextBottomInset;
   });
 
@@ -337,25 +353,26 @@
     {#if hasEarlierEntries}
       <div bind:this={topSentinel} class="h-px" aria-hidden="true"></div>
     {/if}
-    {#each displayRows as row, index (row.key)}
-      <!-- A turn starts with your message; its steps sit closer together. -->
-      <div class={["msg-cv column", index > 0 && (row.kind === "user" ? "pt-turn" : "pt-step")]} data-log-entry-id={row.kind === "thinking" ? undefined : row.entry?.id}>
-        {#if row.kind === "thinking"}
-          <AgentThinkingIndicator />
-        {:else if row.kind === "user"}
-          <UserMessageView text={row.text} images={row.images} queued={row.queued} outbox={row.outbox} {sessionId} />
-        {:else if row.entry.kind === "assistant"}
-          <AssistantMessageView msg={row.entry} {sessionId} />
-        {:else if row.entry.kind === "tool_call"}
-          <ToolCallView msg={row.entry} />
-        {:else if row.entry.kind === "compaction"}
-          <CompactionMessageView msg={row.entry} />
-        {:else if row.entry.kind === "note"}
-          <NoteMessageView msg={row.entry} />
-        {/if}
-      </div>
-    {/each}
-    <div bind:this={bottomSentinel} aria-hidden="true"></div>
+    <div bind:this={rowList}>
+      {#each displayRows as row, index (row.key)}
+        <!-- A turn starts with your message; its steps sit closer together. -->
+        <div class={["column", index > 0 && (row.kind === "user" ? "pt-turn" : "pt-step")]} data-log-entry-id={row.kind === "thinking" ? undefined : row.entry?.id} {@attach arrive}>
+          {#if row.kind === "thinking"}
+            <AgentThinkingIndicator />
+          {:else if row.kind === "user"}
+            <UserMessageView text={row.text} images={row.images} queued={row.queued} outbox={row.outbox} {sessionId} />
+          {:else if row.entry.kind === "assistant"}
+            <AssistantMessageView msg={row.entry} {sessionId} />
+          {:else if row.entry.kind === "tool_call"}
+            <ToolCallView msg={row.entry} />
+          {:else if row.entry.kind === "compaction"}
+            <CompactionMessageView msg={row.entry} />
+          {:else if row.entry.kind === "note"}
+            <NoteMessageView msg={row.entry} />
+          {/if}
+        </div>
+      {/each}
+    </div>
   </div>
 
   {#if !stuckToBottom}
@@ -364,8 +381,8 @@
       variant={hasNewActivity ? "default" : "outline"}
       size="sm"
       onpointerdown={(event) => event.preventDefault()}
-      onclick={() => void scrollToLatest("auto")}
-      class={`type-meta absolute right-[max(0.75rem,calc((100%_-_var(--container-column))/2_+_0.75rem))] z-30 h-auto rounded-full px-3 py-1.5 shadow-lg backdrop-blur-md ${hasNewActivity ? "active:opacity-85" : "border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)]/95 text-[color:var(--color-fg)] active:bg-[color:var(--color-surface-2)]"}`}
+      onclick={() => void scrollToLatest()}
+      class={`type-meta absolute right-[max(0.75rem,calc((100%_-_var(--container-column))/2_+_0.75rem))] z-30 h-auto rounded-full px-3 py-1.5 shadow-lg transition-colors ${hasNewActivity ? "active:opacity-85" : "border-[color:var(--color-border-strong)] bg-[color:var(--color-surface)]/95 text-[color:var(--color-fg)] active:bg-[color:var(--color-surface-2)]"}`}
       style={`bottom: calc(${bottomInset}px + 0.75rem)`}
       aria-label={hasNewActivity ? "Scroll to new messages" : "Scroll to latest message"}
     >

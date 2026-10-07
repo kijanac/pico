@@ -32,7 +32,7 @@
 </script>
 
 <div class="edge-swipe-root flex h-full min-h-0 flex-col bg-[color:var(--color-bg)]">
-  <div bind:this={previewEl} aria-hidden="true" class="edge-swipe-preview pointer-events-none fixed inset-0 z-0">
+  <div bind:this={previewEl} aria-hidden="true" inert class="edge-swipe-preview pointer-events-none fixed inset-0 z-0">
     {#if previewMounted}
       {@render preview?.()}
     {/if}
