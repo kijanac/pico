@@ -14,7 +14,7 @@ Run commands from the repository root.
 
 ```bash
 pnpm install
-pnpm dev:host:mock
+pnpm dev:host
 pnpm dev:web
 pnpm check
 pnpm test

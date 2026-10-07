@@ -7,7 +7,7 @@ session WebSocket, all on one origin behind Tailscale Serve.
 ## Run
 
 ```bash
-pnpm dev:host:mock   # from the repo root: tsx watch with scripted pi, no auth
+pnpm dev:host        # from the repo root: tsx watch with your pi, no auth
 pnpm build           # tsc → dist/; production runs node dist/main.js
 ```
 
@@ -33,21 +33,20 @@ Tailscale Serve injects to match `PICO_OWNER`.
 and `SessionManager`, so the host shares the box user's `~/.pi/agent` (logins,
 settings, session files) with terminal pi.
 
-| Env | Behavior |
-| --- | --- |
-| (none) | Live pi via `@earendil-works/pi-coding-agent`. |
-| `PI_USE_MOCK=1` | Scripted in-process pi; no provider credentials needed. Blocked under `NODE_ENV=production` unless `PI_ALLOW_UNSAFE_TEST_CLIENT=1`. |
-| `PI_EPHEMERAL=1` | Live pi with in-memory sessions. |
+`PI_EPHEMERAL=1` keeps new sessions in memory.
+
+The smoke test runs the host over pi-ai's scripted model, in a temporary pi
+directory.
 
 ## State
 
 | State | Where |
 | --- | --- |
 | Pi conversation (messages, tool calls) | `~/.pi/agent/sessions/` (pi's own store) |
-| Pico session registry and event journal | SQLite at `PICO_HOST_DB` |
+| Pico session list (title, cost, archived) | SQLite at `PICO_HOST_DB` |
 | Live fan-out and running sessions | in memory; sessions reopen lazily after a restart |
 
-The journal keeps a bounded replay window; a client behind it gets a `log_reset`.
+Phones catch up from pi's own entries, using the last entry id they have.
 
 ## Configuration
 

@@ -11,7 +11,7 @@ home-screen web app, so the app's own origin is its host.
 From the workspace root:
 
 ```bash
-pnpm dev:host:mock   # or pnpm dev:host for live pi
+pnpm dev:host
 pnpm dev:web
 ```
 

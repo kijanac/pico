@@ -5,7 +5,7 @@ import * as HttpServer from "@effect/platform/HttpServer";
 import * as NodeContext from "@effect/platform-node/NodeContext";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { createServer } from "node:http";
-import { DB_PATH, HOST_INSECURE_NO_AUTH, USE_MOCK } from "./config.ts";
+import { DB_PATH, HOST_INSECURE_NO_AUTH } from "./config.ts";
 import { AppLayer } from "./runtime.ts";
 import { PicoHostApi } from "./http/api.ts";
 import { SystemApiLive } from "./http/handlers.ts";
@@ -25,7 +25,7 @@ const LifecycleLogLive = Layer.scopedDiscard(
     }
     const url = yield* HttpServer.addressFormattedWith(Effect.succeed);
     yield* Effect.logInfo("host_started").pipe(
-      Effect.annotateLogs({ url, db: DB_PATH, pi: USE_MOCK ? "mock" : "live" }),
+      Effect.annotateLogs({ url, db: DB_PATH }),
     );
     yield* Effect.addFinalizer(() => Effect.logInfo("host_stopping"));
   }),

@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as HttpClient from "@effect/platform/HttpClient";
@@ -22,19 +22,20 @@ import { picoHttpProtocol, picoSocketProtocol } from "@pico/protocol/client";
 import { PicoRpc, PicoSessionRpc } from "@pico/protocol/rpc";
 import { WebSocket as WsWebSocket } from "ws";
 import { randomUUIDv7 } from "node:crypto";
+import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 
 // realpath: tmpdir is a symlink on macOS (/var -> /private/var) but host-side paths are canonicalized.
 const tempRoot = realpathSync(mkdtempSync(join(tmpdir(), "pico-host-smoke-")));
 const workspaceDir = join(tempRoot, "workspace");
 mkdirSync(workspaceDir, { recursive: true });
 
-process.env.NODE_ENV = "production";
-process.env.PI_USE_MOCK = "1";
-process.env.PI_ALLOW_UNSAFE_TEST_CLIENT = "1";
 process.env.PICO_HOST_DB = join(tempRoot, "pico-host.db");
 process.env.PICO_WORKSPACES_DIR = workspaceDir;
 process.env.PICO_OWNER = "smoke@example.test";
 process.env.PI_CODING_AGENT_DIR = join(tempRoot, "agent");
+// pi runs as in production, with pi-ai's scripted model as its default.
+mkdirSync(process.env.PI_CODING_AGENT_DIR);
+writeFileSync(join(process.env.PI_CODING_AGENT_DIR, "settings.json"), JSON.stringify({ defaultProvider: "faux", defaultModel: "faux-1" }));
 
 const authHeaders = { "tailscale-user-login": "smoke@example.test" };
 
@@ -60,6 +61,20 @@ function makeSessionRuntime(baseUrl: string) {
 
 try {
   const { hostLayer } = await import("../src/host.ts");
+  const { getAgentModelRuntime } = await import("../src/pi.ts");
+  const faux = createFauxCore({ provider: "faux", models: [{ id: "faux-1" }], tokensPerSecond: 100 });
+  (await getAgentModelRuntime()).registerProvider("faux", {
+    api: faux.api,
+    // Required for custom models; the scripted stream never calls it.
+    baseUrl: "http://faux.invalid",
+    apiKey: "faux",
+    streamSimple: faux.streamSimple,
+    models: faux.models,
+  });
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("Running the tests first."), fauxToolCall("bash", { command: "for i in 1 2 3; do echo \"test $i ok\"; sleep 0.2; done" })], { stopReason: "toolUse" }),
+    fauxAssistantMessage("Done: the tests pass."),
+  ]);
   const hostScope = Effect.runSync(Scope.make());
   const host = await Effect.runPromise(Layer.buildWithScope(hostLayer(0), hostScope));
   const baseUrl = HttpServer.formatAddress(Context.get(host, HttpServer.HttpServer).address);

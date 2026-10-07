@@ -33,7 +33,7 @@ async function liveOverRealPi() {
     baseUrl: "http://faux.invalid",
     apiKey: "faux",
     streamSimple: faux.streamSimple,
-    models: faux.models.map(({ id, name, input, cost, contextWindow, maxTokens }) => ({ id, name, input, cost, contextWindow, maxTokens })),
+    models: faux.models,
   });
   const services = await createAgentSessionServices({ cwd: dir, agentDir: join(dir, "agent"), modelRuntime: runtime });
   const { session } = await createAgentSessionFromServices({

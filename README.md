@@ -49,11 +49,10 @@ Logs: `journalctl --user -u pico -f`.
 
 ```bash
 pnpm install
-pnpm dev:host:mock   # host on :7777 with scripted pi, no auth
+pnpm dev:host        # host on :7777 with your pi, no auth
 pnpm dev:web         # Vite on :5173, proxying the host's routes
 pnpm check           # typecheck + web build + svelte-check
 pnpm test
 pnpm smoke:host
 ```
 
-`pnpm dev:host` runs live pi instead of the mock.
