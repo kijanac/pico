@@ -7,8 +7,8 @@ session WebSocket, all on one origin behind Tailscale Serve.
 ## Run
 
 ```bash
-pnpm dev          # tsx watch src/main.ts
-pnpm build        # tsc → dist/; production runs node dist/main.js
+pnpm dev:host:mock   # from the repo root: tsx watch with scripted pi, no auth
+pnpm build           # tsc → dist/; production runs node dist/main.js
 ```
 
 The host binds `127.0.0.1:7777`; Tailscale Serve is its only ingress.

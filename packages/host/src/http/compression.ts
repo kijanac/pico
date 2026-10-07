@@ -1,5 +1,6 @@
-import { gzip } from "node:zlib";
+import { Readable } from "node:stream";
 import { promisify } from "node:util";
+import { createGzip, gzip } from "node:zlib";
 import { Headers, HttpApp, HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { Effect, Stream } from "effect";
 
@@ -63,6 +64,11 @@ export const compress = (
         onError: (error) => error,
       });
       return HttpServerResponse.stream(gzipped, options);
+    }
+
+    // File responses (the web app) are raw Node read streams.
+    if (body._tag === "Raw" && body.body instanceof Readable) {
+      return HttpServerResponse.raw(body.body.pipe(createGzip()), options);
     }
 
     return response;

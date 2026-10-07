@@ -59,8 +59,6 @@ function updateJobFromEvent(
       };
       return;
     case "progress":
-      state.job = { ...base, status: "progress", progress: event.message };
-      return;
     case "info":
       state.job = { ...base, status: "progress", progress: event.message };
   }
@@ -120,7 +118,8 @@ function loginInteraction(
     notify: (event) => updateJobFromEvent(state, base, event),
     prompt: async (prompt) => {
       updateJobForPrompt(state, base, prompt);
-      return await waitForInput(state, prompt.signal ?? state.abort.signal);
+      const signal = prompt.signal ? AbortSignal.any([state.abort.signal, prompt.signal]) : state.abort.signal;
+      return await waitForInput(state, signal);
     },
   };
 }
@@ -206,11 +205,17 @@ export const ProviderAuthLive = Layer.effect(
               if (!provider?.auth.apiKey?.login) {
                 throw new PiError({ message: `API-key provider not found: ${providerId}` });
               }
-              if (providerId === BEDROCK_PROVIDER_ID) {
-                throw new PiError({ message: "Amazon Bedrock requires AWS credentials on the Pico host" });
-              }
+              // The phone collects one key; providers that also ask for account IDs or an
+              // auth method (Cloudflare, Vertex, Bedrock) must be set up with pi on the host.
+              let answered = false;
               await runtime.login(providerId, "api_key", {
-                prompt: async () => apiKey.trim(),
+                prompt: async (prompt) => {
+                  if (answered || prompt.type !== "secret") {
+                    throw new PiError({ message: `${provider.name} needs more than an API key; set it up with pi on the host` });
+                  }
+                  answered = true;
+                  return apiKey.trim();
+                },
                 notify: () => {},
               });
               return authProvidersForRuntime(runtime);
@@ -255,7 +260,6 @@ export const ProviderAuthLive = Layer.effect(
             const state = authJobs.get(jobId);
             if (!state) throw new PiError({ message: `auth job not found: ${jobId}` });
             state.abort.abort();
-            state.resolveInput?.("");
             const { id, providerId, providerName } = state.job;
             state.job = { id, providerId, providerName, status: "cancelled" };
             removeIfTerminalLater(jobId);

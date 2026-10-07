@@ -78,7 +78,6 @@ export function launchHttpServer(
 export function startPicoHost(options: PicoHostOptions = {}): PicoHostHandle {
   const port = options.port ?? DEFAULT_PORT;
   const host = options.host ?? DEFAULT_HOST;
-  const usingMock = USE_MOCK;
 
   if (HOST_INSECURE_NO_AUTH) {
     Effect.runFork(
@@ -93,19 +92,15 @@ export function startPicoHost(options: PicoHostOptions = {}): PicoHostHandle {
   let closed = false;
 
   Effect.runFork(
-    Effect.logInfo(
-      `Pico host listening on ${url}  ${usingMock ? "(mock pi)" : "(live pi)"}\n` +
-        `   db   :  ${DB_PATH}\n` +
-        `   HTTP :  GET    /healthz, /sessions/:id/export.html, /* (web app)\n` +
-        `   RPC  :  POST   /rpc\n` +
-        `   WS   :  /ws?session=:id&cursor=:n`,
+    Effect.logInfo("host_started").pipe(
+      Effect.annotateLogs({ url, db: DB_PATH, pi: USE_MOCK ? "mock" : "live" }),
     ),
   );
 
   const close = async () => {
     if (closed) return;
     closed = true;
-    await Effect.runPromise(Effect.logInfo("shutting down…"));
+    await Effect.runPromise(Effect.logInfo("host_stopping"));
     await server.stop();
   };
 

@@ -182,8 +182,12 @@ const EXPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 let modelRuntimePromise: Promise<ModelRuntime> | undefined;
 const servicesByCwd = new Map<string, Promise<AgentSessionServices>>();
 
+// A failed create isn't cached, so the next caller retries.
 export const getAgentModelRuntime = (): Promise<ModelRuntime> =>
-  modelRuntimePromise ??= ModelRuntime.create();
+  modelRuntimePromise ??= ModelRuntime.create().catch((error: unknown) => {
+    modelRuntimePromise = undefined;
+    throw error;
+  });
 
 export const getAgentServices = (cwd: string): Promise<AgentSessionServices> => {
   const key = resolve(cwd);

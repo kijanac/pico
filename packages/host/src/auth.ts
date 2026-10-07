@@ -1,12 +1,10 @@
+import type { Headers } from "@effect/platform";
 import type { HostErrorCode } from "@pico/protocol";
 import { HOST_INSECURE_NO_AUTH, OWNER_LOGIN } from "./config.ts";
 
 export type AuthResult =
   | { ok: true }
   | { ok: false; status: 401 | 403; error: HostErrorCode };
-
-// Lowercased keys; `string[]` covers node's multi-valued headers.
-export type HeaderSource = Record<string, string | string[] | undefined>;
 
 // SECURITY INVARIANT: identity comes solely from the `tailscale-user-login`
 // header, which is trustworthy only because (1) the server binds loopback
@@ -15,11 +13,10 @@ export type HeaderSource = Record<string, string | string[] | undefined>;
 // hold — never bind this process to a non-loopback host, and never front it
 // with a proxy that forwards client `Tailscale-*` headers, or callers can
 // spoof any identity.
-export function authorizeHeaders(headers: HeaderSource): AuthResult {
+export function authorizeHeaders(headers: Headers.Headers): AuthResult {
   if (HOST_INSECURE_NO_AUTH) return { ok: true };
 
-  const header = headers["tailscale-user-login"];
-  const login = (Array.isArray(header) ? header[0] : header)?.trim().toLowerCase();
+  const login = headers["tailscale-user-login"]?.trim().toLowerCase();
   if (!login) return { ok: false, status: 401, error: "missing_tailscale_identity" };
   if (login !== OWNER_LOGIN) return { ok: false, status: 403, error: "tailscale_user_not_pico_host_owner" };
   return { ok: true };

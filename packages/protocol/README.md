@@ -1,14 +1,11 @@
 # @pico/protocol
 
-Shared REST/WebSocket protocol for Pico.
+The wire protocol between the Pico host and web app: Effect Schema definitions
+and the TypeScript types derived from them.
 
-- Runtime schemas are Valibot schemas.
-- TypeScript types are derived from those schemas with `v.InferOutput`.
-- `packages/host/` uses the schemas at runtime to decode/encode WebSocket events.
-- `pico/` imports the derived types for Pico API and UI state.
+- `src/index.ts`: wire messages, session metadata and the event log entries.
+- `src/rpc.ts`: the `PicoRpc` (HTTP) and `PicoSessionRpc` (WebSocket) groups.
+- `src/log.ts`: the reducer both sides use to fold events into a session log.
 
-When changing the wire protocol, change it here first and run:
-
-```bash
-pnpm check
-```
+The host and app always ship from one build, so changes need no backward
+compatibility. Change the schema here, then run `pnpm check` from the root.

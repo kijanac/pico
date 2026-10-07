@@ -1,11 +1,7 @@
 import { Schema } from "effect";
 import { HostErrorCodeSchema } from "./errors.ts";
-export {
-  HostErrorCodeSchema,
-  hostErrorPayloadFromUnknown,
-  isHostErrorCode,
-} from "./errors.ts";
-export type { HostErrorCode, HostErrorPayload } from "./errors.ts";
+export { HostErrorCodeSchema, isHostErrorCode } from "./errors.ts";
+export type { HostErrorCode } from "./errors.ts";
 export { PRODUCT_VERSION } from "./version.ts";
 
 export const SessionStatus = Schema.Literal("idle", "thinking", "tool", "waiting", "error");

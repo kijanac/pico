@@ -27,7 +27,7 @@ describe("a host admits only its owner's Tailscale identity", () => {
   it("admits the owner, ignoring case and surrounding whitespace", async () => {
     const auth = await freshAuth({ owner: " Owner@Example.Test " });
     expect(auth.authorizeHeaders({ "tailscale-user-login": "owner@example.test" })).toEqual({ ok: true });
-    expect(auth.authorizeHeaders({ "tailscale-user-login": ["OWNER@example.test"] })).toEqual({ ok: true });
+    expect(auth.authorizeHeaders({ "tailscale-user-login": " OWNER@example.test" })).toEqual({ ok: true });
   });
 
   it("rejects every other identity", async () => {
