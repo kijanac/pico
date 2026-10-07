@@ -46,12 +46,14 @@
   });
 
   let highlightedHtml = $state<string | null>(null);
+  // Highlighting runs on the main thread and scales with size; big files render plain.
+  const MAX_HIGHLIGHT_CHARS = 20_000;
 
   $effect(() => {
     const text = displayText;
     const lang = path ? inferLangFromPath(path) : null;
     highlightedHtml = null;
-    if (!text || !lang) return;
+    if (!text || !lang || text.length > MAX_HIGHLIGHT_CHARS) return;
 
     let cancelled = false;
     void (async () => {

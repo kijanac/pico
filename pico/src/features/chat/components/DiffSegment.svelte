@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { diffLines } from "diff";
+  import { diffLines } from "diff/lib/diff/line.js";
   import { highlightLines, inferLangFromPath } from "@/shared/lib/highlighter";
 
   let { oldText, newText, path }: { oldText: string; newText: string; path: string } = $props();
@@ -25,19 +25,22 @@
   const segments = $derived(collapseContext(lines));
 
   let highlighted = $state<{ old: string[]; neu: string[] } | null>(null);
+  // Derived so the effect below re-runs only when the language changes, not on
+  // every read through the props chain.
+  const lang = $derived(inferLangFromPath(path));
 
   $effect(() => {
-    const lang = inferLangFromPath(path);
     const oldCode = oldText;
     const newCode = newText;
+    const currentLang = lang;
     highlighted = null;
-    if (!lang) return;
+    if (!currentLang) return;
 
     let cancelled = false;
     void (async () => {
       const [oldLines, newLines] = await Promise.all([
-        highlightLines(oldCode, lang),
-        highlightLines(newCode, lang),
+        highlightLines(oldCode, currentLang),
+        highlightLines(newCode, currentLang),
       ]);
       if (cancelled || !oldLines || !newLines) return;
       highlighted = { old: oldLines, neu: newLines };

@@ -1,5 +1,4 @@
-import type { HighlighterCore } from "shiki/core";
-
+import type { ShikiPrimitive } from "shiki/core";
 
 const LANG_ALIASES: Record<string, string> = {
   ts: "typescript",
@@ -46,7 +45,8 @@ const LANG_ALIASES: Record<string, string> = {
   xml: "xml",
 };
 
-type LanguageRegistration = Parameters<HighlighterCore["loadLanguage"]>[0];
+type LanguageRegistration = Parameters<ShikiPrimitive["loadLanguage"]>[0];
+type Shiki = typeof import("./shiki");
 
 const LANG_IMPORTS: Record<string, () => Promise<{ default: LanguageRegistration }>> = {
   typescript: () => import("@shikijs/langs/typescript"),
@@ -86,26 +86,20 @@ const SHIKI_THEMES = { light: LIGHT_THEME, dark: DARK_THEME } as const;
 // token variable for the app's explicit `.dark` / `data-theme` state.
 const DEFAULT_COLOR = false as const;
 
-let highlighterPromise: Promise<HighlighterCore> | null = null;
+let highlighterPromise: Promise<{ shiki: Shiki; primitive: ShikiPrimitive }> | null = null;
 const loadingLangs = new Map<string, Promise<void>>();
 const loadedLangs = new Set<string>();
 
-function getHighlighter(): Promise<HighlighterCore> {
-  if (!highlighterPromise) {
-    highlighterPromise = (async () => {
-      const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, themes] =
-        await Promise.all([
-          import("shiki/core"),
-          import("shiki/engine/javascript"),
-          loadThemes(),
-        ]);
-      return createHighlighterCore({
-        themes,
-        langs: [],
-        engine: createJavaScriptRegexEngine(),
-      });
-    })();
-  }
+function getHighlighter(): Promise<{ shiki: Shiki; primitive: ShikiPrimitive }> {
+  highlighterPromise ??= (async () => {
+    const [shiki, themes] = await Promise.all([import("./shiki"), loadThemes()]);
+    const primitive = await shiki.createShikiPrimitiveAsync({
+      themes,
+      langs: [],
+      engine: shiki.createJavaScriptRegexEngine(),
+    });
+    return { shiki, primitive };
+  })();
   return highlighterPromise;
 }
 
@@ -132,9 +126,9 @@ async function ensureLang(lang: string): Promise<boolean> {
   let p = loadingLangs.get(lang);
   if (!p) {
     p = (async () => {
-      const hl = await getHighlighter();
+      const { primitive } = await getHighlighter();
       const mod = await importer();
-      await hl.loadLanguage(mod.default);
+      await primitive.loadLanguage(mod.default);
       loadedLangs.add(lang);
     })();
     loadingLangs.set(lang, p);
@@ -148,29 +142,6 @@ async function ensureLang(lang: string): Promise<boolean> {
     return false;
   } finally {
     loadingLangs.delete(lang);
-  }
-}
-
-export async function highlightToHtml(
-  code: string,
-  langHint: string | null | undefined,
-): Promise<string | null> {
-  const lang = resolveLang(langHint);
-  if (!lang) return null;
-
-  const ok = await ensureLang(lang);
-  if (!ok) return null;
-
-  try {
-    const hl = await getHighlighter();
-    return hl.codeToHtml(code, {
-      lang,
-      themes: SHIKI_THEMES,
-      defaultColor: DEFAULT_COLOR,
-    });
-  } catch (e) {
-    console.warn("[highlighter] codeToHtml failed", lang, e);
-    return null;
   }
 }
 
@@ -197,6 +168,7 @@ function shikiTokenStyleAttr(style: Record<string, string | number> | undefined)
   return ` style="${declarations.join(";")}"`;
 }
 
+// Each line as HTML token spans carrying both themes' colors as CSS variables.
 export async function highlightLines(
   code: string,
   langHint: string | null | undefined,
@@ -208,8 +180,8 @@ export async function highlightLines(
   if (!ok) return null;
 
   try {
-    const hl = await getHighlighter();
-    const { tokens } = hl.codeToTokens(code, {
+    const { shiki, primitive } = await getHighlighter();
+    const { tokens } = shiki.codeToTokens(primitive, code, {
       lang,
       themes: SHIKI_THEMES,
       defaultColor: DEFAULT_COLOR,
@@ -225,13 +197,24 @@ export async function highlightLines(
   }
 }
 
-// Engine + theme init costs hundreds of ms; warm during idle so the first code fence doesn't stall.
+// A whole block, in the same pre.shiki > code > span.line shape as Shiki's codeToHtml.
+export async function highlightToHtml(
+  code: string,
+  langHint: string | null | undefined,
+): Promise<string | null> {
+  const lines = await highlightLines(code, langHint);
+  if (!lines) return null;
+  return `<pre class="shiki" tabindex="0"><code>${lines.map((line) => `<span class="line">${line}</span>`).join("\n")}</code></pre>`;
+}
+
+// Engine, theme and grammar setup cost hundreds of ms; warm during idle so the
+// first code fence doesn't stall. Highlighting a line, not just loading the
+// grammar, also compiles its regexes.
 const WARM_LANGS = ["typescript", "bash"];
 
 export function warmHighlighter(): void {
   const warm = () => {
-    void getHighlighter()
-      .then(() => Promise.all(WARM_LANGS.map((lang) => ensureLang(lang))))
+    void Promise.all(WARM_LANGS.map((lang) => highlightLines("const x = 1", lang)))
       .catch((e) => console.warn("[highlighter] warmup failed", e));
   };
   if (typeof requestIdleCallback === "function") requestIdleCallback(() => warm());

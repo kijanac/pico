@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import AppShell from "@/app/shell/AppShell.svelte";
+  import SessionsPage from "@/routes/sessions/SessionsPage.svelte";
   import { consumeNavKind, currentPath, resolveRoute, type RouteMatch } from "@/app/routes";
   import { themeState } from "@/shared/theme/theme.svelte";
 
-  // Routes load on first visit to keep the initial download small.
+  // The landing route ships with the entry (no extra round trip on launch);
+  // the others load on first visit.
   function lazy<T>(load: () => Promise<T>): () => Promise<T> {
     let cached: Promise<T> | null = null;
     return () => {
@@ -17,7 +19,6 @@
     };
   }
 
-  const loadSessions = lazy(() => import("@/routes/sessions/SessionsPage.svelte"));
   const loadSession = lazy(() => import("@/routes/session/SessionPage.svelte"));
   const loadSettings = lazy(() => import("@/routes/settings/SettingsPage.svelte"));
 
@@ -77,9 +78,7 @@
 
 {#snippet screenContent(route: RouteMatch)}
   {#if route.id === "sessions"}
-    {#await loadSessions() then { default: SessionsPage }}
-      <SessionsPage />
-    {/await}
+    <SessionsPage />
   {:else if route.id === "session"}
     {#await loadSession() then { default: SessionPage }}
       <SessionPage hostId={route.params.hostId} id={route.params.id} />

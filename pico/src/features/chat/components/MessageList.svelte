@@ -83,19 +83,26 @@
 
   const latestEntryIsCurrentAgentOutput = $derived.by(() => isCurrentAgentOutput(latestEntry));
   const showThinkingIndicator = $derived(activeSessionState.status === "thinking" && !latestEntryIsCurrentAgentOutput);
+  // Rows are reused while their entry and key are unchanged: a new row object
+  // makes the keyed {#each} re-run every row's effects (re-highlighting every
+  // visible diff) on each streamed delta. Entries mutate in place, so text
+  // still updates through them.
+  let rowCache = new Map<string, DisplayRow>();
   const displayRows = $derived.by(() => {
     const rows: DisplayRow[] = [];
+    const nextCache = new Map<string, DisplayRow>();
     let previousRenderedEntry = previousRenderableEntryBefore(visibleStartIndex);
 
     for (const entry of visibleEntries) {
       if (!isRenderableEntry(entry)) continue;
-      rows.push({
-        kind: "entry",
-        entry,
-        key: entry.kind === "user" ? entry.id : agentSlotKey(previousRenderedEntry),
-      });
+      const key = entry.kind === "user" ? entry.id : agentSlotKey(previousRenderedEntry);
+      const cached = rowCache.get(key);
+      const row: DisplayRow = cached?.kind === "entry" && cached.entry === entry ? cached : { kind: "entry", entry, key };
+      nextCache.set(key, row);
+      rows.push(row);
       previousRenderedEntry = entry;
     }
+    rowCache = nextCache;
 
     if (showThinkingIndicator) rows.push({ kind: "thinking", key: agentSlotKey(previousRenderedEntry) });
     return rows;

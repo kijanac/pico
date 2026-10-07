@@ -24,5 +24,12 @@ export default defineConfig({
   build: {
     // The phone's WebKit is the only runtime, so target it directly.
     target: "safari17",
+    rolldownOptions: {
+      treeshake: {
+        // @effect/rpc imports msgpackr for its MessagePack serializer, which the
+        // app never uses (JSON only); msgpackr declares no sideEffects, so say so.
+        moduleSideEffects: (id) => (id.includes("/msgpackr/") ? false : undefined),
+      },
+    },
   },
 });

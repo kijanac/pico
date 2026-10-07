@@ -19,6 +19,11 @@ let activeSessionId = $state<string | null>(null);
 
 const emptyEntries: LogEntry[] = [];
 
+// Recently opened sessions keep their logs for instant back-navigation; older
+// ones are dropped, and reopening one fetches a fresh snapshot (cursor -1).
+const MAX_CACHED_LOGS = 3;
+const recentLogKeys: string[] = [];
+
 const activeLog = $derived(activeHostId && activeSessionId ? logs[logKey(activeHostId, activeSessionId)] : undefined);
 
 // Retry re-sends the same clientId, which the Pico host dedupes, so retrying
@@ -86,6 +91,13 @@ export const chatLogState = {
   activate(hostId: string, sessionId: string): void {
     activeHostId = hostId;
     activeSessionId = sessionId;
+    const key = logKey(hostId, sessionId);
+    const at = recentLogKeys.indexOf(key);
+    if (at >= 0) recentLogKeys.splice(at, 1);
+    recentLogKeys.push(key);
+    for (const stale of recentLogKeys.splice(0, Math.max(0, recentLogKeys.length - MAX_CACHED_LOGS))) {
+      delete logs[stale];
+    }
   },
 
   getConnectCursor(hostId: string, sessionId: string): number {
@@ -145,9 +157,12 @@ function logKey(hostId: string, sessionId: string): string {
 
 function getLog(hostId: string, sessionId: string): SessionLog {
   const key = logKey(hostId, sessionId);
+  // A log can exist before any server event (an optimistic local echo); -1
+  // means "no server state", so the first connect asks for a snapshot rather
+  // than a replay of the whole journal (cursor 0).
   logs[key] ??= {
     entries: [],
-    cursor: 0,
+    cursor: -1,
     activityVersion: 0,
     hasMoreBefore: false,
     indexById: new Map(),
