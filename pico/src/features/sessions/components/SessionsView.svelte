@@ -76,7 +76,7 @@
       <h1 class="type-title font-prose font-medium">{archivedView ? "archived" : "sessions"}</h1>
       <span class="type-label uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]">{sessions.length}</span>
     </div>
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-1 pointer-coarse:gap-4">
       <Button type="button" variant="ghost" size="icon-sm" aria-label="Toggle archived" onclick={() => void onToggleArchived()}>
         {#if archivedView}
           <ArchiveRestore class="size-3.5" />

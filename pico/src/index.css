@@ -105,6 +105,24 @@
   margin-inline: auto;
 }
 
+/* On touch screens, a touch area of at least 44px centred on the control,
+   whatever its drawn size. Neighbours stay 44px apart between centres, so
+   the areas never overlap. */
+@utility touch-target {
+  position: relative;
+  @media (pointer: coarse) {
+    &::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+}
+
 :root {
   color-scheme: light dark;
 }

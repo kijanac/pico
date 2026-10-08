@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
   import { Check, FileText, Loader2, Pencil, PlusSquare, Terminal, X } from "@lucide/svelte";
   import { hasToolDetails, type ToolCallMessage } from "@pico/protocol";
   import { shortPath } from "@/shared/lib/format";
@@ -8,7 +9,11 @@
 
   let { msg }: { msg: ToolCallMessage } = $props();
 
-  let open = $state(false);
+  // As the reader last left it in this chat, else closed (and opened below
+  // while it runs, or when an edit's diff is ready).
+  // svelte-ignore state_referenced_locally
+  const chosen = chatLogState.toolOpen(msg.id);
+  let open = $state(chosen ?? false);
   let detailScroller: HTMLDivElement | null = $state(null);
   // Live output follows its end until the reader scrolls up in the pane.
   let following = true;
@@ -27,13 +32,13 @@
   });
 
   $effect(() => {
-    if (live && hasResultPane) open = true;
+    if (chosen === undefined && live && hasResultPane) open = true;
   });
 
   // An edit opens on its diff once its arguments are complete, as pi's TUI computes it then.
   let editOpened = false;
   $effect(() => {
-    if (editOpened || !isEdit || msg.status === "pending") return;
+    if (chosen !== undefined || editOpened || !isEdit || msg.status === "pending") return;
     editOpened = true;
     open = true;
   });
@@ -68,7 +73,7 @@
 <div class="px-3">
   <button
     type="button"
-    onclick={() => (open = !open)}
+    onclick={() => chatLogState.setToolOpen(msg.id, (open = !open))}
     class="group flex w-full items-center gap-2 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2.5 py-1.5 text-left active:bg-[color:var(--color-surface-2)]"
   >
     <span class="flex h-4 w-4 shrink-0 items-center justify-center text-[color:var(--color-fg-muted)]">

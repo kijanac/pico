@@ -267,6 +267,17 @@
     const stuck = distanceFromBottom() < STICK_THRESHOLD_PX;
     stuckToBottom = stuck;
     if (stuck) hasNewActivity = false;
+    noteReadingPlace();
+  }
+
+  // Where the reader is, noted once scrolling settles: by the time the chat
+  // closes, its rows may already be off the page and can't be measured.
+  let readingAnchor: ScrollAnchor | null = null;
+  let readingTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function noteReadingPlace(): void {
+    clearTimeout(readingTimer);
+    readingTimer = setTimeout(() => (readingAnchor = captureScrollAnchor()), 150);
   }
 
   // Streamed deltas should gently preserve the bottom lock, not run the
@@ -283,8 +294,24 @@
   }
 
   onMount(() => {
+    // Back to where the reader left this chat, unless they were following the
+    // end (or it was never opened, or a branch switch reset it).
+    const reading = chatLogState.reading(sessionId);
+    const returning = reading && !reading.following && reading.anchor;
+    if (returning) {
+      visibleCount = Math.max(visibleCount, reading.visibleCount);
+      // Not following the end, so nothing pins it there meanwhile.
+      stuckToBottom = false;
+    }
     void (async () => {
-      await scrollToLatest();
+      if (returning) {
+        await tick();
+        restoreScrollAnchor(reading.anchor);
+        readingAnchor = reading.anchor;
+        stuckToBottom = distanceFromBottom() < STICK_THRESHOLD_PX;
+      } else {
+        await scrollToLatest();
+      }
       requestAnimationFrame(() => {
         pagingEnabled = true;
       });
@@ -314,6 +341,8 @@
     if (rowList) growthObserver.observe(rowList);
 
     return () => {
+      clearTimeout(readingTimer);
+      chatLogState.saveReading(sessionId, { anchor: readingAnchor, visibleCount, following: stuckToBottom });
       resizeObserver.disconnect();
       growthObserver.disconnect();
       if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);

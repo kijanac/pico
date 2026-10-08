@@ -383,8 +383,9 @@
       class="type-input font-prose w-full resize-none bg-transparent px-3 pt-2 pb-1 text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] focus:outline-none"
     ></textarea>
 
-    <div class="flex items-center gap-1 px-1.5 pb-1.5">
-      <Button type="button" variant="ghost" size="icon" onpointerdown={(event) => event.preventDefault()} onclick={attachImages} disabled={images.length >= MAX_IMAGES} class="shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Attach image" title="Attach image">
+    <!-- On touch screens every control gets a 44px touch area, spaced so they don't overlap. -->
+    <div class="flex items-center gap-1 px-1.5 pb-1.5 pointer-coarse:gap-3">
+      <Button type="button" variant="ghost" size="icon" onpointerdown={(event) => event.preventDefault()} onclick={attachImages} disabled={images.length >= MAX_IMAGES} class="touch-target shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Attach image" title="Attach image">
         <ImagePlus class="size-4" />
       </Button>
 
@@ -393,7 +394,7 @@
           type="button"
           onpointerdown={(event) => event.preventDefault()}
           onclick={() => (modelOpen = true)}
-          class="type-meta max-w-[12ch] shrink-0 truncate rounded-[var(--radius-sm)] px-2 py-1.5 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]"
+          class="touch-target type-meta min-w-0 max-w-[12ch] truncate rounded-[var(--radius-sm)] px-2 py-1.5 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]"
           aria-label="Model — tap to change"
           title="Change model"
         >
@@ -406,18 +407,19 @@
           type="button"
           onpointerdown={(event) => event.preventDefault()}
           onclick={() => (compactOpen = true)}
-          class="type-meta shrink-0 rounded-[var(--radius-sm)] px-2 py-1.5 tabular-nums text-[color:var(--color-fg-faint)] active:bg-[color:var(--color-surface-2)]"
+          class="touch-target type-meta shrink-0 rounded-[var(--radius-sm)] px-2 py-1.5 tabular-nums text-[color:var(--color-fg-faint)] active:bg-[color:var(--color-surface-2)]"
           aria-label="Context usage — tap to compact"
           title="Compact context"
         >
-          {contextPercent !== null ? `${contextPercent}%` : "—"} · {formatCost(contextStats.cost)}
+          <!-- While a run is going, Stop needs the room; the cost is in the compact sheet and the list. -->
+          {contextPercent !== null ? `${contextPercent}%` : "—"}{busy ? "" : ` · ${formatCost(contextStats.cost)}`}
         </button>
       {/if}
 
       <div class="min-w-0 flex-1"></div>
 
       {#if queueCount > 0}
-        <Button type="button" variant="ghost" size="icon" onclick={() => (queueOpen = true)} class="relative shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Queued messages" title="Queued messages">
+        <Button type="button" variant="ghost" size="icon" onclick={() => (queueOpen = true)} class="touch-target shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Queued messages" title="Queued messages">
           <ListTodo class="size-4" />
           <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-surface)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[0.625rem] font-medium leading-none text-[color:var(--color-on-accent)]">
             {queueCount > 99 ? "99+" : queueCount}
@@ -426,7 +428,7 @@
       {/if}
 
       {#if busy}
-        <Button type="button" variant="outline" size="icon" onclick={interrupt} disabled={stopping} aria-label={stopping ? "Stopping" : "Stop"} title={stopping ? "Stopping…" : "Stop the current turn"} class="shrink-0 rounded-[var(--radius-sm)] active:opacity-80">
+        <Button type="button" variant="outline" size="icon" onclick={interrupt} disabled={stopping} aria-label={stopping ? "Stopping" : "Stop"} title={stopping ? "Stopping…" : "Stop the current turn"} class="touch-target shrink-0 rounded-[var(--radius-sm)] active:opacity-80">
           <Square class="size-3" fill="currentColor" />
         </Button>
       {/if}
@@ -437,7 +439,7 @@
         onclick={handleSendClick}
         onpointerdown={handleSendPointerDown}
         disabled={!hasSendable || !canSend}
-        class={`shrink-0 rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] text-[color:var(--color-on-accent)] transition-transform duration-100 active:opacity-80 disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-100 ${holding ? "scale-95" : ""}`}
+        class={`touch-target shrink-0 rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] text-[color:var(--color-on-accent)] transition-transform duration-100 active:opacity-80 disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-100 ${holding ? "scale-95" : ""}`}
         aria-label={busy ? "Steer (hold to queue a follow-up)" : "Send"}
         title={hasSendable ? (chatLogState.live.compacting ? "Queue until compaction finishes" : busy ? "Tap to steer · hold to queue a follow-up" : "Send · hold to queue a follow-up") : "Draft a message to send"}
       >

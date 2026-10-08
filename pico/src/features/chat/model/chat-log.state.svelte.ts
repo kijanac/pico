@@ -16,6 +16,15 @@ import { runRpc } from "@/shared/lib/rpc-client";
 
 // A message on its way: shown as pending until pi's entry with its cid (or a
 // queue item) arrives. Retries reuse the cid, so the host can't double-send.
+// Where the reader was when they left a chat, to come back to: the row at
+// the top of the screen and its offset, how much history was shown, and
+// whether they were following the end.
+export interface Reading {
+  anchor: { entryId: string; top: number } | null;
+  visibleCount: number;
+  following: boolean;
+}
+
 export interface OutboxItem {
   cid: string;
   text: string;
@@ -48,6 +57,9 @@ interface SessionLog {
   activityVersion: number;
   // The host's first sync has arrived.
   synced: boolean;
+  reading?: Reading;
+  // Tool panes the reader opened or closed, by entry id.
+  toolOpen: Record<string, boolean>;
 }
 
 const logs = $state<Record<string, SessionLog>>({});
@@ -104,6 +116,7 @@ function getLog(sessionId: string): SessionLog {
     outbox: loadOutbox(sessionId),
     activityVersion: 0,
     synced: false,
+    toolOpen: {},
   };
   return logs[sessionId];
 }
@@ -228,8 +241,10 @@ function apply(sessionId: string, message: ServerMessage): void {
   switch (message.t) {
     case "sync":
       if (message.reset) {
+        // Another branch: the saved place no longer applies.
         Object.assign(log, emptyLog());
         log.more = message.more;
+        log.reading = undefined;
       }
       log.live = message.live as SessionLog["live"];
       applyEntries(sessionId, log, message.entries);
@@ -301,6 +316,23 @@ export const chatLogState = {
     return activeLog?.synced ?? false;
   },
 
+  reading(sessionId: string): Reading | undefined {
+    return logs[sessionId]?.reading;
+  },
+
+  saveReading(sessionId: string, reading: Reading): void {
+    const log = logs[sessionId];
+    if (log) log.reading = reading;
+  },
+
+  toolOpen(id: string): boolean | undefined {
+    return activeLog?.toolOpen[id];
+  },
+
+  setToolOpen(id: string, open: boolean): void {
+    if (activeLog) activeLog.toolOpen[id] = open;
+  },
+
   activate(sessionId: string): void {
     activeSessionId = sessionId;
     const at = recentLogKeys.indexOf(sessionId);
@@ -309,9 +341,10 @@ export const chatLogState = {
     for (const stale of recentLogKeys.splice(0, Math.max(0, recentLogKeys.length - MAX_CACHED_LOGS))) {
       delete logs[stale];
     }
-    // Trim a reopened log to its newest rows, starting at a user message.
+    // Trim a reopened log to its newest rows, starting at a user message,
+    // unless the reader left it mid-way and comes back to that place.
     const log = logs[sessionId];
-    if (!log || log.entries.length <= KEEP_ROWS * 1.5) return;
+    if (!log || log.entries.length <= KEEP_ROWS * 1.5 || (log.reading && !log.reading.following)) return;
     const start = log.entries.findIndex((row, index) => index >= log.entries.length - KEEP_ROWS && row.kind === "user");
     if (start <= 0) return;
     log.more = log.entries[start].id;
