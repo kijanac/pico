@@ -36,23 +36,30 @@
     highlighted = null;
     if (!currentLang) return;
 
-    let cancelled = false;
+    const highlight = new AbortController();
     void (async () => {
       const [oldLines, newLines] = await Promise.all([
-        highlightLines(oldCode, currentLang),
-        highlightLines(newCode, currentLang),
+        highlightLines(oldCode, currentLang, highlight.signal),
+        highlightLines(newCode, currentLang, highlight.signal),
       ]);
-      if (cancelled || !oldLines || !newLines) return;
+      if (highlight.signal.aborted || !oldLines || !newLines) return;
       highlighted = { old: oldLines, neu: newLines };
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => highlight.abort();
   });
 
+  // Comparing two texts costs size × number of changes, and this runs while
+  // the page waits. Past this it gives up, as diff tools do, and shows the old
+  // block replaced by the new one: still correct, just coarser. 100ms is about
+  // where a response stops feeling instant.
+  const DIFF_TIMEOUT_MS = 100;
+
   function toDiffLines(oldValue: string, newValue: string): DiffLine[] {
-    const chunks = diffLines(oldValue, newValue);
+    const chunks = diffLines(oldValue, newValue, { timeout: DIFF_TIMEOUT_MS }) ?? [
+      { value: oldValue, added: false, removed: true, count: 0 },
+      { value: newValue, added: true, removed: false, count: 0 },
+    ];
     const out: DiffLine[] = [];
     let oldNo = 0;
     let newNo = 0;

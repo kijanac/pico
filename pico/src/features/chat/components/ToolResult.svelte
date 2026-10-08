@@ -46,29 +46,20 @@
   });
 
   let highlightedHtml = $state<string | null>(null);
-  // Highlighting runs on the main thread and scales with size; big files render plain.
-  const MAX_HIGHLIGHT_CHARS = 20_000;
 
   $effect(() => {
     const text = displayText;
     const lang = path ? inferLangFromPath(path) : null;
     highlightedHtml = null;
     // A file still being written renders plain until its content is complete.
-    if (!text || !lang || text.length > MAX_HIGHLIGHT_CHARS || msg.status === "pending") return;
+    if (!text || !lang || msg.status === "pending") return;
 
-    let cancelled = false;
-    void (async () => {
-      try {
-        const html = await highlightToHtml(text, lang);
-        if (!cancelled) highlightedHtml = html;
-      } catch (error) {
-        console.warn("[tool-result] highlight failed:", error);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    // Plain until coloured, which happens a slice at a time.
+    const highlight = new AbortController();
+    void highlightToHtml(text, lang, highlight.signal).then((html) => {
+      if (!highlight.signal.aborted) highlightedHtml = html;
+    });
+    return () => highlight.abort();
   });
 
   function formatDetails(details: unknown): string {

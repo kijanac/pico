@@ -168,11 +168,31 @@ function shikiTokenStyleAttr(style: Record<string, string | number> | undefined)
   return ` style="${declarations.join(";")}"`;
 }
 
+// Colouring runs a slice of lines at a time and lets the page respond between
+// slices, so a huge block never freezes it. Each slice resumes from the
+// grammar state the last one ended in, so colours stay right across slices,
+// as editors do it. Slices are sized by time, not lines: a slice aims at this
+// much work, half a 60 Hz frame, and the next is sized from this one's pace
+// (the first slices of a language also compile its patterns, so they're slow).
+const SLICE_BUDGET_MS = 8;
+const FIRST_SLICE_LINES = 20;
+// Past this a block stays plain: not for time, which slicing handles, but
+// memory (a span per token). Above a single long model reply.
+const MAX_HIGHLIGHT_CHARS = 300_000;
+// A longer line stays plain, so one minified line can't hold a slice for
+// long (VS Code's default limit).
+const MAX_LINE_CHARS = 20_000;
+
+const nextTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 // Each line as HTML token spans carrying both themes' colors as CSS variables.
+// null: not highlighted (unknown language, too large, failed or aborted).
 export async function highlightLines(
   code: string,
   langHint: string | null | undefined,
+  signal?: AbortSignal,
 ): Promise<string[] | null> {
+  if (code.length > MAX_HIGHLIGHT_CHARS) return null;
   const lang = resolveLang(langHint);
   if (!lang) return null;
 
@@ -181,16 +201,31 @@ export async function highlightLines(
 
   try {
     const { shiki, primitive } = await getHighlighter();
-    const { tokens } = shiki.codeToTokens(primitive, code, {
-      lang,
-      themes: SHIKI_THEMES,
-      defaultColor: DEFAULT_COLOR,
-    });
-    return tokens.map((line) =>
-      line
-        .map((t) => `<span class="code-token"${shikiTokenStyleAttr(t.htmlStyle)}>${escapeHtml(t.content)}</span>`)
-        .join(""),
-    );
+    const lines = code.split("\n");
+    const out: string[] = [];
+    let grammarState: ReturnType<typeof shiki.codeToTokens>["grammarState"];
+    let size = FIRST_SLICE_LINES;
+    for (let start = 0; start < lines.length; ) {
+      if (start > 0) await nextTask();
+      if (signal?.aborted) return null;
+      const end = Math.min(lines.length, start + size);
+      const began = performance.now();
+      const result = shiki.codeToTokens(primitive, lines.slice(start, end).join("\n"), {
+        lang,
+        themes: SHIKI_THEMES,
+        defaultColor: DEFAULT_COLOR,
+        grammarState,
+        tokenizeMaxLineLength: MAX_LINE_CHARS,
+      });
+      const took = Math.max(performance.now() - began, 0.1);
+      grammarState = result.grammarState;
+      for (const line of result.tokens) {
+        out.push(line.map((t) => `<span class="code-token"${shikiTokenStyleAttr(t.htmlStyle)}>${escapeHtml(t.content)}</span>`).join(""));
+      }
+      size = Math.max(1, Math.round(((end - start) * SLICE_BUDGET_MS) / took));
+      start = end;
+    }
+    return out;
   } catch (e) {
     console.warn("[highlighter] codeToTokens failed", lang, e);
     return null;
@@ -201,8 +236,9 @@ export async function highlightLines(
 export async function highlightToHtml(
   code: string,
   langHint: string | null | undefined,
+  signal?: AbortSignal,
 ): Promise<string | null> {
-  const lines = await highlightLines(code, langHint);
+  const lines = await highlightLines(code, langHint, signal);
   if (!lines) return null;
   return `<pre class="shiki" tabindex="0"><code>${lines.map((line) => `<span class="line">${line}</span>`).join("\n")}</code></pre>`;
 }
