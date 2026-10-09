@@ -132,8 +132,7 @@ function matchSegments(routeSegments: readonly RouteSegment[], pathSegments: rea
   return params;
 }
 
-/** swipe means a gesture already animated the change, so the transition layer must not animate again. */
-export type NavKind = "push" | "pop" | "replace" | "swipe";
+export type NavKind = "push" | "pop" | "replace";
 
 // Each history entry records its depth and the path before it, so going
 // back goes back in history, and a browser Back or Forward animates in its
@@ -165,7 +164,7 @@ export function navigateTo(path: string, kind: NavKind = "push"): void {
   if (backPending || currentPath() === path) return;
   pendingNavKind = kind;
   const state = navState();
-  if (kind === "pop" || kind === "swipe") {
+  if (kind === "pop") {
     // popstate follows, and syncs the route.
     if (state?.back === path) {
       backPending = true;

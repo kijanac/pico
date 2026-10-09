@@ -2,14 +2,7 @@
   import { navigateTo, routePaths } from "@/app/routes";
   import AppearanceCard from "@/features/settings/components/AppearanceCard.svelte";
   import { Button } from "@/shared/ui/button";
-  import EdgeSwipeBack from "@/shared/components/EdgeSwipeBack.svelte";
-  import HomePreview from "@/features/sessions/components/HomePreview.svelte";
 </script>
-
-<EdgeSwipeBack href="/">
-  {#snippet preview()}
-    <HomePreview />
-  {/snippet}
 
 <main class="flex min-h-0 flex-1 flex-col">
   <header class="border-b border-[color:var(--color-border)]">
@@ -38,4 +31,3 @@
     </div>
   </div>
 </main>
-</EdgeSwipeBack>

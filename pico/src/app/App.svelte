@@ -55,12 +55,14 @@
     enterKind = null;
   }
 
-  function syncRoute() {
+  // `hasUAVisualTransition`: the browser already animated this change (the
+  // system's swipe back on iOS or Android, a trackpad swipe), so don't slide again.
+  function syncRoute(event?: PopStateEvent) {
     const kind = consumeNavKind();
     const path = currentPath();
     if (path === current.path) return;
 
-    const animate = (kind === "push" || kind === "pop") && slides();
+    const animate = (kind === "push" || kind === "pop") && slides() && !event?.hasUAVisualTransition;
 
     settle();
     const outgoing = current;

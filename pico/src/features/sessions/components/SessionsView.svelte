@@ -16,7 +16,6 @@
     error = null,
     archivedView,
     creating = false,
-    interactive = true,
     openSwipeSessionId = $bindable(null),
     onRefresh = async () => {},
     onToggleArchived = () => {},
@@ -32,7 +31,6 @@
     error?: HostIssue | null;
     archivedView: boolean;
     creating?: boolean;
-    interactive?: boolean;
     openSwipeSessionId?: string | null;
     onRefresh?: () => Promise<void>;
     onToggleArchived?: () => void | Promise<void>;
@@ -60,7 +58,7 @@
   }
 
   function closeOpenSwipeRow(event: Event): void {
-    if (!interactive || !openSwipeSessionId) return;
+    if (!openSwipeSessionId) return;
     const target = event.target;
     if (target instanceof Element && target.closest("[data-swipe-action-row]")) return;
     openSwipeSessionId = null;
@@ -121,29 +119,21 @@
     {:else}
       <section class="column flex min-h-full flex-col">
         {#each sessions as item (item.id)}
-          {#if interactive}
-            <SwipeActionRow
-              open={openSwipeSessionId === item.id}
-              actionWidth={SESSION_ACTION_WIDTH}
-              actionCount={3}
-              onOpen={() => (openSwipeSessionId = item.id)}
-              onClose={() => {
-                if (openSwipeSessionId === item.id) openSwipeSessionId = null;
-              }}
-            >
-              {#snippet actions()}
-                {@render RowActions(item)}
-              {/snippet}
+          <SwipeActionRow
+            open={openSwipeSessionId === item.id}
+            actionWidth={SESSION_ACTION_WIDTH}
+            actionCount={3}
+            onOpen={() => (openSwipeSessionId = item.id)}
+            onClose={() => {
+              if (openSwipeSessionId === item.id) openSwipeSessionId = null;
+            }}
+          >
+            {#snippet actions()}
+              {@render RowActions(item)}
+            {/snippet}
 
-              {@render RowContent(item)}
-            </SwipeActionRow>
-          {:else}
-            <div data-swipe-action-row class="hairline-b relative overflow-hidden bg-[color:var(--color-bg)]">
-              <div class="bg-[color:var(--color-bg)]">
-                {@render RowContent(item)}
-              </div>
-            </div>
-          {/if}
+            {@render RowContent(item)}
+          </SwipeActionRow>
         {/each}
       </section>
     {/if}
@@ -181,16 +171,14 @@
         <span class="shrink-0 tabular-nums">{formatCost(item.costUsd)}</span>
       </div>
     </button>
-    {#if interactive}
-      <!-- With a mouse there's no swipe: this reveals the row's actions. -->
-      <button
-        type="button"
-        class="hidden size-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-fine:flex"
-        onclick={() => (openSwipeSessionId = item.id)}
-        aria-label="Session actions"
-      >
-        <MoreHorizontal class="size-4" />
-      </button>
-    {/if}
+    <!-- With a mouse there's no swipe: this reveals the row's actions. -->
+    <button
+      type="button"
+      class="hidden size-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-fine:flex"
+      onclick={() => (openSwipeSessionId = item.id)}
+      aria-label="Session actions"
+    >
+      <MoreHorizontal class="size-4" />
+    </button>
   </div>
 {/snippet}

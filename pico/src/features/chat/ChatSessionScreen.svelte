@@ -16,8 +16,6 @@
   import { cwdDisplayName } from "@/shared/lib/path-display";
   import StatusDot from "@/shared/components/StatusDot.svelte";
   import { Button } from "@/shared/ui/button";
-  import EdgeSwipeBack from "@/shared/components/EdgeSwipeBack.svelte";
-  import HomePreview from "@/features/sessions/components/HomePreview.svelte";
   import { warmHighlighter } from "@/shared/lib/highlighter";
   import { markSessionOpen } from "@/shared/lib/session-open-timing";
 
@@ -101,11 +99,6 @@
   }
 </script>
 
-<EdgeSwipeBack href="/">
-  {#snippet preview()}
-    <HomePreview />
-  {/snippet}
-
 <main class="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
   <header class="border-b border-[color:var(--color-border)]">
     <div class="column flex items-center justify-between gap-3 px-3 py-[calc(env(safe-area-inset-top)+12px)] pb-3">
@@ -160,4 +153,3 @@
   {/if}
   <ExtensionUiSheet />
 </main>
-</EdgeSwipeBack>

@@ -377,9 +377,8 @@
     }
   }
 
-  /* Screen-stack navigation transitions; the recede/reveal values mirror
-     the interactive edge-swipe gesture so push, pop, and swipe-back all
-     share one visual language. */
+  /* Screen-stack navigation transitions. Swiping back is the system's own
+     gesture (iOS, Android), which animates itself; see App.svelte. */
   .nav-stack {
     position: relative;
     flex: 1;
@@ -468,64 +467,6 @@
     .nav-enter-pop,
     .nav-exit-pop {
       animation: none;
-    }
-  }
-
-  .edge-swipe-root {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-  }
-
-  .edge-swipe-page {
-    height: 100%;
-    min-height: 0;
-    touch-action: pan-y;
-  }
-
-  .edge-swipe-preview {
-    transform: translate3d(-24px, 0, 0) scale(0.985);
-    opacity: 0.74;
-    transform-origin: left center;
-  }
-
-  /* Out of sight behind the page until a swipe shows it, so it doesn't paint. */
-  .edge-swipe-preview:not(.edge-swipe-dragging, .edge-swipe-settling) {
-    visibility: hidden;
-  }
-
-  .edge-swipe-dragging,
-  .edge-swipe-settling {
-    will-change: transform;
-    box-shadow: -18px 0 34px rgba(0, 0, 0, 0.34);
-  }
-
-  .edge-swipe-preview.edge-swipe-dragging,
-  .edge-swipe-preview.edge-swipe-settling {
-    will-change: transform, opacity;
-    box-shadow: none;
-  }
-
-  .edge-swipe-settling {
-    transition:
-      transform 170ms cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 170ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .edge-swipe-shade {
-    background: #000;
-    transition: opacity 170ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .edge-swipe-preview.edge-swipe-dragging,
-  .edge-swipe-preview.edge-swipe-dragging .edge-swipe-shade {
-    transition: none;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .edge-swipe-settling,
-    .edge-swipe-shade {
-      transition: none;
     }
   }
 	* {
