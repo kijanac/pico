@@ -195,8 +195,9 @@
   // Rows that arrive after the chat has synced fade in; the snapshot it opens
   // with, and earlier history loaded above, don't.
   let rowsArrive = false;
+  // Your own message, just sent, rises out of the composer instead.
   const arrive = (node: HTMLElement) => {
-    if (rowsArrive && !loadingEarlier) node.classList.add("msg-enter");
+    if (rowsArrive && !loadingEarlier) node.classList.add(node.hasAttribute("data-sent") ? "msg-sent" : "msg-enter");
   };
   $effect(() => {
     if (chatLogState.synced) void tick().then(() => (rowsArrive = true));
@@ -419,7 +420,7 @@
     <div bind:this={rowList}>
       {#each displayRows as row, index (row.key)}
         <!-- A turn starts with your message; its steps sit closer together. -->
-        <div class={["column", index > 0 && (row.kind === "user" ? "pt-turn" : "pt-step")]} data-log-entry-id={row.kind === "thinking" ? undefined : row.entry?.id} {@attach arrive}>
+        <div class={["column", index > 0 && (row.kind === "user" ? "pt-turn" : "pt-step")]} data-log-entry-id={row.kind === "thinking" ? undefined : row.entry?.id} data-sent={row.kind === "user" && (row.outbox || row.queued) ? "" : undefined} {@attach arrive}>
           {#if row.kind === "thinking"}
             <AgentThinkingIndicator />
           {:else if row.kind === "user"}
