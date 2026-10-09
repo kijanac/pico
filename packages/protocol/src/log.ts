@@ -210,6 +210,10 @@ export function applyLiveEvent(live: Mutable<Live>, event: LiveEvent): Mutable<L
     case "ui_done":
       live.ui = live.ui.filter((request) => request.id !== event.id);
       return;
+    case "elsewhere":
+      if (event.elsewhere) live.elsewhere = { ...event.elsewhere };
+      else delete live.elsewhere;
+      return;
   }
 }
 

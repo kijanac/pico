@@ -31,6 +31,7 @@ const record = {
   costUsd: 0.5,
   archived: false,
   path: null,
+  cursor: null,
 };
 
 describe("session updates write only the fields they name", () => {
@@ -40,6 +41,8 @@ describe("session updates write only the fields they name", () => {
         yield* store.insertSession(record);
         yield* store.updateSession("s1", { tokens: { in: 99, out: 98 }, costUsd: 2 });
         yield* store.updateSession("s1", { title: "renamed", updatedAtMs: 5 });
+        // Before pi's first entry: still a place, not "never opened".
+        yield* store.moveCursor("s1", { id: null, since: 7, seen: 5 });
         return yield* store.getSession("s1");
       }),
     );
@@ -49,6 +52,7 @@ describe("session updates write only the fields they name", () => {
       updatedAtMs: 5,
       tokens: { in: 99, out: 98 },
       costUsd: 2,
+      cursor: { id: null, since: 7, seen: 5 },
     });
   });
 

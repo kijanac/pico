@@ -130,6 +130,7 @@ const make = Effect.gen(function* () {
           updatedAtMs: Date.parse(meta.updatedAt),
         }),
       ),
+    moved: (id, cursor) => runSync(store.moveCursor(id, cursor)),
     log: (event, fields) => runSync(Effect.logInfo(event).pipe(Effect.annotateLogs(fields))),
   };
 
@@ -163,6 +164,7 @@ const make = Effect.gen(function* () {
         costUsd: meta.costUsd,
         archived: meta.archived,
         path: null,
+        cursor: null,
       });
 
       yield* Ref.update(sessions, HashMap.set(meta.id, { pi: piSession, lastUsed: Date.now() }));
@@ -225,6 +227,26 @@ const make = Effect.gen(function* () {
         ),
       );
     });
+
+  // pi reads its file only when it opens it. Before pi writes to a session
+  // another pi (a terminal) changed under it, or exports it, it is opened
+  // again where the phone stands; phones reconnect.
+  const reopenIfBehind = (id: string, ms: ManagedSession, target?: string) =>
+    Effect.gen(function* () {
+      if (!ms.pi.live.behind(target)) return ms;
+      // Whoever unpublishes it closes it; everyone reattaches the one reopening.
+      const ours = yield* Ref.modify(sessions, (m): readonly [boolean, HashMap.HashMap<string, ManagedSession>] =>
+        Option.exists(HashMap.get(m, id), (open) => open === ms) ? [true, HashMap.remove(m, id)] : [false, m],
+      );
+      if (ours) {
+        yield* Effect.logInfo("session_reopened").pipe(Effect.annotateLogs({ session_id: id }));
+        yield* ms.pi.close();
+      }
+      return yield* lookupOrReattach(id);
+    });
+
+  const lookupCaughtUp = (id: string, target?: string) =>
+    Effect.flatMap(lookupOrReattach(id), (ms) => reopenIfBehind(id, ms, target));
 
   // The list is pi's session files, including sessions started in pi itself.
   // Each scan re-reads only the files pi wrote to since the last one.
@@ -294,7 +316,7 @@ const make = Effect.gen(function* () {
     );
 
   const send = (id: string, input: SendInput) =>
-    Effect.flatMap(lookupOrReattach(id), (ms) =>
+    Effect.flatMap(lookupCaughtUp(id), (ms) =>
       Effect.tryPromise({
         try: () => ms.pi.live.send(input),
         catch: (e) => new PiError({ message: e instanceof Error ? e.message : String(e), cause: e }),
@@ -312,10 +334,11 @@ const make = Effect.gen(function* () {
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.extensionUiResponse(requestId, value));
 
   const compact = (id: string, instructions?: string) =>
-    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.compact(instructions));
+    Effect.flatMap(lookupCaughtUp(id), (ms) => ms.pi.compact(instructions));
 
+  // pi exports only the entries it has read.
   const exportHtml = (id: string) =>
-    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.exportHtml());
+    Effect.flatMap(lookupCaughtUp(id), (ms) => ms.pi.exportHtml());
 
   const listCommands = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.listCommands());
@@ -326,8 +349,9 @@ const make = Effect.gen(function* () {
   const getSettings = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getSettings());
 
+  // A model or thinking-level change is saved as an entry.
   const patchSetting = (id: string, key: string, value: string | boolean) =>
-    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.patchSetting(key, value));
+    Effect.flatMap(lookupCaughtUp(id), (ms) => ms.pi.patchSetting(key, value));
 
   const getStats = (id: string) =>
     Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getStats());
@@ -336,10 +360,10 @@ const make = Effect.gen(function* () {
     Effect.map(lookupOrReattach(id), (ms) => ms.pi.live.history(before, limit));
 
   const getTree = (id: string) =>
-    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.getTree());
+    Effect.map(lookupOrReattach(id), (ms) => ms.pi.live.tree());
 
   const navigateTree = (id: string, entryId: string, summarize?: boolean) =>
-    Effect.flatMap(lookupOrReattach(id), (ms) => ms.pi.navigateTree(entryId, summarize));
+    Effect.flatMap(lookupCaughtUp(id, entryId), (ms) => ms.pi.navigateTree(entryId, summarize));
 
   const patch = (
     id: string,
@@ -367,11 +391,13 @@ const make = Effect.gen(function* () {
       yield* store.updateSession(id, { ...changes, updatedAtMs });
 
       if (Option.isNone(live)) return toSessionMeta({ ...existing.value, ...changes, updatedAtMs });
-      live.value.pi.live.patchMeta(changes);
+      // pi saves the name as an entry.
+      const ms = p.title !== undefined ? yield* reopenIfBehind(id, live.value) : live.value;
+      ms.pi.live.patchMeta(changes);
       if (p.title !== undefined) {
-        yield* Effect.ignoreLogged(live.value.pi.patchSession({ title: p.title }));
+        yield* Effect.ignoreLogged(ms.pi.patchSession({ title: p.title }));
       }
-      return live.value.pi.live.meta;
+      return ms.pi.live.meta;
     });
 
   const remove = (id: string): Effect.Effect<void, PiError | SessionNotFound> =>

@@ -565,6 +565,12 @@ export const LiveTool = Schema.Struct({
 });
 export type LiveTool = typeof LiveTool.Type;
 
+// Messages saved on other branches of the session since the phone last looked
+// at the tree: another pi, a terminal say, working elsewhere in it. `at` is
+// when the newest was saved.
+export const Elsewhere = Schema.Struct({ messages: Schema.Number, at: Schema.Number });
+export type Elsewhere = typeof Elsewhere.Type;
+
 export const Live = Schema.Struct({
   running: Schema.Boolean,
   compacting: Schema.Boolean,
@@ -583,6 +589,7 @@ export const Live = Schema.Struct({
   queue: Schema.Array(QueueItem),
   // Extension dialogs waiting for an answer.
   ui: Schema.Array(ExtensionUiRequest),
+  elsewhere: Schema.optional(Elsewhere),
 });
 export type Live = typeof Live.Type;
 
@@ -630,6 +637,7 @@ export const LiveEvent = Schema.Union(
   Schema.Struct({ t: Schema.Literal("queue"), queue: Schema.Array(QueueItem) }),
   Schema.Struct({ t: Schema.Literal("ui"), request: ExtensionUiRequest }),
   Schema.Struct({ t: Schema.Literal("ui_done"), id: Schema.String }),
+  Schema.Struct({ t: Schema.Literal("elsewhere"), elsewhere: Schema.optional(Elsewhere) }),
 );
 export type LiveEvent = typeof LiveEvent.Type;
 

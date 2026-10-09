@@ -198,6 +198,26 @@ try {
     const again = await send(randomUUIDv7(), "smoke prompt", { base: null, retry: true });
     assert.equal(again.state, "delivered", "a retry pi already saved isn't sent twice");
 
+    // A terminal carries the session on while the phone has it open: the phone
+    // follows, and its next message goes on from the terminal's last one.
+    const { SessionManager: PiSessionManager } = await import("@earendil-works/pi-coding-agent");
+    const sessionFile = (await call(client.sessions.stats({ id: session.id }))).sessionFile!;
+    const terminalReply = (message: ServerMessage) =>
+      message.t === "entries" && message.entries.some((entry) => entry.type === "assistant" && entry.text === "From the terminal.");
+    const follows = liveUntil(null, terminalReply);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const terminalPi = PiSessionManager.open(sessionFile);
+    terminalPi.appendMessage({ role: "user", content: "from the terminal", timestamp: Date.now() });
+    terminalPi.appendMessage(fauxAssistantMessage("From the terminal."));
+    assert((await follows).some(terminalReply), "the phone follows what a terminal saves on its line");
+    faux.setResponses([fauxAssistantMessage("Back on the phone.")]);
+    const backCid = randomUUIDv7();
+    assert.equal((await send(backCid, "back on the phone")).state, "started");
+    // Subscribed after the send: the host reopens pi first, which ends every subscription.
+    const back = await liveUntil(null, (message) => entriesOf([message]).some((entry) => entry.type === "assistant" && entry.text === "Back on the phone."));
+    const backEntry = entriesOf(back).find((entry) => entry.type === "user" && entry.cid === backCid);
+    assert.equal(PiSessionManager.open(sessionFile).getEntry(backEntry!.id)?.parentId, terminalPi.getLeafId(), "pi was reopened where the terminal left off");
+
     await sessionRuntime.runPromise(Scope.close(sessionScope, Exit.void));
     await sessionRuntime.dispose();
 
@@ -205,7 +225,6 @@ try {
     assert.deepEqual(await call(client.sessions.list({ fresh: true })), []);
 
     // Sessions pi saved without Pico are listed too, under their first message.
-    const { SessionManager: PiSessionManager } = await import("@earendil-works/pi-coding-agent");
     const terminal = PiSessionManager.create(workspaceDir);
     terminal.appendMessage({ role: "user", content: "started in the\nterminal", timestamp: Date.now() });
     terminal.appendMessage(fauxAssistantMessage("Hello."));

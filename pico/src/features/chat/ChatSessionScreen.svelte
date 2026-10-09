@@ -7,6 +7,7 @@
     createChatSessionState,
   } from "@/features/chat/model/chat-session.state.svelte";
   import RetryBanner from "@/features/chat/components/RetryBanner.svelte";
+  import ElsewhereBanner from "@/features/chat/components/ElsewhereBanner.svelte";
   import MessageList from "@/features/chat/components/MessageList.svelte";
   import InputBar from "@/features/chat/components/InputBar.svelte";
   import SessionAgentActions from "@/features/chat/components/SessionAgentActions.svelte";
@@ -21,6 +22,8 @@
 
   let { sessionId }: { sessionId: string } = $props();
   const timingId = $derived(sessionId);
+
+  let agentActions = $state<ReturnType<typeof SessionAgentActions>>();
 
   // Shared with the session info sheet.
   const stats = $derived(activeSessionState.stats.value);
@@ -123,17 +126,18 @@
         {/if}
       </div>
       <div class="flex w-12 justify-end">
-        <SessionAgentActions {sessionId} />
+        <SessionAgentActions bind:this={agentActions} {sessionId} />
       </div>
     </div>
   </header>
 
   <RetryBanner />
+  <ElsewhereBanner onShowTree={() => agentActions?.showTree()} />
   {#if activeSessionState.connectionStatus === "gone"}
     <div class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
       <div class="type-title font-medium">session no longer available</div>
       <div class="type-copy max-w-[28ch] text-[color:var(--color-fg-muted)]">
-        the Pico host can't find this session — its on-disk file may have been removed, or the session was started in ephemeral mode.
+        the Pico host can't find this session — its file may have been deleted.
       </div>
       <Button type="button" variant="outline" size="sm" class="mt-2" onclick={() => navigateTo(routePaths.sessions, "pop")}>back to sessions</Button>
     </div>

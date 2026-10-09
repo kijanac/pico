@@ -8,6 +8,7 @@ import { dirname } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { SessionStatus } from "@pico/protocol";
 import type { FileSession, SessionFile, SessionRecord } from "./session-record.ts";
+import type { Cursor } from "./transcript.ts";
 
 
 export class Store extends Context.Tag("Store")<
@@ -21,6 +22,7 @@ export class Store extends Context.Tag("Store")<
       patch: Partial<Pick<SessionRecord, "title" | "status" | "updatedAtMs" | "tokens" | "costUsd" | "archived">>,
     ) => Effect.Effect<void>;
     readonly deleteSession: (id: string) => Effect.Effect<void>;
+    readonly moveCursor: (id: string, cursor: Cursor) => Effect.Effect<void>;
     // The pi session files indexed so far, with their sessions' ids.
     readonly indexedFiles: () => Effect.Effect<(SessionFile & { id: string })[]>;
     // Adds or refreshes a session from its pi file; status and archived stay Pico's.
@@ -42,7 +44,12 @@ const SCHEMA = `
     created_at  INTEGER NOT NULL,
     archived    INTEGER NOT NULL DEFAULT 0,
     path        TEXT,
-    stamp       TEXT
+    stamp       TEXT,
+    -- The phone's place in pi's tree (transcript.ts); since is NULL until it
+    -- has one, while cursor is NULL also before pi's first entry.
+    cursor      TEXT,
+    cursor_since INTEGER,
+    cursor_seen INTEGER
   ) STRICT;
 
   -- The event journal, replaced by pi's own session files.
@@ -62,6 +69,9 @@ const SessionRow = Schema.Struct({
   archived: Schema.Int,
   created_at: Schema.Number,
   path: Schema.NullOr(Schema.String),
+  cursor: Schema.NullOr(Schema.String),
+  cursor_since: Schema.NullOr(Schema.Number),
+  cursor_seen: Schema.NullOr(Schema.Number),
 });
 
 const decodeRow = Schema.decodeUnknownSync(SessionRow);
@@ -80,6 +90,7 @@ const rowToRecord = (raw: unknown): SessionRecord => {
     costUsd: r.cost_usd,
     archived: r.archived === 1,
     path: r.path,
+    cursor: r.cursor_since === null ? null : { id: r.cursor, since: r.cursor_since, seen: r.cursor_seen ?? r.cursor_since },
   };
 };
 
@@ -100,6 +111,9 @@ const make = (dbPath: string) =>
       // Tables from before the list was filled from pi's files.
       const columns = d.prepare("SELECT name FROM pragma_table_info('sessions')").all().map((column) => column.name);
       if (!columns.includes("path")) d.exec("ALTER TABLE sessions ADD COLUMN path TEXT; ALTER TABLE sessions ADD COLUMN stamp TEXT");
+      if (!columns.includes("cursor")) {
+        d.exec("ALTER TABLE sessions ADD COLUMN cursor TEXT; ALTER TABLE sessions ADD COLUMN cursor_since INTEGER; ALTER TABLE sessions ADD COLUMN cursor_seen INTEGER");
+      }
 
       // Non-terminal status from a prior (possibly crashed) run is stale at
       // boot; without this reset a session caught mid-turn shows a perpetual
@@ -166,6 +180,10 @@ const make = (dbPath: string) =>
       `DELETE FROM sessions WHERE id = ?`,
     );
 
+    const stmtMoveCursor: StatementSync = db.prepare(
+      `UPDATE sessions SET cursor = ?, cursor_since = ?, cursor_seen = ? WHERE id = ?`,
+    );
+
     return Store.of({
       insertSession: (record) =>
         Effect.sync(() => {
@@ -214,6 +232,11 @@ const make = (dbPath: string) =>
       deleteSession: (id) =>
         Effect.sync(() => {
           stmtDeleteSession.run(id);
+        }),
+
+      moveCursor: (id, cursor) =>
+        Effect.sync(() => {
+          stmtMoveCursor.run(cursor.id, cursor.since, cursor.seen, id);
         }),
 
       indexedFiles: () =>

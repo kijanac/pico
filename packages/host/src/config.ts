@@ -25,7 +25,6 @@ const resolved = Effect.runSync(
       Config.map((login) => login.trim().toLowerCase()),
       Config.withDefault(""),
     ),
-    ephemeral: flag("PI_EPHEMERAL"),
   }).pipe(
     Config.validate({
       message: "PICO_OWNER is required: the Tailscale login allowed to use this host",
@@ -38,4 +37,3 @@ export const DB_PATH = resolved.dbPath;
 export const HOST_DATA_DIR = dirname(resolve(DB_PATH));
 export const HOST_INSECURE_NO_AUTH = resolved.insecureNoAuth;
 export const OWNER_LOGIN = resolved.owner;
-export const PI_EPHEMERAL = resolved.ephemeral;

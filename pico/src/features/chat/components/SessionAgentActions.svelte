@@ -16,6 +16,12 @@
 
   const actions = createAgentActionsState();
 
+  // Straight to the tree, from the notice of messages on another branch.
+  export function showTree(): void {
+    actions.setOpen(true);
+    actions.setView("tree");
+  }
+
   async function exportToHtml(): Promise<void> {
     actions.setError(null);
     actions.close();

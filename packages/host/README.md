@@ -39,7 +39,14 @@ the first message). The host indexes the files in SQLite and re-reads only the
 ones pi wrote to since the last scan. Renaming sets pi's session name; deleting
 deletes pi's file.
 
-`PI_EPHEMERAL=1` keeps new sessions in memory.
+pi takes no lock on a session file, so a terminal can carry on a session the
+phone has open. The host follows each open session's file as it grows, and
+keeps the phone's own place in the tree: it goes on through entries saved
+after it, whoever saved them (only pi's own while pi is at work), and pi
+reopens there. Messages saved on other branches since the phone last looked
+at the tree are counted, and the phone shows the count. pi reads its file
+only when it opens it, so before it writes where another pi moved the
+phone's line on, the host opens it again there.
 
 The smoke test runs the host over pi-ai's scripted model, in a temporary pi
 directory.

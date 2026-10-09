@@ -37,7 +37,7 @@
   {#if stats}
     <div class="type-copy space-y-2">
       {@render InfoRow("session id", stats.sessionId)}
-      {@render InfoRow("file", stats.sessionFile ?? "ephemeral")}
+      {@render InfoRow("file", stats.sessionFile ?? "not saved yet")}
       {@render InfoRow("cwd", stats.cwd)}
       {@render InfoRow("messages", String(stats.totalMessages))}
       {@render InfoRow("user / assistant", `${stats.userMessages} / ${stats.assistantMessages}`)}
