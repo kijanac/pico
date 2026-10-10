@@ -27,3 +27,4 @@ pnpm smoke:host
 - Keep protocol changes in `packages/protocol/src/index.ts`; host and web packages import `@pico/protocol`.
 - The app and host always ship together from one build, so protocol changes need no backward compatibility.
 - The box runs `pico.service` (systemd user unit); `pnpm redeploy` updates it.
+- No comments in code. A comment that feels needed means the code is unclear: rename, extract or restructure until it isn't. Only tool directives stay (`svelte-ignore`, `@ts-expect-error`, `eslint-disable`, `/*#__PURE__*/`). A file you edit loses its existing comments the same way.

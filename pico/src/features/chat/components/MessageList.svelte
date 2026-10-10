@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { ArrowDown } from "@lucide/svelte";
   import type { CompactionEntry, ImageContent, LogEntry, UserMessage } from "@pico/protocol";
   import { chatLogState, type OutboxItem } from "@/features/chat/model/chat-log.state.svelte";
@@ -8,6 +8,8 @@
   import ToolCallView from "@/features/chat/components/ToolCall.svelte";
   import CompactionMessageView from "@/features/chat/components/CompactionMessage.svelte";
   import NoteMessageView from "@/features/chat/components/NoteMessage.svelte";
+  import StepsLine from "@/features/chat/components/StepsLine.svelte";
+  import { gatherSteps, groupKeyOf, isStep, summarizeSteps, type StepsSummary } from "@/features/chat/model/steps";
   import AgentThinkingIndicator from "@/features/chat/components/AgentThinkingIndicator.svelte";
   import { getSessionHistory } from "@/features/chat/api";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
@@ -21,8 +23,6 @@
   const STICK_THRESHOLD_PX = 64;
   const INITIAL_VISIBLE_ENTRIES = 120;
   const REVEAL_ENTRIES = 60;
-  // Earlier history is fetched this many screens before the reader reaches
-  // it, so it arrives in time over a phone connection.
   const LOAD_EARLIER_SCREENS = 1.5;
 
   let scroller = $state<HTMLDivElement | null>(null);
@@ -41,8 +41,6 @@
   let firstRenderMarked = false;
   let lastBottomInset = $state(0);
 
-  // A user message is one row from sending through queued to saved, keyed by
-  // its cid, so its bubble isn't rebuilt as it moves.
   type UserRow = {
     kind: "user";
     key: string;
@@ -52,7 +50,8 @@
     queued?: boolean;
     outbox?: OutboxItem;
   };
-  type DisplayRow = { kind: "entry"; key: string; entry: LogEntry } | { kind: "thinking"; key: string } | UserRow;
+  type StepsRow = { kind: "steps"; key: string; summary: StepsSummary; inProgress: boolean; durationMs?: number; open: boolean };
+  type DisplayRow = { kind: "entry"; key: string; entry: LogEntry } | { kind: "thinking"; key: string } | UserRow | StepsRow;
 
   const compactingRow: CompactionEntry = { kind: "compaction", id: "live:compaction", at: 0, status: "running" };
 
@@ -61,23 +60,19 @@
     top: number;
   }
 
-  // Key agent rows by the slot after the previous entry so the thinking row
-  // can turn into the first real agent row without a remove/add layout jolt.
   const agentSlotKey = (previous: LogEntry | undefined): string => `agent-slot:${previous?.id ?? "start"}`;
 
   const totalEntries = $derived(chatLogState.entries.length);
   const hasLocalEarlierEntries = $derived(visibleCount < totalEntries);
   const hasEarlierEntries = $derived(hasLocalEarlierEntries || chatLogState.more !== undefined);
   const visibleStartIndex = $derived(Math.max(0, totalEntries - visibleCount));
-  // What pi hasn't saved yet follows the saved rows: the reply being streamed,
-  // the tool calls the model is writing, and a compaction in progress.
-  const liveEntries = $derived.by(() => [
+  const unsavedEntries = $derived.by(() => [
     ...(chatLogState.streaming ? [chatLogState.streaming] : []),
     ...chatLogState.streamingCalls,
     ...(chatLogState.live.compacting ? [compactingRow] : []),
   ]);
-  const visibleEntries = $derived.by(() => [...chatLogState.entries.slice(visibleStartIndex), ...liveEntries]);
-  const latestEntry = $derived.by(() => liveEntries.at(-1) ?? chatLogState.entries.at(-1));
+  const visibleEntries = $derived.by(() => [...chatLogState.entries.slice(visibleStartIndex), ...unsavedEntries]);
+  const latestEntry = $derived.by(() => unsavedEntries.at(-1) ?? chatLogState.entries.at(-1));
 
   function isDisplayableAssistant(entry: Extract<LogEntry, { kind: "assistant" }>): boolean {
     return entry.text.trim().length > 0 || entry.stopReason === "error" || entry.stopReason === "aborted" || entry.stopReason === "length" || Boolean(entry.errorMessage);
@@ -95,69 +90,90 @@
     return false;
   }
 
-  function previousRenderableEntryBefore(index: number): LogEntry | undefined {
-    for (let i = index - 1; i >= 0; i -= 1) {
-      const entry = chatLogState.entries[i];
-      if (isRenderableEntry(entry)) return entry;
-    }
-    return undefined;
-  }
-
-  // Where each turn's copy / branch / details sit: under its final answer, the
-  // message pi ended the turn with (any stop reason but toolUse). When that
-  // message has no text, under the turn's last text before it.
-  const turnEnds = $derived.by(() => {
-    const ends = new Set<string>();
-    let lastText: string | undefined;
+  const turnActionRows = $derived.by(() => {
+    const rows = new Set<string>();
+    let lastTextOfTurn: string | undefined;
     for (const entry of visibleEntries) {
-      if (entry.kind === "user") lastText = undefined;
+      if (entry.kind === "user") lastTextOfTurn = undefined;
       if (entry.kind !== "assistant" || entry.streaming) continue;
-      if (entry.text.length > 0) lastText = entry.id;
-      if (entry.stopReason === undefined || entry.stopReason === "toolUse") continue;
-      if (lastText) ends.add(lastText);
-      lastText = undefined;
+      if (entry.text.length > 0) lastTextOfTurn = entry.id;
+      if (isStep(entry)) continue;
+      if (lastTextOfTurn) rows.add(lastTextOfTurn);
+      lastTextOfTurn = undefined;
     }
-    return ends;
+    return rows;
   });
 
   const latestEntryIsCurrentAgentOutput = $derived.by(() => isCurrentAgentOutput(latestEntry));
   const showThinkingIndicator = $derived(activeSessionState.status === "thinking" && !latestEntryIsCurrentAgentOutput);
-  // Rows are reused while their entry and key are unchanged: a new row object
-  // makes the keyed {#each} re-run every row's effects (re-highlighting every
-  // visible diff) on each streamed delta. Entries mutate in place, so text
-  // still updates through them.
-  let rowCache = new Map<string, DisplayRow>();
+  let previousRows = new Map<string, DisplayRow>();
+  const heldOpen = new Set<string>();
+  let unanswered = new Set<string>();
+  // svelte-ignore state_referenced_locally
+  const readingAtOpen = chatLogState.reading(sessionId);
+  if (readingAtOpen?.anchor && !readingAtOpen.following) {
+    const steps = groupKeyOf(chatLogState.entries, readingAtOpen.anchor.entryId);
+    if (steps) heldOpen.add(steps);
+  }
+  const isStreamingReply = (entry: LogEntry) => entry.kind === "assistant" && entry.streaming === true;
+
+  const uniqueByKey = (rows: DisplayRow[]) => {
+    const keys = new Set<string>();
+    return rows.filter((row) => !keys.has(row.key) && keys.add(row.key));
+  };
+
   const displayRows = $derived.by(() => {
     const rows: DisplayRow[] = [];
-    const nextCache = new Map<string, DisplayRow>();
-    let previousRenderedEntry = previousRenderableEntryBefore(visibleStartIndex);
+    const nextRows = new Map<string, DisplayRow>();
+    const nextUnanswered = new Set<string>();
+    const all = [...chatLogState.entries, ...unsavedEntries];
+    let index = 0;
+    let previousRenderedEntry: LogEntry | undefined;
 
-    for (const entry of visibleEntries) {
-      if (!isRenderableEntry(entry)) continue;
-      // A tool row keeps its key from being written through being saved.
-      const key =
-        entry.kind === "user" ? (entry.cid ?? entry.id) : entry.kind === "tool_call" ? `tool:${entry.id}` : agentSlotKey(previousRenderedEntry);
-      const cached = rowCache.get(key);
-      const row: DisplayRow =
-        cached && "entry" in cached && cached.entry === entry
-          ? cached
-          : entry.kind === "user"
-            ? { kind: "user", key, entry, text: entry.text, images: entry.images }
-            : { kind: "entry", entry, key };
-      nextCache.set(key, row);
-      rows.push(row);
+    const addEntry = (entry: LogEntry, shown: boolean) => {
+      const inWindow = index++ >= visibleStartIndex;
+      if (!isRenderableEntry(entry)) return;
+      if (inWindow) {
+        const key =
+          entry.kind === "user" ? (entry.cid ?? entry.id) : entry.kind === "tool_call" ? `tool:${entry.id}` : agentSlotKey(previousRenderedEntry);
+        const cached = previousRows.get(key);
+        const row: DisplayRow =
+          cached && "entry" in cached && cached.entry === entry
+            ? cached
+            : entry.kind === "user"
+              ? { kind: "user", key, entry, text: entry.text, images: entry.images }
+              : { kind: "entry", entry, key };
+        nextRows.set(key, row);
+        if (shown) rows.push(row);
+      }
       previousRenderedEntry = entry;
+    };
+
+    for (const segment of gatherSteps(all)) {
+      if (segment.kind === "entry") {
+        addEntry(segment.entry, true);
+        continue;
+      }
+      const { key, answeredInWords, entries } = segment;
+      if (!answeredInWords) nextUnanswered.add(key);
+      else if (unanswered.has(key) && !untrack(() => stuckToBottom)) heldOpen.add(key);
+      const open = chatLogState.toolOpen(key) ?? (!answeredInWords || heldOpen.has(key));
+      const end = index + entries.length;
+      if (end > visibleStartIndex) {
+        const inProgress = !answeredInWords && chatLogState.live.running && end === all.length;
+        rows.push({ kind: "steps", key, summary: summarizeSteps(entries), inProgress, durationMs: segment.durationMs, open });
+      }
+      for (const entry of entries) addEntry(entry, open || isStreamingReply(entry));
     }
-    rowCache = nextCache;
+    previousRows = nextRows;
+    unanswered = nextUnanswered;
 
     for (const item of chatLogState.outbox) rows.push({ kind: "user", key: item.cid, text: item.text, images: item.images, outbox: item });
     if (showThinkingIndicator) rows.push({ kind: "thinking", key: agentSlotKey(previousRenderedEntry) });
     chatLogState.live.queue.forEach((item, index) =>
       rows.push({ kind: "user", key: item.cid ?? `queued:${index}:${item.text}`, text: item.text, images: chatLogState.images(item.cid), queued: true }),
     );
-    // A duplicate key would throw in the keyed {#each}; keep the first.
-    const keys = new Set<string>();
-    return rows.filter((row) => !keys.has(row.key) && keys.add(row.key));
+    return uniqueByKey(rows);
   });
 
   function distanceFromBottom(): number {
@@ -174,8 +190,6 @@
 
   let settleRaf: number | null = null;
 
-  // Pins to the latest row now and for the next few frames while layout
-  // settles (keyboard, composer), unless the reader scrolls away meanwhile.
   async function scrollToLatest(): Promise<void> {
     if (!scroller) return;
     await tick();
@@ -192,10 +206,7 @@
     step();
   }
 
-  // Rows that arrive after the chat has synced fade in; the snapshot it opens
-  // with, and earlier history loaded above, don't.
   let rowsArrive = false;
-  // Your own message, just sent, rises out of the composer instead.
   const arrive = (node: HTMLElement) => {
     if (rowsArrive && !loadingEarlier) node.classList.add(node.hasAttribute("data-sent") ? "msg-sent" : "msg-enter");
   };
@@ -252,27 +263,31 @@
       await tick();
       restoreScrollAnchor(anchor);
     } catch {
-      // Shown at the top with a retry; the observer waits for it.
       earlierFailed = true;
       return;
     } finally {
       loadingEarlier = false;
     }
-    // Still within reach of the top: keep going.
-    if (scroller && !stuckToBottom && hasEarlierEntries && scroller.scrollTop < earlierLead()) void revealEarlierEntries();
+    if (withinReachOfTop()) void revealEarlierEntries();
   }
 
   const earlierLead = () => (scroller?.clientHeight ?? 0) * LOAD_EARLIER_SCREENS;
+  const withinReachOfTop = () => scroller !== null && hasEarlierEntries && !earlierFailed && scroller.scrollTop < earlierLead();
+
+  function toggleSteps(row: StepsRow): void {
+    const opening = !row.open;
+    if (opening) stuckToBottom = false;
+    chatLogState.setToolOpen(row.key, opening);
+  }
 
   function onScroll(): void {
     const stuck = distanceFromBottom() < STICK_THRESHOLD_PX;
     stuckToBottom = stuck;
     if (stuck) hasNewActivity = false;
     noteReadingPlace();
+    if (withinReachOfTop()) void revealEarlierEntries();
   }
 
-  // Where the reader is, noted once scrolling settles: by the time the chat
-  // closes, its rows may already be off the page and can't be measured.
   let readingAnchor: ScrollAnchor | null = null;
   let readingTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -281,8 +296,6 @@
     readingTimer = setTimeout(() => (readingAnchor = captureScrollAnchor()), 150);
   }
 
-  // Streamed deltas should gently preserve the bottom lock, not run the
-  // multi-frame settle path used for keyboard/composer resize.
   let scrollRaf: number | null = null;
 
   function scheduleScrollSync(): void {
@@ -295,13 +308,10 @@
   }
 
   onMount(() => {
-    // Back to where the reader left this chat, unless they were following the
-    // end (or it was never opened, or a branch switch reset it).
     const reading = chatLogState.reading(sessionId);
     const returning = reading && !reading.following && reading.anchor;
     if (returning) {
       visibleCount = Math.max(visibleCount, reading.visibleCount);
-      // Not following the end, so nothing pins it there meanwhile.
       stuckToBottom = false;
     }
     void (async () => {
@@ -319,23 +329,19 @@
     })();
 
     let lastScrollerHeight = scroller?.clientHeight ?? 0;
-    const resizeObserver = new ResizeObserver(() => {
+    const keyboardOrComposerObserver = new ResizeObserver(() => {
       if (!scroller) return;
 
       const nextHeight = scroller.clientHeight;
       const lostHeight = Math.max(0, lastScrollerHeight - nextHeight);
       lastScrollerHeight = nextHeight;
 
-      // When the keyboard/composer changes height, keep the latest message pinned
-      // only if the user was already following the bottom of the chat.
       if (stuckToBottom || distanceFromBottom() <= STICK_THRESHOLD_PX + lostHeight) {
         void scrollToLatest();
       }
     });
-    if (scroller) resizeObserver.observe(scroller);
+    if (scroller) keyboardOrComposerObserver.observe(scroller);
 
-    // Rows also grow after they render (an image loads, code is highlighted,
-    // a pane opens): keep following the bottom through that.
     const growthObserver = new ResizeObserver(() => {
       if (stuckToBottom) scheduleScrollSync();
     });
@@ -344,7 +350,7 @@
     return () => {
       clearTimeout(readingTimer);
       chatLogState.saveReading(sessionId, { anchor: readingAnchor, visibleCount, following: stuckToBottom });
-      resizeObserver.disconnect();
+      keyboardOrComposerObserver.disconnect();
       growthObserver.disconnect();
       if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
       if (settleRaf !== null) cancelAnimationFrame(settleRaf);
@@ -370,7 +376,7 @@
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (stuckToBottom || earlierFailed) return;
+        if (earlierFailed) return;
         if (entries.some((entry) => entry.isIntersecting)) void revealEarlierEntries();
       },
       { root: scroller, rootMargin: `${Math.round(earlierLead())}px 0px 0px 0px` },
@@ -419,14 +425,15 @@
     {/if}
     <div bind:this={rowList}>
       {#each displayRows as row, index (row.key)}
-        <!-- A turn starts with your message; its steps sit closer together. -->
-        <div class={["column", index > 0 && (row.kind === "user" ? "pt-turn" : "pt-step")]} data-log-entry-id={row.kind === "thinking" ? undefined : row.entry?.id} data-sent={row.kind === "user" && (row.outbox || row.queued) ? "" : undefined} {@attach arrive}>
+        <div class={["column", index > 0 && (row.kind === "user" ? "pt-turn" : "pt-step")]} data-log-entry-id={row.kind === "entry" || row.kind === "user" ? row.entry?.id : undefined} data-sent={row.kind === "user" && (row.outbox || row.queued) ? "" : undefined} {@attach arrive}>
           {#if row.kind === "thinking"}
             <AgentThinkingIndicator />
+          {:else if row.kind === "steps"}
+            <StepsLine summary={row.summary} inProgress={row.inProgress} durationMs={row.durationMs} open={row.open} onToggle={() => toggleSteps(row)} />
           {:else if row.kind === "user"}
             <UserMessageView text={row.text} images={row.images} queued={row.queued} outbox={row.outbox} {sessionId} />
           {:else if row.entry.kind === "assistant"}
-            <AssistantMessageView msg={row.entry} {sessionId} endsTurn={turnEnds.has(row.entry.id)} />
+            <AssistantMessageView msg={row.entry} {sessionId} endsTurn={turnActionRows.has(row.entry.id)} />
           {:else if row.entry.kind === "tool_call"}
             <ToolCallView msg={row.entry} />
           {:else if row.entry.kind === "compaction"}
