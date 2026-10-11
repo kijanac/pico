@@ -13,6 +13,8 @@
   import SessionAgentActions from "@/features/chat/components/SessionAgentActions.svelte";
   import ExtensionUiSheet from "@/features/chat/components/ExtensionUiSheet.svelte";
   import ExtensionNotifications from "@/features/chat/components/ExtensionNotifications.svelte";
+  import FileSheet from "@/features/chat/files/FileSheet.svelte";
+  import { provideFileOpener, type FileRequest } from "@/features/chat/files/file-links";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
   import { cwdDisplayName } from "@/shared/lib/path-display";
   import StatusDot from "@/shared/components/StatusDot.svelte";
@@ -25,14 +27,16 @@
 
   let agentActions = $state<ReturnType<typeof SessionAgentActions>>();
 
-  // Shared with the session info sheet.
   const stats = $derived(activeSessionState.stats.value);
   let composerHeight = $state(0);
   let forceUnknownContext = $state(false);
   let invalidatedAtUsageVersion = 0;
   let lastContextUsageInvalidationVersion = activeSessionState.contextUsageInvalidationVersion;
 
-  const session = $derived(sessionListState.sessions.find((candidate) => candidate.id === sessionId) ?? null);
+  const session = $derived(activeSessionState.session ?? sessionListState.sessions.find((candidate) => candidate.id === sessionId) ?? null);
+
+  let fileRequest = $state<FileRequest | null>(null);
+  provideFileOpener((path) => (fileRequest = { path, relativeTo: session?.cwd }));
   const contextStats = $derived.by(() => {
     if (stats?.sessionId !== sessionId || !stats.contextUsage) return undefined;
     return {
@@ -114,7 +118,6 @@
             <StatusDot tone={statusDotTone} active={statusDotActive} label={activeSessionState.status} />
             <div class="min-w-0 flex-1">
               <div class="type-title font-prose truncate font-medium">{session.title}</div>
-              <!-- Until caught up, what the connection is doing instead of the folder. -->
               <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]" aria-live="polite">
                 {connectionLabel ?? cwdDisplayName(session.cwd)}
               </div>
@@ -156,4 +159,5 @@
     </div>
   {/if}
   <ExtensionUiSheet />
+  <FileSheet bind:request={fileRequest} />
 </main>

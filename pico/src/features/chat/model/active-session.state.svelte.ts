@@ -8,16 +8,13 @@ export type ConnectionStatus = "offline" | "connecting" | "connected" | "reconne
 export type ExtensionUiNotification = Extract<ExtensionUiRequest, { kind: "notify" }>;
 
 let activeSessionId = $state<string | null>(null);
-let activeStatus = $state<SessionMeta["status"]>("idle");
+let activeSession = $state<SessionMeta | null>(null);
 let connectionStatus = $state<ConnectionStatus>("offline");
 let contextUsageInvalidationVersion = $state(0);
 let contextUsageVersion = $state(0);
 let extensionNotification = $state<ExtensionUiNotification | null>(null);
 
-// notify() is fire-and-forget (returns void), so we mirror pi's TUI: surface the
-// latest notification in a transient status line that auto-clears, instead of a
-// growing stack of dismissable cards.
-const NOTIFICATION_TTL_MS = 5000;
+const NOTIFICATION_SHOWN_MS = 5000;
 let notificationTimer: ReturnType<typeof setTimeout> | null = null;
 
 function clearNotification(): void {
@@ -28,15 +25,11 @@ function clearNotification(): void {
   extensionNotification = null;
 }
 
-// Something the open session's composer, header and sheets all show (its
-// controls, stats, commands): one copy, shown at once while a newer one loads,
-// and kept if loading fails (the caller shows the error).
-function sessionResource<A>(fetch: (sessionId: string) => Effect.Effect<A, unknown, PicoClient>) {
+function openSessionResource<A>(fetch: (sessionId: string) => Effect.Effect<A, unknown, PicoClient>) {
   let owner = $state<string | null>(null);
   let value = $state<A | null>(null);
   let requests = 0;
   return {
-    // Only the open session's: another session's copy never shows.
     get value(): A | null {
       return owner === activeSessionId ? value : null;
     },
@@ -44,8 +37,6 @@ function sessionResource<A>(fetch: (sessionId: string) => Effect.Effect<A, unkno
       owner = sessionId;
       value = next;
     },
-    // By id: a screen's children load before it marks its session active.
-    // The newest request wins; an overtaken one resolves to null.
     async load(sessionId: string): Promise<A | null> {
       const request = ++requests;
       const next = await runRpc(fetch(sessionId));
@@ -57,9 +48,9 @@ function sessionResource<A>(fetch: (sessionId: string) => Effect.Effect<A, unkno
   };
 }
 
-const controls = sessionResource(getSessionSettings);
-const stats = sessionResource(getSessionStats);
-const commands = sessionResource(listSessionCommands);
+const controls = openSessionResource(getSessionSettings);
+const stats = openSessionResource(getSessionStats);
+const commands = openSessionResource(listSessionCommands);
 
 function showNotification(request: ExtensionUiNotification): void {
   if (notificationTimer !== null) clearTimeout(notificationTimer);
@@ -67,7 +58,7 @@ function showNotification(request: ExtensionUiNotification): void {
   notificationTimer = setTimeout(() => {
     notificationTimer = null;
     extensionNotification = null;
-  }, NOTIFICATION_TTL_MS);
+  }, NOTIFICATION_SHOWN_MS);
 }
 
 export const activeSessionState = {
@@ -79,15 +70,17 @@ export const activeSessionState = {
   stats,
   commands,
 
-  get status() {
-    return activeStatus;
+  get session(): SessionMeta | null {
+    return activeSession;
+  },
+
+  get status(): SessionMeta["status"] {
+    return activeSession?.status ?? "idle";
   },
 
   get connectionStatus() {
     return connectionStatus;
   },
-
-
 
   get contextUsageInvalidationVersion() {
     return contextUsageInvalidationVersion;
@@ -97,21 +90,20 @@ export const activeSessionState = {
     return contextUsageVersion;
   },
 
-
   get extensionNotification() {
     return extensionNotification;
   },
 
   activate(sessionId: string): void {
     activeSessionId = sessionId;
-    activeStatus = "idle";
+    activeSession = null;
     clearNotification();
   },
 
   deactivate(sessionId?: string): void {
     if (sessionId !== undefined && activeSessionId !== sessionId) return;
     activeSessionId = null;
-    activeStatus = "idle";
+    activeSession = null;
     clearNotification();
     connectionStatus = "offline";
   },
@@ -120,8 +112,6 @@ export const activeSessionState = {
     connectionStatus = status;
   },
 
-  // The prompt stays until the host has the answer; a failure throws, for
-  // the sheet to show.
   async respondToExtensionUi(id: string, value: string | boolean | null): Promise<void> {
     const sessionId = activeSessionId;
     if (!sessionId) return;
@@ -133,12 +123,10 @@ export const activeSessionState = {
     clearNotification();
   },
 
-  // Status, notices and context-usage changes; the rest of the live state is
-  // the mirror in chatLogState.
   apply(sessionId: string, message: ServerMessage): void {
     if (activeSessionId !== sessionId) return;
 
-    if (message.t === "sync" || message.t === "meta") activeStatus = message.session.status;
+    if (message.t === "sync" || message.t === "meta") activeSession = message.session;
     else if (message.t === "ui" && message.request.kind === "notify") showNotification(message.request);
     else if (message.t === "entries") {
       for (const entry of message.entries) {

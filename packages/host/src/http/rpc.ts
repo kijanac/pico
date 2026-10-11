@@ -12,7 +12,7 @@ import {
   SessionNotFound,
 } from "@pico/protocol/rpc";
 import { SessionNotFound as InternalSessionNotFound } from "../errors.ts";
-import { listFs } from "../fs.ts";
+import { listFs, readTextFile } from "../fs.ts";
 import { PiError } from "../pi.ts";
 import { ProviderAuth } from "../provider-auth.ts";
 import { SessionManager } from "../session.ts";
@@ -58,6 +58,7 @@ const HandlersLive = PicoRpc.toLayer({
   "auth.cancelLogin": ({ jobId }) => onProvider((a) => a.cancelLogin(jobId)),
 
   "fs.ls": ({ path }) => listFs(path).pipe(Effect.mapError(toRequestError)),
+  "fs.read": ({ path, relativeTo }) => readTextFile(path, relativeTo).pipe(Effect.mapError(toRequestError)),
 });
 
 export const RpcRoutesLive = HttpApiBuilder.Router.use((router) =>
@@ -75,9 +76,6 @@ const SessionHandlersLive = PicoSessionRpc.toLayer({
     Effect.map(SessionManager, (m) => m.subscribe(id, head, cids)).pipe(Stream.unwrap, Stream.mapError(toSessionFail)),
 });
 
-// The realtime channel rides a WebSocket: toHttpAppWebsocket upgrades the
-// request (NodeHttpServer's native upgrade path), so no raw `ws` server is
-// needed. Mounted as GET /ws on the same router serve() builds.
 export const SessionWsRoutesLive = HttpApiBuilder.Router.use((router) =>
   Effect.gen(function* () {
     const app = yield* RpcServer.toHttpAppWebsocket(PicoSessionRpc);

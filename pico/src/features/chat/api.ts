@@ -47,7 +47,6 @@ export async function exportSessionHtml(sessionId: string): Promise<boolean> {
       return true;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return false;
-      // NotAllowedError: the tap's activation lapsed during the fetch; download instead.
     }
   }
   const link = document.createElement("a");
@@ -62,3 +61,5 @@ export const getSessionTree = (sessionId: string) => rpc((c) => c.sessions.tree(
 
 export const navigateSessionTree = (sessionId: string, opts: { entryId: string; summarize?: boolean }) =>
   rpc((c) => c.sessions.navigateTree({ id: sessionId, ...opts }));
+
+export const readFile = (path: string, relativeTo?: string) => rpc((c) => c.fs.read({ path, relativeTo }));

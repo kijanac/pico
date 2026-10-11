@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import * as smd from "streaming-markdown";
   import { highlightToHtml } from "@/shared/lib/highlighter";
+  import { fileLinkClicks, isFollowableHref } from "@/features/chat/files/file-links";
 
   let { text, done = false, class: className = "" }: { text: string; done?: boolean; class?: string } = $props();
 
@@ -62,6 +63,13 @@
       },
 
       set_attr(data: typeof def.data, type: smd.Attr, value: string) {
+        if (type === smd.HREF) {
+          if (!isFollowableHref(value)) return;
+          if (/^https?:/i.test(value)) {
+            data.nodes[data.index].setAttribute("target", "_blank");
+            data.nodes[data.index].setAttribute("rel", "noopener noreferrer");
+          }
+        }
         smd.default_set_attr(data, type, value);
         if (active && type === smd.LANG) active.lang = value;
       },
@@ -93,9 +101,13 @@
     }
   }
 
+  const openLinkedFile = fileLinkClicks();
+
   onMount(() => {
     reset();
     sync();
+    root?.addEventListener("click", openLinkedFile);
+    return () => root?.removeEventListener("click", openLinkedFile);
   });
 
   $effect(() => {
