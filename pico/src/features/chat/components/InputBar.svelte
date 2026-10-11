@@ -49,7 +49,6 @@
   let compactOpen = $state(false);
   let queueOpen = $state(false);
   let images = $state<ImageContent[]>([]);
-  let lastRecallRequestId = 0;
 
   const slashCommands = createSlashCommandsState(
     () => sessionId,
@@ -58,16 +57,13 @@
   );
 
   onDestroy(() => {
-    // A press in progress dies with the composer instead of sending later.
     cancelSendPress();
-    // Keep what was typed in the last moments before leaving.
     saveChatDraft(sessionId, value);
   });
 
   const busy = $derived(activeSessionState.status === "thinking" || activeSessionState.status === "tool");
   const hasText = $derived(value.trim().length > 0);
   const hasSendable = $derived(hasText || images.length > 0);
-  // Sends go over HTTP and wait in the outbox, so only a deleted session can't take one.
   const canSend = $derived(activeSessionState.connectionStatus !== "gone");
   const queue = $derived(chatLogState.live.queue);
   const queueCount = $derived(queue.length);
@@ -88,9 +84,6 @@
   }
 
 
-  // The model chip, loaded with the chat. The model sheet shares this copy and
-  // updates it from its change, so closing the sheet needs no reload; a failed
-  // load keeps the chip as it was.
   $effect(() => {
     sessionId;
     untrack(() => void activeSessionState.controls.load(sessionId).catch(() => {}));
@@ -102,11 +95,8 @@
   });
 
   $effect(() => {
-    const request = queuedMessageActionsState.recallRequest;
-    if (!request || request.sessionId !== sessionId || request.id === lastRecallRequestId) return;
-
-    lastRecallRequestId = request.id;
-    // Ahead of any draft, as pi's dequeue does.
+    const request = queuedMessageActionsState.takeRecall(sessionId);
+    if (!request) return;
     value = [request.text, untrack(() => value)].filter((text) => text.trim()).join("\n\n");
     if (request.images) untrack(() => addImages(request.images ?? []));
     cursor = value.length;
@@ -157,9 +147,7 @@
     clearChatDraft(sessionId);
   }
 
-  // Stopping until the run ends; a failed request says so above the composer.
   let stopping = $state(false);
-  // A composer action that failed (stop, compaction), until the next one or a tap.
   let actionError = $state<string | null>(null);
   let modelError = $state<string | null>(null);
 
@@ -183,7 +171,6 @@
     }
   }
 
-  // Tap sends/steers; long-press queues a follow-up — pi's alt+enter, as a touch gesture.
   const sendPress = createLongPress({
     delayMs: LONG_PRESS_MS,
     enabled: () => hasSendable && canSend,
@@ -202,7 +189,6 @@
     window.removeEventListener("blur", cancelSendPress);
   }
 
-  // Ends a press without sending, including the click that may follow it.
   function cancelSendPress(): void {
     clearSendPointerListeners();
     sendPointerId = null;
@@ -210,16 +196,15 @@
     sendPress.end();
   }
 
-  // Like a native button, a press that wanders off Send doesn't send.
   const SEND_SLOP_PX = 12;
   let sendBounds: DOMRect | null = null;
+
+  const keepTextareaFocused = (event: PointerEvent) => event.preventDefault();
 
   function handleSendPointerDown(event: PointerEvent): void {
     if (event.button !== 0 || !hasSendable || !canSend) return;
 
-    // Keep the textarea focused so the on-screen keyboard and layout don't
-    // move under the finger before the tap completes.
-    event.preventDefault();
+    keepTextareaFocused(event);
     clearSendPointerListeners();
     ignoreNextSendClick = false;
     sendPointerId = event.pointerId;
@@ -349,11 +334,6 @@
 
   <ImageTray {images} onRemove={removeImage} />
 
-  <!--
-    One composer card (Claude-style): the textarea on top, a control row beneath
-    it inside the same card. Visible controls live in the row rather than hidden
-    in a menu — context budget as a chip, the rest as icon buttons.
-  -->
   <div class="m-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] focus-within:border-[color:var(--color-border-strong)]">
     <textarea
       bind:this={textarea}
@@ -383,16 +363,15 @@
       class="type-input font-prose w-full resize-none bg-transparent px-3 pt-2 pb-1 text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] focus:outline-none"
     ></textarea>
 
-    <!-- On touch screens every control gets a 44px touch area, spaced so they don't overlap. -->
     <div class="flex items-center gap-1 px-1.5 pb-1.5 pointer-coarse:gap-3">
-      <Button type="button" variant="ghost" size="icon" onpointerdown={(event) => event.preventDefault()} onclick={attachImages} disabled={images.length >= MAX_IMAGES} class="touch-target shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Attach image" title="Attach image">
+      <Button type="button" variant="ghost" size="icon" onpointerdown={keepTextareaFocused} onclick={attachImages} disabled={images.length >= MAX_IMAGES} class="touch-target shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Attach image" title="Attach image">
         <ImagePlus class="size-4" />
       </Button>
 
       {#if modelLabel}
         <button
           type="button"
-          onpointerdown={(event) => event.preventDefault()}
+          onpointerdown={keepTextareaFocused}
           onclick={() => (modelOpen = true)}
           class="touch-target type-meta min-w-0 max-w-[12ch] truncate rounded-[var(--radius-sm)] px-2 py-1.5 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]"
           aria-label="Model — tap to change"
@@ -405,13 +384,12 @@
       {#if contextStats}
         <button
           type="button"
-          onpointerdown={(event) => event.preventDefault()}
+          onpointerdown={keepTextareaFocused}
           onclick={() => (compactOpen = true)}
           class="touch-target type-meta shrink-0 rounded-[var(--radius-sm)] px-2 py-1.5 tabular-nums text-[color:var(--color-fg-faint)] active:bg-[color:var(--color-surface-2)]"
           aria-label="Context usage — tap to compact"
           title="Compact context"
         >
-          <!-- While a run is going, Stop needs the room; the cost is in the compact sheet and the list. -->
           {contextPercent !== null ? `${contextPercent}%` : "—"}{busy ? "" : ` · ${formatCost(contextStats.cost)}`}
         </button>
       {/if}
@@ -432,7 +410,6 @@
           <Square class="size-3" fill="currentColor" />
         </Button>
       {/if}
-      <!-- Keep mounted after submit clears the draft so the follow-up click can't retarget to Stop. -->
       <Button
         type="button"
         size="icon-lg"

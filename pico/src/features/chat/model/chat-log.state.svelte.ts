@@ -14,11 +14,6 @@ import {
 import { sendMessage } from "@/features/chat/api";
 import { runRpc } from "@/shared/lib/rpc-client";
 
-// A message on its way: shown as pending until pi's entry with its cid (or a
-// queue item) arrives. Retries reuse the cid, so the host can't double-send.
-// Where the reader was when they left a chat, to come back to: the row at
-// the top of the screen and its offset, how much history was shown, and
-// whether they were following the end.
 export interface Reading {
   anchor: { entryId: string; top: number } | null;
   visibleCount: number;
@@ -30,35 +25,25 @@ export interface OutboxItem {
   text: string;
   mode: SendMode;
   images?: ImageContent[];
-  // The bookmark when first sent; on a retry the host looks after it in pi's
-  // file, in case a restart made it forget the cid.
   base: string | null;
-  // lost: it was queued when the host restarted (pi's queue isn't saved).
-  // failed without `error`: unconfirmed (no answer in time, or the request
-  // failed on the way); the host may have it. It retries on reconnect.
   state: "sending" | "started" | "queued" | "held" | "failed" | "lost";
   error?: string;
   tries: number;
+  sentDuringRun?: boolean;
 }
 
 interface SessionLog {
-  // The rows on screen, folded from pi's entries.
   entries: Mutable<LogEntry>[];
   indexById: Map<string, number>;
-  // The newest pi entry held: the bookmark to catch up from.
   leaf: string | null;
-  // The oldest pi entry held, when there are older ones to page in.
   more?: string;
   live: ReturnType<typeof emptyLive>;
-  // The reply being streamed, and the tool calls the model is still writing, as rows.
   streaming: Mutable<AssistantMessage> | null;
   streamingCalls: Mutable<ToolCallMessage>[];
   outbox: OutboxItem[];
   activityVersion: number;
-  // The host's first sync has arrived.
   synced: boolean;
   reading?: Reading;
-  // Tool panes the reader opened or closed, by entry id.
   toolOpen: Record<string, boolean>;
 }
 
@@ -70,15 +55,10 @@ const emptyOutbox: OutboxItem[] = [];
 const emptyCalls: ToolCallMessage[] = [];
 const emptyLiveState = emptyLive();
 
-// Recently opened sessions keep their logs for instant back-navigation and
-// catch up from their bookmark; older ones are dropped.
 const MAX_CACHED_LOGS = 3;
 const recentLogKeys: string[] = [];
-// A reopened log keeps about this many rows; older ones page back in on scroll.
 const KEEP_ROWS = 300;
-// A send with no answer by then shows as not delivered, with a retry.
 const SEND_TIMEOUT_MS = 10_000;
-// cids with a POST on the wire, so a reconnect or a tap doesn't send another.
 const inflight = new Set<string>();
 
 const activeLog = $derived(activeSessionId ? logs[activeSessionId] : undefined);
@@ -99,7 +79,6 @@ function saveOutbox(sessionId: string, outbox: readonly OutboxItem[]): void {
     if (outbox.length === 0) localStorage.removeItem(key);
     else localStorage.setItem(key, JSON.stringify(outbox));
   } catch {
-    // Over quota with images: keep the text at least.
     try {
       localStorage.setItem(key, JSON.stringify(outbox.map(({ images: _, ...item }) => item)));
     } catch {}
@@ -121,7 +100,6 @@ function getLog(sessionId: string): SessionLog {
   return logs[sessionId];
 }
 
-// Shows a running tool's live output on its row until its result arrives.
 function overlayTool(log: SessionLog, tool: SessionLog["live"]["tools"][number]): void {
   const row = findLogEntry(log, tool.id);
   if (row?.kind !== "tool_call" || row.status !== "running") return;
@@ -144,7 +122,6 @@ const parseArgs = (json: string): unknown => {
   }
 };
 
-// Each row stays the same object while its arguments grow, like the reply's.
 function syncStreamingCalls(log: SessionLog): void {
   const msg = log.live.msg;
   log.streamingCalls = (msg?.calls ?? []).map((call) => {
@@ -154,9 +131,6 @@ function syncStreamingCalls(log: SessionLog): void {
   });
 }
 
-// After a host restart pi's file decides: a queued message that arrived before
-// it shows up after the bookmark it was sent from. Unknown when that bookmark
-// isn't on screen; "send again" then asks the host, which can follow pi's file.
 function arrivedAfterBase(log: SessionLog, item: OutboxItem): boolean {
   const from = item.base === null ? undefined : log.indexById.get(item.base);
   if (from === undefined) return false;
@@ -164,7 +138,6 @@ function arrivedAfterBase(log: SessionLog, item: OutboxItem): boolean {
 }
 
 function applyStatus(sessionId: string, status: SendStatus): void {
-  // A log dropped from the cache since; its outbox is reconciled on reopening.
   const log = logs[sessionId];
   const item = log?.outbox.find((candidate) => candidate.cid === status.cid);
   if (!item) return;
@@ -197,9 +170,6 @@ async function post(sessionId: string, cid: string): Promise<void> {
     const { text, mode, images, base } = item;
     applyStatus(sessionId, await runRpc(sendMessage(sessionId, { cid, text, mode, images, base, retry: attempt > 1 })));
   } catch (error) {
-    // Only a deleted session is final. Anything else (the network, a host
-    // restarting) is unconfirmed, as when no answer comes in time: it says so
-    // now rather than staying "sending", and retries on reconnect or a tap.
     if ((error as { _tag?: string })._tag === "SessionNotFound") {
       applyStatus(sessionId, { cid, state: "failed", error: "the session was deleted" });
     } else if (item.state === "sending" && item.tries === attempt) {
@@ -212,13 +182,11 @@ async function post(sessionId: string, cid: string): Promise<void> {
   }
 }
 
-// After a sync: what the host reports, else resend what it never answered.
 function reconcileOutbox(sessionId: string, log: SessionLog, sends: readonly SendStatus[]): void {
   for (const status of sends) applyStatus(sessionId, status);
   const known = new Set(sends.map((status) => status.cid));
   for (const item of log.outbox) {
     if (known.has(item.cid)) continue;
-    // Unknown to the host: never answered, or the host restarted since.
     if (item.state === "sending" || item.state === "started" || (item.state === "failed" && !item.error)) void post(sessionId, item.cid);
     else if (item.state === "queued" || item.state === "held") {
       if (arrivedAfterBase(log, item)) applyStatus(sessionId, { cid: item.cid, state: "delivered" });
@@ -241,7 +209,6 @@ function apply(sessionId: string, message: ServerMessage): void {
   switch (message.t) {
     case "sync":
       if (message.reset) {
-        // Another branch: the saved place no longer applies.
         Object.assign(log, emptyLog());
         log.more = message.more;
         log.reading = undefined;
@@ -270,7 +237,6 @@ function apply(sessionId: string, message: ServerMessage): void {
     }
   }
   syncStreaming(log);
-  // Not per text delta or tool output: parsing a long call's arguments isn't free.
   if (message.t !== "d" && message.t !== "out") syncStreamingCalls(log);
   log.activityVersion += 1;
 }
@@ -292,14 +258,12 @@ export const chatLogState = {
     return activeLog?.live ?? emptyLiveState;
   },
 
-  // Sends to show as pending or failed; queued ones show in the queue.
   get outbox() {
     const log = activeLog;
     if (!log) return emptyOutbox;
     return log.outbox.filter((item) => !log.live.queue.some((queued) => queued.cid === item.cid));
   },
 
-  // A send's images, for its queue row (pi's queue keeps only text).
   images(cid: string | undefined): ImageContent[] | undefined {
     return cid === undefined ? undefined : activeLog?.outbox.find((item) => item.cid === cid)?.images;
   },
@@ -341,8 +305,6 @@ export const chatLogState = {
     for (const stale of recentLogKeys.splice(0, Math.max(0, recentLogKeys.length - MAX_CACHED_LOGS))) {
       delete logs[stale];
     }
-    // Trim a reopened log to its newest rows, starting at a user message,
-    // unless the reader left it mid-way and comes back to that place.
     const log = logs[sessionId];
     if (!log || log.entries.length <= KEEP_ROWS * 1.5 || (log.reading && !log.reading.following)) return;
     const start = log.entries.findIndex((row, index) => index >= log.entries.length - KEEP_ROWS && row.kind === "user");
@@ -352,7 +314,6 @@ export const chatLogState = {
     reindexLog(log);
   },
 
-  // What the live socket connects with: the bookmark and the unconfirmed sends.
   connectParams(sessionId: string): { head: string | null; cids: string[] } {
     const log = getLog(sessionId);
     return { head: log.leaf, cids: log.outbox.map((item) => item.cid) };
@@ -375,7 +336,7 @@ export const chatLogState = {
   send(sessionId: string, message: { text: string; mode: SendMode; images?: ImageContent[] }): void {
     const log = getLog(sessionId);
     const cid = crypto.randomUUID();
-    log.outbox.push({ cid, ...message, base: log.leaf, state: "sending", tries: 0 });
+    log.outbox.push({ cid, ...message, base: log.leaf, state: "sending", tries: 0, sentDuringRun: log.live.running });
     log.activityVersion += 1;
     void post(sessionId, cid);
   },
@@ -384,7 +345,6 @@ export const chatLogState = {
     if (activeSessionId) void post(activeSessionId, cid);
   },
 
-  // Drops a failed send and returns it, for the composer.
   discard(cid: string): OutboxItem | undefined {
     const log = activeLog;
     const item = log?.outbox.find((candidate) => candidate.cid === cid);

@@ -168,11 +168,14 @@
     previousRows = nextRows;
     unanswered = nextUnanswered;
 
-    for (const item of chatLogState.outbox) rows.push({ kind: "user", key: item.cid, text: item.text, images: item.images, outbox: item });
+    const outboxRow = (item: OutboxItem): UserRow => ({ kind: "user", key: item.cid, text: item.text, images: item.images, outbox: item });
+    const joinsTheQueue = (item: OutboxItem) => item.sentDuringRun === true && item.state !== "started";
+    for (const item of chatLogState.outbox) if (!joinsTheQueue(item)) rows.push(outboxRow(item));
     if (showThinkingIndicator) rows.push({ kind: "thinking", key: agentSlotKey(previousRenderedEntry) });
     chatLogState.live.queue.forEach((item, index) =>
       rows.push({ kind: "user", key: item.cid ?? `queued:${index}:${item.text}`, text: item.text, images: chatLogState.images(item.cid), queued: true }),
     );
+    for (const item of chatLogState.outbox) if (joinsTheQueue(item)) rows.push(outboxRow(item));
     return uniqueByKey(rows);
   });
 
