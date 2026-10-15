@@ -13,7 +13,6 @@
   import { runRpc } from "@/shared/lib/rpc-client";
   import { copyText as copyClipboardText } from "@/shared/mobile/clipboard";
 
-  // endsTurn: the turn's final answer, which carries the turn's actions.
   let { msg, sessionId, endsTurn = false }: { msg: AssistantMessage; sessionId: string; endsTurn?: boolean } = $props();
 
   let copied = $state(false);
@@ -78,10 +77,10 @@
 </div>
 
 <Sheet.Root bind:open={detailsOpen}>
-  <Sheet.BottomContent>
+  <Sheet.BottomContent drawerSize="compact" class="sm:max-w-sm">
     <SheetHeader title="message details" />
-    <div class="px-3 pb-3">
-      <div class="type-meta rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
+    <div class="min-h-0 overflow-y-auto p-3">
+      <dl class="type-copy space-y-2">
         <MessageInfoRow label="time" value={relativeTime(msg.at)} />
         {#if msg.usage}
           <MessageInfoRow label="input" value={formatTokens(msg.usage.input)} />
@@ -90,10 +89,11 @@
           <MessageInfoRow label="cache write" value={formatTokens(msg.usage.cacheWrite)} />
           <MessageInfoRow label="total" value={formatTokens(msg.usage.totalTokens)} />
           <MessageInfoRow label="cost" value={formatCost(msg.usage.cost.total)} />
-        {:else}
-          <div class="py-1 text-[color:var(--color-fg-muted)]">usage is not available for this message</div>
         {/if}
-      </div>
+      </dl>
+      {#if !msg.usage}
+        <p class="type-copy mt-2 text-[color:var(--color-fg-muted)]">usage is not available for this message</p>
+      {/if}
     </div>
   </Sheet.BottomContent>
 </Sheet.Root>

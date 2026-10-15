@@ -15,10 +15,39 @@
   });
 </script>
 
-<div class="streaming-md">
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div class="streaming-md code-file" role="region" aria-label="File contents" tabindex="0">
   {#if html}
     {@html html}
   {:else}
-    <pre class="whitespace-pre-wrap">{text}</pre>
+    <pre>{text}</pre>
   {/if}
 </div>
+
+<style>
+  .code-file {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    border-radius: var(--radius-sm);
+  }
+
+  .code-file:focus-visible {
+    outline: 1px solid var(--color-accent);
+    outline-offset: -1px;
+  }
+
+  .code-file :global(pre) {
+    width: max-content;
+    min-width: 100%;
+    overflow-x: visible;
+  }
+
+  .code-file :global(pre),
+  .code-file :global(pre code),
+  .code-file :global(pre .line) {
+    white-space: pre;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+</style>

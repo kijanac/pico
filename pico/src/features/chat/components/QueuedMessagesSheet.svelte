@@ -24,7 +24,7 @@
 </script>
 
 <Sheet.Root bind:open>
-  <Sheet.BottomContent class="max-h-[75dvh]">
+  <Sheet.BottomContent class="[--sheet-max-height:75dvh]">
     <SheetHeader title="queued messages" />
     <div class="flex-1 overflow-y-auto px-3 py-3">
       {#if error}<div class="type-copy text-[color:var(--color-danger)]">{error}</div>{/if}

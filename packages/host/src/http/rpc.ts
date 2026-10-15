@@ -1,4 +1,5 @@
 import * as HttpApiBuilder from "@effect/platform/HttpApiBuilder";
+import * as HttpServerResponse from "@effect/platform/HttpServerResponse";
 import * as RpcSerialization from "@effect/rpc/RpcSerialization";
 import * as RpcServer from "@effect/rpc/RpcServer";
 import * as Context from "effect/Context";
@@ -12,7 +13,8 @@ import {
   SessionNotFound,
 } from "@pico/protocol/rpc";
 import { SessionNotFound as InternalSessionNotFound } from "../errors.ts";
-import { listFs, readTextFile } from "../fs.ts";
+import { listFs, readFile } from "../fs.ts";
+import { readFileChange } from "../file-changes.ts";
 import { PiError } from "../pi.ts";
 import { ProviderAuth } from "../provider-auth.ts";
 import { SessionManager } from "../session.ts";
@@ -57,14 +59,15 @@ const HandlersLive = PicoRpc.toLayer({
   "auth.saveApiKey": ({ providerId, apiKey }) => onProvider((a) => a.saveApiKey(providerId, apiKey)),
   "auth.cancelLogin": ({ jobId }) => onProvider((a) => a.cancelLogin(jobId)),
 
-  "fs.ls": ({ path }) => listFs(path).pipe(Effect.mapError(toRequestError)),
-  "fs.read": ({ path, relativeTo }) => readTextFile(path, relativeTo).pipe(Effect.mapError(toRequestError)),
+  "fs.ls": ({ path, files, showHidden }) => listFs(path, { files, showHidden }).pipe(Effect.mapError(toRequestError)),
+  "fs.read": ({ path, relativeTo }) => readFile(path, relativeTo).pipe(Effect.mapError(toRequestError)),
+  "fs.change": ({ id }) => readFileChange(id).pipe(Effect.mapError(toRequestError)),
 });
 
 export const RpcRoutesLive = HttpApiBuilder.Router.use((router) =>
   Effect.gen(function* () {
     const app = yield* RpcServer.toHttpApp(PicoRpc);
-    yield* router.post("/rpc", app);
+    yield* router.post("/rpc", app.pipe(Effect.map(HttpServerResponse.setHeader("Cache-Control", "private, no-store"))));
   }),
 ).pipe(
   Layer.provide(HandlersLive),

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Home } from "@lucide/svelte";
+  import { Folder, Home, Info, Settings } from "@lucide/svelte";
   import { navigateTo, routePaths } from "@/app/routes";
   import {
     activeSessionState,
@@ -10,17 +10,20 @@
   import ElsewhereBanner from "@/features/chat/components/ElsewhereBanner.svelte";
   import MessageList from "@/features/chat/components/MessageList.svelte";
   import InputBar from "@/features/chat/components/InputBar.svelte";
+  import ContextRing from "@/features/chat/components/ContextRing.svelte";
   import SessionAgentActions from "@/features/chat/components/SessionAgentActions.svelte";
   import ExtensionUiSheet from "@/features/chat/components/ExtensionUiSheet.svelte";
   import ExtensionNotifications from "@/features/chat/components/ExtensionNotifications.svelte";
   import FileSheet from "@/features/chat/files/FileSheet.svelte";
+  import ImageSheet from "@/features/chat/files/ImageSheet.svelte";
+  import { provideImageOpener, type ImageRequest } from "@/features/chat/files/image-preview";
   import { provideFileOpener, type FileRequest } from "@/features/chat/files/file-links";
   import { sessionListState } from "@/features/sessions/model/session-list.state.svelte";
-  import { cwdDisplayName } from "@/shared/lib/path-display";
   import StatusDot from "@/shared/components/StatusDot.svelte";
   import { Button } from "@/shared/ui/button";
   import { warmHighlighter } from "@/shared/lib/highlighter";
   import { markSessionOpen } from "@/shared/lib/session-open-timing";
+  import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
 
   let { sessionId }: { sessionId: string } = $props();
   const timingId = $derived(sessionId);
@@ -35,8 +38,15 @@
 
   const session = $derived(activeSessionState.session ?? sessionListState.sessions.find((candidate) => candidate.id === sessionId) ?? null);
 
+  let compactOpen = $state(false);
+  let filesOpen = $state(false);
   let fileRequest = $state<FileRequest | null>(null);
-  provideFileOpener((path) => (fileRequest = { path, relativeTo: session?.cwd }));
+  let imageRequest = $state<ImageRequest | null>(null);
+  provideImageOpener((image, label) => (imageRequest = { image: { ...image }, label }));
+  provideFileOpener((path, edit) => {
+    fileRequest = { path, edit, relativeTo: session?.cwd };
+    filesOpen = true;
+  });
   const contextStats = $derived.by(() => {
     if (stats?.sessionId !== sessionId || !stats.contextUsage) return undefined;
     return {
@@ -108,34 +118,34 @@
 
 <main class="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
   <header class="border-b border-[color:var(--color-border)]">
-    <div class="column flex items-center justify-between gap-3 px-3 py-[calc(env(safe-area-inset-top)+12px)] pb-3">
+    <div class="column grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1 px-3 py-[calc(env(safe-area-inset-top)+12px)] pb-3">
       <Button type="button" variant="ghost" size="icon-sm" aria-label="Sessions" title="Sessions" onclick={() => navigateTo(routePaths.sessions, "pop")}>
-        <Home class="size-3.5" />
+        <Home size={20} class="size-5" />
       </Button>
-      <div class="min-w-0 flex-1">
-        {#if session}
-          <div class="flex min-w-0 items-center gap-2">
-            <StatusDot tone={statusDotTone} active={statusDotActive} label={activeSessionState.status} />
-            <div class="min-w-0 flex-1">
-              <div class="type-title font-prose truncate font-medium">{session.title}</div>
-              <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]" aria-live="polite">
-                {connectionLabel ?? cwdDisplayName(session.cwd)}
-              </div>
-            </div>
-          </div>
-        {:else}
-          <div class="type-title font-prose truncate font-medium">session</div>
-          <div class="type-label uppercase tracking-[0.08em] truncate text-[color:var(--color-fg-faint)]">{connectionLabel ?? "connected"}</div>
-        {/if}
+      <div class="flex min-h-11 min-w-0 items-center gap-2 max-[360px]:col-span-2">
+        {#if session}<StatusDot tone={statusDotTone} active={statusDotActive} label={activeSessionState.status} />{/if}
+        <div class="min-w-0 flex-1">
+          <div class="type-title font-prose break-words font-medium" class:line-clamp-2={connectionLabel === null} class:truncate={connectionLabel !== null} title={session?.title ?? "session"}>{session?.title ?? "session"}</div>
+          {#if connectionLabel}
+            <div class="type-label truncate uppercase tracking-[0.08em] text-[color:var(--color-fg-faint)]" role="status">{connectionLabel}</div>
+          {/if}
+        </div>
       </div>
-      <div class="flex w-12 justify-end">
+      <div class="col-start-3 row-start-1 flex items-center justify-self-end text-[color:var(--color-fg-muted)] max-[360px]:col-span-2 max-[360px]:col-start-2 max-[360px]:row-start-2">
         <SessionAgentActions bind:this={agentActions} {sessionId} />
+        <Button type="button" variant="ghost" size="icon" class="size-11" aria-label="Files" title="files" onclick={() => { fileRequest = null; filesOpen = true; }}><Folder size={20} class="size-5" /></Button>
+        <Button type="button" variant="ghost" size="icon" class="size-11" aria-label="Session info" title="session info" onclick={() => agentActions?.showView("info")}><Info size={20} class="size-5" /></Button>
+        <Button type="button" variant="ghost" size="icon" class="size-11" aria-label="Session settings" title="session settings" onclick={() => agentActions?.showView("settings")}><Settings size={20} class="size-5" /></Button>
+        <ContextRing percent={contextStats?.usage.percent} onCompact={() => (compactOpen = true)} />
       </div>
     </div>
   </header>
 
   <RetryBanner />
-  <ElsewhereBanner onShowTree={() => agentActions?.showTree()} />
+  <ElsewhereBanner onShowTree={() => agentActions?.showView("tree")} />
+  {#if !chatLogState.outboxSaved}
+    <p role="alert" class="type-meta border-b border-[color:var(--color-border)] px-3 py-2 text-[color:var(--color-danger)]">unsent messages couldn't be saved on this device · keep this page open</p>
+  {/if}
   {#if activeSessionState.connectionStatus === "gone"}
     <div class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
       <div class="type-title font-medium">session no longer available</div>
@@ -154,10 +164,11 @@
       ></div>
       <div bind:clientHeight={composerHeight} class="column pointer-events-none absolute inset-x-0 bottom-0 z-30">
         <ExtensionNotifications />
-        <InputBar {sessionId} {contextStats} />
+        <InputBar {sessionId} {contextStats} bind:compactOpen />
       </div>
     </div>
   {/if}
   <ExtensionUiSheet />
-  <FileSheet bind:request={fileRequest} />
+  <FileSheet bind:open={filesOpen} bind:request={fileRequest} cwd={session?.cwd} />
+  <ImageSheet bind:request={imageRequest} />
 </main>

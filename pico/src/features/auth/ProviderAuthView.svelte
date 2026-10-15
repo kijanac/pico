@@ -11,9 +11,11 @@
   let {
     onError,
     class: className = "",
+    showEmpty = true,
   }: {
     onError: (message: string | null) => void;
     class?: string;
+    showEmpty?: boolean;
   } = $props();
 
   // svelte-ignore state_referenced_locally
@@ -39,9 +41,9 @@
     <div class="space-y-2">
       {#if auth.loading}
         <div class="type-copy text-[color:var(--color-fg-muted)]">loading providers…</div>
-      {:else if auth.providers.length === 0}
+      {:else if showEmpty && auth.providers.length === 0}
         <HostIssuePanel issue={missingProviderIssue} />
-      {:else if configuredProviderCount === 0}
+      {:else if showEmpty && configuredProviderCount === 0}
         <HostIssuePanel issue={missingProviderIssue} compact />
       {/if}
 
@@ -77,11 +79,12 @@
         <label class="label mb-1.5 block" for="auth_api_key">API key</label>
         <Textarea
           id="auth_api_key"
+          data-keyboard-editor
           rows={3}
           value={auth.apiKeyInput}
           oninput={(event) => auth.setApiKeyInput(event.currentTarget.value)}
           placeholder="paste API key"
-          class="min-h-0 type-copy"
+          class="min-h-0 type-input"
         />
       </div>
       <Button type="button" class="w-full" disabled={!auth.apiKeyInput.trim() || auth.savingApiKey} onclick={() => auth.saveApiKey()}>
@@ -126,11 +129,12 @@
           <label class="label mb-1.5 block" for="auth_input">{job.promptMessage}</label>
           <Textarea
             id="auth_input"
+            data-keyboard-editor
             rows={3}
             value={auth.input}
             oninput={(event) => auth.setInput(event.currentTarget.value)}
             placeholder={job.status === "prompt" && job.promptPlaceholder ? job.promptPlaceholder : "paste code or redirect URL"}
-            class="min-h-0 type-copy"
+            class="min-h-0 type-input"
           />
         </div>
         <Button type="button" class="w-full" onclick={() => auth.submit()}>submit</Button>

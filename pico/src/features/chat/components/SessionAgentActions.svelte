@@ -1,38 +1,32 @@
 <script lang="ts">
-  import { tick } from "svelte";
-  import { MoreHorizontal } from "@lucide/svelte";
-  import { createAgentActionsState } from "@/features/chat/actions/agent-actions.state.svelte";
-  import { exportSessionHtml } from "@/features/chat/api";
-  import ProviderAuthView from "@/features/auth/ProviderAuthView.svelte";
-  import { hostIssueSummary } from "@/shared/lib/host-issues";
+  import { ListTree } from "@lucide/svelte";
+  import { sessionExportState } from "@/features/chat/actions/session-export.state.svelte";
+  import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import AgentActionSheet from "@/features/chat/actions/AgentActionSheet.svelte";
-  import MenuView from "@/features/chat/actions/MenuView.svelte";
   import SessionInfoView from "@/features/chat/actions/SessionInfoView.svelte";
   import SessionSettingsView from "@/features/chat/actions/SessionSettingsView.svelte";
   import TreeView from "@/features/chat/actions/TreeView.svelte";
   import { Button } from "@/shared/ui/button";
+  import type { AgentActionView } from "@/features/chat/actions/types";
 
   let { sessionId }: { sessionId: string } = $props();
 
-  const actions = createAgentActionsState();
+  let open = $state(false);
+  let view = $state<AgentActionView>("tree");
+  let error = $state<string | null>(null);
 
-  // Straight to the tree, from the notice of messages on another branch.
-  export function showTree(): void {
-    actions.setOpen(true);
-    actions.setView("tree");
+  export function showView(next: AgentActionView): void {
+    view = next;
+    error = null;
+    open = true;
   }
 
-  async function exportToHtml(): Promise<void> {
-    actions.setError(null);
-    actions.close();
-    await tick();
-
-    try {
-      if (await exportSessionHtml(sessionId)) actions.done();
-    } catch (error) {
-      actions.setOpen(true);
-      actions.setError(hostIssueSummary(error));
-    }
+  function exportToHtml(): void {
+    if (sessionExportState.busy) return;
+    error = null;
+    open = false;
+    const title = activeSessionState.id === sessionId ? activeSessionState.session?.title ?? "session" : "session";
+    sessionExportState.start(sessionId, title);
   }
 </script>
 
@@ -40,35 +34,20 @@
   type="button"
   variant="ghost"
   size="icon"
-  onclick={() => actions.setOpen(true)}
-  class="rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
-  aria-label="Agent actions"
-  title="Agent actions"
+  onclick={() => showView("tree")}
+  class="size-11 shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface)]"
+  aria-label="Conversation tree"
+  title="Conversation tree"
 >
-  <MoreHorizontal class="size-4" />
+  <ListTree size={20} class="size-5" />
 </Button>
 
-<AgentActionSheet
-  bind:open={() => actions.open, (open) => actions.setOpen(open)}
-  view={actions.view}
-  error={actions.error}
-  onBack={actions.back}
->
-  {#if actions.view === "menu"}
-    <MenuView
-      onAuth={() => actions.setView("auth")}
-      onTree={() => actions.setView("tree")}
-      onSettings={() => actions.setView("settings")}
-      onInfo={() => actions.setView("info")}
-      onExport={exportToHtml}
-    />
-  {:else if actions.view === "settings"}
-    <SessionSettingsView {sessionId} onError={actions.setError} excludeKeys={["model"]} />
-  {:else if actions.view === "tree"}
-    <TreeView {sessionId} onDone={actions.done} onError={actions.setError} />
-  {:else if actions.view === "info"}
-    <SessionInfoView {sessionId} />
-  {:else if actions.view === "auth"}
-    <ProviderAuthView onError={actions.setError} class="px-3 py-3" />
+<AgentActionSheet bind:open {view} {error}>
+  {#if view === "settings"}
+    <SessionSettingsView {sessionId} onError={(message) => (error = message)} excludeKeys={["model", "thinkingLevel"]} />
+  {:else if view === "tree"}
+    <TreeView {sessionId} onDone={() => (open = false)} onError={(message) => (error = message)} />
+  {:else if view === "info"}
+    <SessionInfoView {sessionId} onExport={exportToHtml} exporting={sessionExportState.busy} />
   {/if}
 </AgentActionSheet>

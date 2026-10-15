@@ -3,6 +3,7 @@ import type { ExtensionUiRequest, ServerMessage, SessionMeta } from "@pico/proto
 import { answerExtensionUi, getSessionSettings, getSessionStats, listSessionCommands } from "@/features/chat/api";
 import { chatLogState } from "@/features/chat/model/chat-log.state.svelte";
 import { type PicoClient, runRpc } from "@/shared/lib/rpc-client";
+import { createAsyncResource } from "@/shared/lib/async-resource";
 
 export type ConnectionStatus = "offline" | "connecting" | "connected" | "reconnecting" | "gone";
 export type ExtensionUiNotification = Extract<ExtensionUiRequest, { kind: "notify" }>;
@@ -28,22 +29,23 @@ function clearNotification(): void {
 function openSessionResource<A>(fetch: (sessionId: string) => Effect.Effect<A, unknown, PicoClient>) {
   let owner = $state<string | null>(null);
   let value = $state<A | null>(null);
-  let requests = 0;
+  const current = () => owner === activeSessionId ? value : null;
+  const resource = createAsyncResource({
+    fetch,
+    get: current,
+    isActive: (sessionId) => sessionId === activeSessionId,
+    commit: (sessionId, next) => {
+      owner = sessionId;
+      value = next;
+    },
+  });
   return {
+    set: resource.set,
+    load: (sessionId: string) => runRpc(resource.load(sessionId)),
+    update: (sessionId: string, optimistic: A, change: Effect.Effect<A, unknown, PicoClient>) =>
+      runRpc(resource.update(sessionId, optimistic, change)),
     get value(): A | null {
-      return owner === activeSessionId ? value : null;
-    },
-    set(sessionId: string, next: A): void {
-      owner = sessionId;
-      value = next;
-    },
-    async load(sessionId: string): Promise<A | null> {
-      const request = ++requests;
-      const next = await runRpc(fetch(sessionId));
-      if (request !== requests) return null;
-      owner = sessionId;
-      value = next;
-      return next;
+      return current();
     },
   };
 }

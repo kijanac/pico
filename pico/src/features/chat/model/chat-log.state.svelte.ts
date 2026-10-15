@@ -13,23 +13,13 @@ import {
 } from "@pico/protocol/log";
 import { sendMessage } from "@/features/chat/api";
 import { runRpc } from "@/shared/lib/rpc-client";
+import { createOutboxStorage, type OutboxItem } from "./chat-outbox";
+export type { OutboxItem } from "./chat-outbox";
 
 export interface Reading {
   anchor: { entryId: string; top: number } | null;
   visibleCount: number;
   following: boolean;
-}
-
-export interface OutboxItem {
-  cid: string;
-  text: string;
-  mode: SendMode;
-  images?: ImageContent[];
-  base: string | null;
-  state: "sending" | "started" | "queued" | "held" | "failed" | "lost";
-  error?: string;
-  tries: number;
-  sentDuringRun?: boolean;
 }
 
 interface SessionLog {
@@ -41,6 +31,7 @@ interface SessionLog {
   streaming: Mutable<AssistantMessage> | null;
   streamingCalls: Mutable<ToolCallMessage>[];
   outbox: OutboxItem[];
+  outboxSaved: boolean;
   activityVersion: number;
   synced: boolean;
   reading?: Reading;
@@ -63,36 +54,24 @@ const inflight = new Set<string>();
 
 const activeLog = $derived(activeSessionId ? logs[activeSessionId] : undefined);
 
-const outboxKey = (sessionId: string) => `chat:outbox:${sessionId}`;
-
-function loadOutbox(sessionId: string): OutboxItem[] {
-  try {
-    return JSON.parse(localStorage.getItem(outboxKey(sessionId)) ?? "[]") as OutboxItem[];
-  } catch {
-    return [];
-  }
-}
+const outboxStorage = createOutboxStorage(() => localStorage);
 
 function saveOutbox(sessionId: string, outbox: readonly OutboxItem[]): void {
-  const key = outboxKey(sessionId);
-  try {
-    if (outbox.length === 0) localStorage.removeItem(key);
-    else localStorage.setItem(key, JSON.stringify(outbox));
-  } catch {
-    try {
-      localStorage.setItem(key, JSON.stringify(outbox.map(({ images: _, ...item }) => item)));
-    } catch {}
-  }
+  const saved = outboxStorage.save(sessionId, outbox);
+  if (logs[sessionId]) logs[sessionId].outboxSaved = saved;
 }
 
 function getLog(sessionId: string): SessionLog {
-  logs[sessionId] ??= {
+  if (logs[sessionId]) return logs[sessionId];
+  const restored = outboxStorage.load(sessionId);
+  logs[sessionId] = {
     ...emptyLog(),
     leaf: null,
     live: emptyLive(),
     streaming: null,
     streamingCalls: [],
-    outbox: loadOutbox(sessionId),
+    outbox: restored.items,
+    outboxSaved: restored.saved,
     activityVersion: 0,
     synced: false,
     toolOpen: {},
@@ -263,6 +242,8 @@ export const chatLogState = {
     if (!log) return emptyOutbox;
     return log.outbox.filter((item) => !log.live.queue.some((queued) => queued.cid === item.cid));
   },
+
+  get outboxSaved() { return !activeLog?.outbox.length || activeLog.outboxSaved; },
 
   images(cid: string | undefined): ImageContent[] | undefined {
     return cid === undefined ? undefined : activeLog?.outbox.find((item) => item.cid === cid)?.images;

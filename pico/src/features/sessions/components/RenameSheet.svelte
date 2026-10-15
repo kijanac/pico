@@ -9,11 +9,13 @@
     open = $bindable(false),
     initialTitle,
     saving = false,
+    error = null,
     onSave,
   }: {
     open: boolean;
     initialTitle: string;
     saving?: boolean;
+    error?: string | null;
     onSave: (newTitle: string) => void;
   } = $props();
 
@@ -40,6 +42,7 @@
         autofocus
         type="text"
         bind:value
+        disabled={saving}
         onkeydown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();
@@ -49,6 +52,7 @@
         placeholder="session title"
         class="type-input h-10"
       />
+      {#if error}<p class="type-meta mt-2 text-[color:var(--color-danger)]" role="alert">{error}</p>{/if}
     </div>
 
     <div class="flex gap-2 px-3 pb-2 pt-1">

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { flip } from "svelte/animate";
+  import { quintOut } from "svelte/easing";
+  import { prefersReducedMotion } from "svelte/motion";
   import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Plus, Settings as SettingsIcon, Trash2 } from "@lucide/svelte";
   import HostIssuePanel from "@/shared/components/HostIssuePanel.svelte";
   import type { SessionMeta } from "@pico/protocol";
@@ -6,6 +9,7 @@
   import StatusDot from "@/shared/components/StatusDot.svelte";
   import PullToRefresh from "@/shared/components/PullToRefresh.svelte";
   import SwipeActionRow from "@/shared/components/SwipeActionRow.svelte";
+  import { createSessionOrder } from "../model/session-order";
   import { formatCost, relativeTime } from "@/shared/lib/format";
   import { cwdDisplayName } from "@/shared/lib/path-display";
   import { Button } from "@/shared/ui/button";
@@ -16,6 +20,10 @@
     error = null,
     archivedView,
     creating = false,
+    loaded = false,
+    createdSession = null,
+    mutatingSessionId = null,
+    onDismissCreated = () => {},
     openSwipeSessionId = $bindable(null),
     onRefresh = async () => {},
     onToggleArchived = () => {},
@@ -31,6 +39,10 @@
     error?: HostIssue | null;
     archivedView: boolean;
     creating?: boolean;
+    loaded?: boolean;
+    createdSession?: SessionMeta | null;
+    mutatingSessionId?: string | null;
+    onDismissCreated?: () => void;
     openSwipeSessionId?: string | null;
     onRefresh?: () => Promise<void>;
     onToggleArchived?: () => void | Promise<void>;
@@ -45,6 +57,9 @@
   type DotTone = "muted" | "accent" | "warn" | "danger";
 
   const SESSION_ACTION_WIDTH = 58;
+  const sessionOrder = createSessionOrder();
+  const orderedIds = $derived(sessionOrder(sessions));
+  const sessionsById = $derived(new Map(sessions.map((session) => [session.id, session])));
 
   function sessionStatusTone(status: SessionMeta["status"]): DotTone {
     if (status === "thinking" || status === "tool") return "accent";
@@ -88,7 +103,16 @@
     </div>
   </header>
 
-  {#if error && sessions.length > 0}
+  {#if createdSession}
+    {@const created = createdSession}
+    <div class="column mt-4 flex items-center gap-3 px-3">
+      <p class="type-meta min-w-0 flex-1 truncate text-[color:var(--color-fg-muted)]" role="status">created · {created.title}</p>
+      <Button type="button" variant="outline" size="sm" class="touch-target shrink-0" onclick={() => onOpenSession(created)}>open</Button>
+      <button type="button" class="touch-target type-meta text-[color:var(--color-fg-muted)]" onclick={onDismissCreated}>dismiss</button>
+    </div>
+  {/if}
+
+  {#if error && loaded}
     <div class="column mt-4 px-3">
       <HostIssuePanel issue={error} compact>
         {#snippet action()}
@@ -101,9 +125,9 @@
   {/if}
 
   <PullToRefresh onRefresh={onRefresh} class="mt-4 min-h-0 flex-1">
-    {#if refreshing && sessions.length === 0}
+    {#if refreshing && !loaded}
       <section class="type-copy flex min-h-full items-center justify-center text-[color:var(--color-fg-muted)]">loading sessions…</section>
-    {:else if error && sessions.length === 0}
+    {:else if error && !loaded}
       <section class="flex min-h-full flex-col items-center justify-center gap-4 px-6 text-center">
         <HostIssuePanel issue={error} class="max-w-sm" />
         <Button type="button" variant="outline" size="sm" onclick={() => void onRefresh()}>retry</Button>
@@ -118,22 +142,25 @@
       </section>
     {:else}
       <section class="column flex min-h-full flex-col">
-        {#each sessions as item (item.id)}
-          <SwipeActionRow
-            open={openSwipeSessionId === item.id}
-            actionWidth={SESSION_ACTION_WIDTH}
-            actionCount={3}
-            onOpen={() => (openSwipeSessionId = item.id)}
-            onClose={() => {
-              if (openSwipeSessionId === item.id) openSwipeSessionId = null;
-            }}
-          >
-            {#snippet actions()}
-              {@render RowActions(item)}
-            {/snippet}
+        {#each orderedIds as id (id)}
+          {@const item = sessionsById.get(id)!}
+          <div animate:flip={{ duration: prefersReducedMotion.current ? 0 : 180, easing: quintOut }} class="shrink-0">
+            <SwipeActionRow
+              open={openSwipeSessionId === item.id}
+              actionWidth={SESSION_ACTION_WIDTH}
+              actionCount={3}
+              onOpen={() => (openSwipeSessionId = item.id)}
+              onClose={() => {
+                if (openSwipeSessionId === item.id) openSwipeSessionId = null;
+              }}
+            >
+              {#snippet actions()}
+                {@render RowActions(item)}
+              {/snippet}
 
-            {@render RowContent(item)}
-          </SwipeActionRow>
+              {@render RowContent(item)}
+            </SwipeActionRow>
+          </div>
         {/each}
       </section>
     {/if}
@@ -147,15 +174,15 @@
       onclick={onNewSession}
     >
       <Plus class="size-3.5" />
-      new session
+      {creating ? "creating session…" : "new session"}
     </Button>
   </div>
 </main>
 
 {#snippet RowActions(item: SessionMeta)}
-  <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)]" onclick={() => onRename(item)} aria-label="Rename session"><Pencil class="size-4" /></button>
-  <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)]" onclick={() => void onToggleArchive(item)} aria-label={item.archived ? "Unarchive session" : "Archive session"}>{#if item.archived}<ArchiveRestore class="size-4" />{:else}<Archive class="size-4" />{/if}</button>
-  <button type="button" class="flex w-[58px] items-center justify-center bg-[color:var(--color-danger)] text-[color:var(--color-bg)]" onclick={() => onDelete(item)} aria-label="Delete session"><Trash2 class="size-4" /></button>
+  <button type="button" disabled={mutatingSessionId !== null} class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)] disabled:opacity-60" onclick={() => onRename(item)} aria-label="Rename session"><Pencil class="size-4" /></button>
+  <button type="button" disabled={mutatingSessionId !== null} class="flex w-[58px] items-center justify-center bg-[color:var(--color-surface)] text-[color:var(--color-fg-muted)] disabled:opacity-60" onclick={() => void onToggleArchive(item)} aria-label={item.archived ? "Unarchive session" : "Archive session"}>{#if item.archived}<ArchiveRestore class="size-4" />{:else}<Archive class="size-4" />{/if}</button>
+  <button type="button" disabled={mutatingSessionId !== null} class="flex w-[58px] items-center justify-center bg-[color:var(--color-danger)] text-[color:var(--color-bg)] disabled:opacity-60" onclick={() => onDelete(item)} aria-label="Delete session"><Trash2 class="size-4" /></button>
 {/snippet}
 
 {#snippet RowContent(item: SessionMeta)}
@@ -171,7 +198,6 @@
         <span class="shrink-0 tabular-nums">{formatCost(item.costUsd)}</span>
       </div>
     </button>
-    <!-- With a mouse there's no swipe: this reveals the row's actions. -->
     <button
       type="button"
       class="hidden size-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-fine:flex"

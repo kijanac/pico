@@ -3,6 +3,50 @@ export { HostErrorCodeSchema, isHostErrorCode } from "./errors.ts";
 export type { HostErrorCode } from "./errors.ts";
 export { PRODUCT_VERSION } from "./version.ts";
 
+export const ImageMediaType = Schema.Literal("image/png", "image/jpeg", "image/gif", "image/webp", "image/avif");
+export type ImageMediaType = typeof ImageMediaType.Type;
+
+export const FsListing = Schema.Struct({
+  path: Schema.String,
+  parent: Schema.NullOr(Schema.String),
+  home: Schema.String,
+  entries: Schema.Array(Schema.Struct({
+    name: Schema.String,
+    hidden: Schema.Boolean,
+    kind: Schema.Literal("directory", "file", "other"),
+    size: Schema.NullOr(Schema.Number),
+  })),
+});
+export type FsListing = typeof FsListing.Type;
+
+export const FsFile = Schema.Union(
+  Schema.Struct({ kind: Schema.Literal("text"), path: Schema.String, text: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("pdf"), path: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("image"), path: Schema.String, mediaType: ImageMediaType }),
+);
+export type FsFile = typeof FsFile.Type;
+
+export const FileChangeId = Schema.String.pipe(Schema.pattern(/^[a-f0-9]{64}$/));
+
+export const FileChange = Schema.Struct({
+  path: Schema.String,
+  before: Schema.String,
+  after: Schema.String,
+});
+export type FileChange = typeof FileChange.Type;
+
+export const FileChangeRef = Schema.Union(
+  Schema.Struct({ kind: Schema.Literal("saved"), id: FileChangeId, path: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("unavailable"),
+    path: Schema.String,
+    reason: Schema.Literal("too_large", "not_text", "not_saved"),
+  }),
+);
+export type FileChangeRef = typeof FileChangeRef.Type;
+
+export const FileChangeDetails = Schema.Struct({ picoFileChange: FileChangeRef });
+
 export const SessionStatus = Schema.Literal("idle", "thinking", "tool", "waiting", "error");
 export type SessionStatus = typeof SessionStatus.Type;
 
@@ -26,7 +70,6 @@ export const UserMessage = Schema.Struct({
   ...Base,
   text: Schema.String,
   images: Schema.optional(Schema.Array(ImageContent)),
-  // The sender's message id, linking its outbox item to the entry pi saved.
   cid: Schema.optional(Schema.String),
 });
 export type UserMessage = typeof UserMessage.Type;
@@ -82,7 +125,6 @@ const EditReplacements = Schema.Array(
   }),
 );
 
-// Some models (e.g. Opus 4.6, GLM-5.1) emit `edits` as a JSON-encoded string; decode it to the canonical array. No-op on already-parsed args.
 export const EditToolArgs = Schema.Struct({
   path: Schema.String,
   edits: Schema.Union(EditReplacements, Schema.parseJson(EditReplacements)),
@@ -192,8 +234,6 @@ export function hasToolDetails(details: unknown): boolean {
   return typeof details !== "object" || Object.keys(details).length > 0;
 }
 
-// pi saves only a finished compaction; "running" is the phone's own row while
-// one is in progress (a failure shows as a notice).
 export const CompactionStatus = Schema.Literal("running", "success");
 export type CompactionStatus = typeof CompactionStatus.Type;
 
@@ -206,8 +246,6 @@ export const CompactionEntry = Schema.Struct({
 });
 export type CompactionEntry = typeof CompactionEntry.Type;
 
-// A message pi shows that the model didn't write: one an extension added
-// (pi.sendMessage with display on) or a branch summary.
 export const NoteEntry = Schema.Struct({
   kind: Schema.Literal("note"),
   ...Base,
@@ -216,7 +254,6 @@ export const NoteEntry = Schema.Struct({
 });
 export type NoteEntry = typeof NoteEntry.Type;
 
-// A row on the phone's screen, folded from pi's entries (see log.ts).
 export const LogEntry = Schema.Union(
   UserMessage,
   AssistantMessage,
@@ -387,9 +424,6 @@ export const SkillCommandEntry = Schema.Struct({
 });
 export type SkillCommandEntry = typeof SkillCommandEntry.Type;
 
-// Commands registered by a loaded pi extension (pi.registerCommand). Distinct
-// from prompts/skills (which are .md-backed); these dispatch through the
-// extension's handler.
 export const ExtensionCommandEntry = Schema.Struct({
   kind: Schema.Literal("extension"),
   name: Schema.String,
@@ -484,13 +518,6 @@ export const SessionTree = Schema.Struct({
 export type SessionTree = typeof SessionTree.Type;
 
 
-// ---------------------------------------------------------------------------
-// Sync. The phone's bookmark is the id of the newest pi entry it has. What pi
-// doesn't save (the reply being streamed, running tools' output, the queue,
-// run state, open dialogs) comes from the host's live mirror.
-
-// A tool call as pi saved it. The phone narrows `args` to a builtin tool's
-// shape when they match (see log.ts).
 export const ToolCall = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -498,9 +525,6 @@ export const ToolCall = Schema.Struct({
 });
 export type ToolCall = typeof ToolCall.Type;
 
-// One of pi's saved entries, projected for display. Entry types the phone
-// doesn't show (model changes, labels, …) aren't sent; the `leaf` beside a
-// batch is the newest entry id of any type.
 export const Entry = Schema.Union(
   Schema.Struct({
     type: Schema.Literal("user"),
@@ -550,7 +574,6 @@ export const RetryInfo = Schema.Struct({
 });
 export type RetryInfo = typeof RetryInfo.Type;
 
-// pi's queue holds only text; `cid` is set when the item is a send the host made.
 export const QueueItem = Schema.Struct({
   text: Schema.String,
   mode: SendMode,
@@ -565,9 +588,6 @@ export const LiveTool = Schema.Struct({
 });
 export type LiveTool = typeof LiveTool.Type;
 
-// Messages saved on other branches of the session since the phone last looked
-// at the tree: another pi, a terminal say, working elsewhere in it. `at` is
-// when the newest was saved.
 export const Elsewhere = Schema.Struct({ messages: Schema.Number, at: Schema.Number });
 export type Elsewhere = typeof Elsewhere.Type;
 
@@ -575,8 +595,6 @@ export const Live = Schema.Struct({
   running: Schema.Boolean,
   compacting: Schema.Boolean,
   retry: Schema.optional(RetryInfo),
-  // The reply being streamed, with the tool calls the model is still writing
-  // (their arguments as JSON so far); pi saves it as an entry when it ends.
   msg: Schema.optional(
     Schema.Struct({
       at: Schema.Number,
@@ -584,20 +602,13 @@ export const Live = Schema.Struct({
       calls: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, args: Schema.String })),
     }),
   ),
-  // Output so far of tools still running.
   tools: Schema.Array(LiveTool),
   queue: Schema.Array(QueueItem),
-  // Extension dialogs waiting for an answer.
   ui: Schema.Array(ExtensionUiRequest),
   elsewhere: Schema.optional(Elsewhere),
 });
 export type Live = typeof Live.Type;
 
-// started: pi began a run with it. queued: in pi's queue. held: waiting for a
-// compaction to end. handled: an extension command took it. delivered: a retry
-// of a message already in pi's file. cleared: taken out of the queue. failed:
-// pi refused it (`error` says why). delivered also covers a send whose entry
-// pi saved; that entry carries its `cid`.
 export const SendState = Schema.Literal("started", "queued", "held", "handled", "delivered", "cleared", "failed");
 export type SendState = typeof SendState.Type;
 
@@ -609,24 +620,16 @@ const SendStatusFields = {
 export const SendStatus = Schema.Struct(SendStatusFields);
 export type SendStatus = typeof SendStatus.Type;
 
-// A change to a growing text: keep characters `drop` to `from` of the old one,
-// then append `s`. Usually that is appending; bash keeps only the tail of its
-// output, so lines also fall off the top.
 const TextChange = {
   drop: Schema.optional(Schema.Number),
   from: Schema.Number,
   s: Schema.String,
 };
 
-// Changes to the live mirror, applied by the same reducer on host and phone.
 export const LiveEvent = Schema.Union(
-  // A reply started streaming.
   Schema.Struct({ t: Schema.Literal("msg"), at: Schema.Number }),
-  // More text of the streaming reply.
   Schema.Struct({ t: Schema.Literal("d"), s: Schema.String }),
-  // A tool call the model is writing: its arguments as JSON so far.
   Schema.Struct({ t: Schema.Literal("call"), id: Schema.String, name: Schema.String, ...TextChange }),
-  // A running tool's output.
   Schema.Struct({ t: Schema.Literal("out"), id: Schema.String, ...TextChange, details: Schema.optional(Schema.Unknown) }),
   Schema.Struct({
     t: Schema.Literal("run"),
@@ -642,10 +645,6 @@ export const LiveEvent = Schema.Union(
 export type LiveEvent = typeof LiveEvent.Type;
 
 export const ServerMessage = Schema.Union(
-  // First message on every connection, and again after a branch switch.
-  // `reset` means drop what you have: `entries` is the newest page, and `more`
-  // (when set) is the oldest entry id sent, to page back from. Otherwise
-  // `entries` follow the bookmark the phone connected with.
   Schema.Struct({
     t: Schema.Literal("sync"),
     reset: Schema.Boolean,
@@ -654,10 +653,8 @@ export const ServerMessage = Schema.Union(
     more: Schema.optional(Schema.String),
     live: Live,
     session: SessionMeta,
-    // What the host knows of the sends the phone asked about.
     sends: Schema.Array(SendStatus),
   }),
-  // Entries pi just saved, continuing the previous leaf.
   Schema.Struct({ t: Schema.Literal("entries"), leaf: Schema.NullOr(Schema.String), entries: Schema.Array(Entry) }),
   ...LiveEvent.members,
   Schema.Struct({ t: Schema.Literal("send"), ...SendStatusFields }),

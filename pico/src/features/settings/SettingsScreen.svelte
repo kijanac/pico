@@ -2,6 +2,11 @@
   import { navigateTo, routePaths } from "@/app/routes";
   import AppearanceCard from "@/features/settings/components/AppearanceCard.svelte";
   import { Button } from "@/shared/ui/button";
+  import ActionRow from "@/shared/components/ActionRow.svelte";
+  import ProvidersSheet from "@/features/auth/ProvidersSheet.svelte";
+  import { ChevronRight, KeyRound } from "@lucide/svelte";
+
+  let providersOpen = $state(false);
 </script>
 
 <main class="flex min-h-0 flex-1 flex-col">
@@ -17,6 +22,11 @@
 
   <div class="min-h-0 flex-1 overflow-y-auto pt-4" style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem)">
     <div class="column space-y-7 px-3">
+      <ActionRow variant="card" onclick={() => (providersOpen = true)} class="min-h-11">
+        <KeyRound class="size-4 text-[color:var(--color-fg-muted)]" />
+        <span class="type-copy min-w-0 flex-1">providers</span>
+        <ChevronRight class="size-4 text-[color:var(--color-fg-faint)]" />
+      </ActionRow>
       <AppearanceCard />
 
       <section class="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-3">
@@ -31,3 +41,5 @@
     </div>
   </div>
 </main>
+
+<ProvidersSheet bind:open={providersOpen} />

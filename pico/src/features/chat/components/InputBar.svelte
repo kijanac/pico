@@ -12,15 +12,13 @@
   import { interruptSession } from "@/features/chat/api";
   import { runRpc } from "@/shared/lib/rpc-client";
   import { shortFailureText } from "@/shared/lib/host-issues";
-  import { formatCost } from "@/shared/lib/format";
+  import { createLatest } from "@/shared/lib/latest";
   import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/features/chat/model/chat-draft";
-  import { Button } from "@/shared/ui/button";
-  import * as Sheet from "@/shared/ui/sheet";
-  import SheetHeader from "@/shared/components/SheetHeader.svelte";
+  import ComposerActionButton from "./ComposerActionButton.svelte";
+  import ComposerModelControls from "./ComposerModelControls.svelte";
   import ImageTray from "@/features/chat/components/ImageTray.svelte";
   import CompactContextSheet from "@/features/chat/components/CompactContextSheet.svelte";
   import QueuedMessagesSheet from "@/features/chat/components/QueuedMessagesSheet.svelte";
-  import SessionSettingsView from "@/features/chat/actions/SessionSettingsView.svelte";
   import SlashCommandSuggestions from "@/features/chat/components/SlashCommandSuggestions.svelte";
   import { createSlashCommandsState, type CommandEntry, type SlashCommandCompletion } from "@/features/chat/components/slash-commands.state.svelte";
 
@@ -31,13 +29,12 @@
   let {
     sessionId,
     contextStats,
+    compactOpen = $bindable(false),
   }: {
     sessionId: string;
     contextStats?: { cost: number; usage: NonNullable<SessionStats["contextUsage"]> };
+    compactOpen?: boolean;
   } = $props();
-
-  const controls = $derived(activeSessionState.controls.value);
-  let modelOpen = $state(false);
 
   let textarea = $state<HTMLTextAreaElement | null>(null);
   let value = $state("");
@@ -46,9 +43,13 @@
   let holding = $state(false);
   let ignoreNextSendClick = false;
   let sendPointerId: number | null = null;
-  let compactOpen = $state(false);
   let queueOpen = $state(false);
   let images = $state<ImageContent[]>([]);
+  let draftSessionId = untrack(() => sessionId);
+  let draftSaved = $state(true);
+  let preparingImages = $state(false);
+  let destroyed = false;
+  const imagePreparation = createLatest();
 
   const slashCommands = createSlashCommandsState(
     () => sessionId,
@@ -57,41 +58,46 @@
   );
 
   onDestroy(() => {
+    destroyed = true;
+    imagePreparation.begin();
     cancelSendPress();
-    saveChatDraft(sessionId, value);
+    persistDraft();
   });
 
   const busy = $derived(activeSessionState.status === "thinking" || activeSessionState.status === "tool");
   const hasText = $derived(value.trim().length > 0);
   const hasSendable = $derived(hasText || images.length > 0);
-  const canSend = $derived(activeSessionState.connectionStatus !== "gone");
+  const canSend = $derived(activeSessionState.connectionStatus !== "gone" && !preparingImages);
   const queue = $derived(chatLogState.live.queue);
   const queueCount = $derived(queue.length);
-  const contextPercent = $derived(
-    contextStats && contextStats.usage.percent !== null ? Math.round(contextStats.usage.percent) : null,
-  );
   const bottomPadding = $derived(keyboardState.height > 0 ? "0px" : "env(safe-area-inset-bottom)");
-
-  const modelControl = $derived(controls?.controls.find((control) => control.key === "model"));
-  const modelLabel = $derived.by(() => {
-    const mc = modelControl;
-    if (!mc || mc.kind !== "select") return null;
-    return mc.options.find((option) => option.value === mc.value)?.label ?? mc.value;
-  });
 
   function clearImages(): void {
     images.length = 0;
   }
 
-
   $effect(() => {
-    sessionId;
-    untrack(() => void activeSessionState.controls.load(sessionId).catch(() => {}));
+    const id = sessionId;
+    untrack(() => {
+      if (draftSessionId !== id) {
+        persistDraft();
+        imagePreparation.begin();
+        preparingImages = false;
+      }
+      draftSessionId = id;
+      restoreDraft(id);
+    });
   });
 
   $effect(() => {
-    sessionId;
-    untrack(() => restoreDraft());
+    const save = () => persistDraft();
+    const saveWhenHidden = () => { if (document.hidden) save(); };
+    window.addEventListener("pagehide", save);
+    document.addEventListener("visibilitychange", saveWhenHidden);
+    return () => {
+      window.removeEventListener("pagehide", save);
+      document.removeEventListener("visibilitychange", saveWhenHidden);
+    };
   });
 
   $effect(() => {
@@ -107,10 +113,11 @@
   });
 
   $effect(() => {
-    const draftSessionId = sessionId;
-    const draftText = value;
+    const id = sessionId;
+    const draft = { text: value, images: cloneImageContent(images) ?? [] };
     const timer = window.setTimeout(() => {
-      saveChatDraft(draftSessionId, draftText);
+      const saved = saveChatDraft(id, draft);
+      if (id === draftSessionId) draftSaved = saved;
     }, DRAFT_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
@@ -130,33 +137,40 @@
     cursor = node.selectionStart ?? value.length;
   }
 
-  function restoreDraft(): void {
-    value = loadChatDraft(sessionId);
+  function persistDraft(): void {
+    draftSaved = saveChatDraft(draftSessionId, { text: value, images });
+  }
+
+  function restoreDraft(id: string): void {
+    const draft = loadChatDraft(id);
+    value = draft.text;
+    images = cloneImageContent(draft.images) ?? [];
+    draftSaved = draft.saved;
     cursor = 0;
-    clearImages();
   }
 
   function submit(mode: "steer" | "follow_up"): void {
     const text = value.trim();
     const sentImages = cloneImageContent(images);
     if ((!text && !sentImages) || !canSend) return;
-    chatLogState.send(sessionId, { text, mode, images: sentImages });
+    draftSaved = clearChatDraft(sessionId);
+    try {
+      chatLogState.send(sessionId, { text, mode, images: sentImages });
+    } catch (error) {
+      draftSaved = saveChatDraft(sessionId, { text: value, images });
+      actionError = `couldn't prepare message · ${shortFailureText(error)}`;
+      return;
+    }
     value = "";
     cursor = 0;
     clearImages();
-    clearChatDraft(sessionId);
   }
 
   let stopping = $state(false);
   let actionError = $state<string | null>(null);
-  let modelError = $state<string | null>(null);
 
   $effect(() => {
     if (!busy) stopping = false;
-  });
-
-  $effect(() => {
-    if (modelOpen) untrack(() => (modelError = null));
   });
 
   async function interrupt(): Promise<void> {
@@ -281,26 +295,47 @@
     if (images.length > MAX_IMAGES) images.splice(MAX_IMAGES);
   }
 
+  function receiveImages(id: string, next: readonly ImageContent[]): void {
+    if (!destroyed && draftSessionId === id) {
+      addImages(next);
+      persistDraft();
+      return;
+    }
+    const draft = loadChatDraft(id);
+    saveChatDraft(id, { text: draft.text, images: [...draft.images, ...next].slice(0, MAX_IMAGES) });
+  }
+
   async function attachImages(): Promise<void> {
+    const remaining = MAX_IMAGES - images.length;
+    if (remaining <= 0 || preparingImages) return;
+    const id = sessionId;
+    const owner = imagePreparation.begin();
+    preparingImages = true;
+    actionError = null;
     try {
-      const remaining = MAX_IMAGES - images.length;
-      if (remaining <= 0) return;
-      addImages(await pickImages(remaining));
+      receiveImages(id, await pickImages(remaining));
     } catch (error) {
-      console.warn("[input-bar] image pick failed:", error);
+      if (imagePreparation.isCurrent(owner)) actionError = `couldn't attach image · ${shortFailureText(error)}`;
+    } finally {
+      if (imagePreparation.isCurrent(owner)) preparingImages = false;
     }
   }
 
   async function handlePaste(event: ClipboardEvent): Promise<void> {
     const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
     const remaining = MAX_IMAGES - images.length;
-    if (files.length === 0 || remaining <= 0) return;
+    if (files.length === 0 || remaining <= 0 || preparingImages) return;
     event.preventDefault();
-
+    const id = sessionId;
+    const owner = imagePreparation.begin();
+    preparingImages = true;
+    actionError = null;
     try {
-      addImages(await filesToImageContent(files, remaining));
+      receiveImages(id, await filesToImageContent(files, remaining));
     } catch (error) {
-      console.warn("[input-bar] image paste failed:", error);
+      if (imagePreparation.isCurrent(owner)) actionError = `couldn't attach image · ${shortFailureText(error)}`;
+    } finally {
+      if (imagePreparation.isCurrent(owner)) preparingImages = false;
     }
   }
 
@@ -321,6 +356,12 @@
       <button type="button" class="shrink-0 text-[color:var(--color-fg-muted)] active:opacity-70" onclick={() => (actionError = null)}>dismiss</button>
     </div>
   {/if}
+  {#if !draftSaved}
+    <p class="column type-meta px-3 pt-1 text-[color:var(--color-warn)]" role="alert">draft couldn't be saved on this device · keep this page open</p>
+  {/if}
+  {#if preparingImages}
+    <p class="column type-meta px-3 pt-1 text-[color:var(--color-fg-muted)]" role="status">preparing image…</p>
+  {/if}
   {#if slashCommands.query !== null}
     <SlashCommandSuggestions
       entries={slashCommands.matches}
@@ -337,6 +378,7 @@
   <div class="m-2 rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] focus-within:border-[color:var(--color-border-strong)]">
     <textarea
       bind:this={textarea}
+      data-keyboard-editor
       bind:value
       use:autosize={value}
       oninput={(event) => {
@@ -363,69 +405,42 @@
       class="type-input font-prose w-full resize-none bg-transparent px-3 pt-2 pb-1 text-[color:var(--color-fg)] placeholder:text-[color:var(--color-fg-faint)] focus:outline-none"
     ></textarea>
 
-    <div class="flex items-center gap-1 px-1.5 pb-1.5 pointer-coarse:gap-3">
-      <Button type="button" variant="ghost" size="icon" onpointerdown={keepTextareaFocused} onclick={attachImages} disabled={images.length >= MAX_IMAGES} class="touch-target shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Attach image" title="Attach image">
-        <ImagePlus class="size-4" />
-      </Button>
+    <div class="flex items-center gap-1 px-1.5 pb-1.5 {busy && queueCount > 0 ? 'max-[360px]:gap-0' : ''}">
+      <ComposerActionButton type="button" variant="ghost" onpointerdown={keepTextareaFocused} onclick={attachImages} disabled={images.length >= MAX_IMAGES || preparingImages} class="text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Attach image" title="Attach image">
+        <ImagePlus size={20} class="size-5" />
+      </ComposerActionButton>
 
-      {#if modelLabel}
-        <button
-          type="button"
-          onpointerdown={keepTextareaFocused}
-          onclick={() => (modelOpen = true)}
-          class="touch-target type-meta min-w-0 max-w-[12ch] truncate rounded-[var(--radius-sm)] px-2 py-1.5 text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]"
-          aria-label="Model — tap to change"
-          title="Change model"
-        >
-          {modelLabel}
-        </button>
-      {/if}
-
-      {#if contextStats}
-        <button
-          type="button"
-          onpointerdown={keepTextareaFocused}
-          onclick={() => (compactOpen = true)}
-          class="touch-target type-meta shrink-0 rounded-[var(--radius-sm)] px-2 py-1.5 tabular-nums text-[color:var(--color-fg-faint)] active:bg-[color:var(--color-surface-2)]"
-          aria-label="Context usage — tap to compact"
-          title="Compact context"
-        >
-          {contextPercent !== null ? `${contextPercent}%` : "—"}{busy ? "" : ` · ${formatCost(contextStats.cost)}`}
-        </button>
-      {/if}
-
-      <div class="min-w-0 flex-1"></div>
+      <ComposerModelControls {sessionId} onpointerdown={keepTextareaFocused} />
 
       {#if queueCount > 0}
-        <Button type="button" variant="ghost" size="icon" onclick={() => (queueOpen = true)} class="touch-target shrink-0 rounded-[var(--radius-sm)] text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Queued messages" title="Queued messages">
-          <ListTodo class="size-4" />
+        <ComposerActionButton type="button" variant="ghost" onclick={() => (queueOpen = true)} class="text-[color:var(--color-fg-muted)] active:bg-[color:var(--color-surface-2)]" aria-label="Queued messages" title="Queued messages">
+          <ListTodo size={20} class="size-5" />
           <span class="absolute right-0.5 top-0.5 flex min-w-4 translate-x-1/3 -translate-y-1/3 items-center justify-center rounded-full border border-[color:var(--color-surface)] bg-[color:var(--color-accent)] px-1 py-0.5 text-[0.625rem] font-medium leading-none text-[color:var(--color-on-accent)]">
             {queueCount > 99 ? "99+" : queueCount}
           </span>
-        </Button>
+        </ComposerActionButton>
       {/if}
 
       {#if busy}
-        <Button type="button" variant="outline" size="icon" onclick={interrupt} disabled={stopping} aria-label={stopping ? "Stopping" : "Stop"} title={stopping ? "Stopping…" : "Stop the current turn"} class="touch-target shrink-0 rounded-[var(--radius-sm)] active:opacity-80">
+        <ComposerActionButton type="button" variant="outline" onclick={interrupt} disabled={stopping} aria-label={stopping ? "Stopping" : "Stop"} title={stopping ? "Stopping…" : "Stop the current turn"} class="active:opacity-80">
           <Square class="size-3" fill="currentColor" />
-        </Button>
+        </ComposerActionButton>
       {/if}
-      <Button
+      <ComposerActionButton
         type="button"
-        size="icon-lg"
         onclick={handleSendClick}
         onpointerdown={handleSendPointerDown}
         disabled={!hasSendable || !canSend}
-        class={`touch-target shrink-0 rounded-[var(--radius-sm)] bg-[color:var(--color-accent)] text-[color:var(--color-on-accent)] transition-transform duration-100 active:opacity-80 disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-100 ${holding ? "scale-95" : ""}`}
+        class={`bg-[color:var(--color-accent)] text-[color:var(--color-on-accent)] transition-transform duration-100 active:opacity-80 disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-fg-faint)] disabled:opacity-100 ${holding ? "scale-95" : ""}`}
         aria-label={busy ? "Steer (hold to queue a follow-up)" : "Send"}
         title={hasSendable ? (chatLogState.live.compacting ? "Queue until compaction finishes" : busy ? "Tap to steer · hold to queue a follow-up" : "Send · hold to queue a follow-up") : "Draft a message to send"}
       >
         <ArrowUp class="size-3.5" strokeWidth={2.5} />
-      </Button>
+      </ComposerActionButton>
     </div>
   </div>
 
-  <CompactContextSheet bind:open={compactOpen} {sessionId} onError={(message) => (actionError = message)} />
+  <CompactContextSheet bind:open={compactOpen} {sessionId} usage={contextStats?.usage} {busy} compacting={chatLogState.live.compacting} onError={(message) => (actionError = message)} />
 
   <QueuedMessagesSheet
     bind:open={queueOpen}
@@ -435,13 +450,4 @@
     onClear={restoreQueue}
   />
 
-  <Sheet.Root bind:open={modelOpen}>
-    <Sheet.BottomContent class="max-h-[82dvh]">
-      <SheetHeader title="model" />
-      {#if modelError}
-        <p class="type-meta px-3 pt-2 text-[color:var(--color-danger)]" role="alert">{modelError}</p>
-      {/if}
-      <SessionSettingsView {sessionId} onError={(message) => (modelError = message)} filterKeys={["model"]} />
-    </Sheet.BottomContent>
-  </Sheet.Root>
 </div>

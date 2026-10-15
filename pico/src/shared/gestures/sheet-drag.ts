@@ -1,6 +1,5 @@
 const DISMISS_DISTANCE_RATIO = 0.33;
-const DISMISS_VELOCITY = 0.5; // px/ms downward
-// A finger that stopped this long before lifting has no release velocity.
+const DISMISS_VELOCITY_PX_PER_MS = 0.5;
 const STALE_VELOCITY_MS = 100;
 const MIN_DISMISS_DRAG_PX = 24;
 const UPWARD_RESISTANCE = 0.18;
@@ -13,11 +12,26 @@ export interface SheetDragOptions {
   onDismiss: () => void;
 }
 
+function preserveInlineStyles(elements: (HTMLElement | null)[]): () => void {
+  const properties = ["transform", "transition", "animation", "opacity", "will-change"];
+  const snapshots = elements.filter((element): element is HTMLElement => element !== null).map((element) => ({
+    element,
+    styles: properties.map((property) => ({ property, value: element.style.getPropertyValue(property), priority: element.style.getPropertyPriority(property) })),
+  }));
+  return () => {
+    for (const { element, styles } of snapshots) {
+      for (const { property, value, priority } of styles) {
+        if (value) element.style.setProperty(property, value, priority);
+        else element.style.removeProperty(property);
+      }
+    }
+  };
+}
+
 export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) {
   const sheet = options.sheet;
 
   let startY = 0;
-  // Where the sheet was when grabbed: mid-way through opening, or at rest.
   let base = 0;
   let lastY = 0;
   let lastT = 0;
@@ -27,15 +41,19 @@ export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) 
   let shade: HTMLElement | null = null;
   let dragging = false;
   let settled = false;
-  // The pending end of a dismiss or spring-back; a new grab takes over from it.
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let restoreInlineStyles: (() => void) | undefined;
 
-  // Last overlay in DOM is the topmost (this) sheet.
   const overlay = (): HTMLElement | null =>
     [...document.querySelectorAll<HTMLElement>('[data-slot="sheet-overlay"]')].at(-1) ?? null;
 
   const reducedMotion = (): boolean =>
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function restoreStyles(): void {
+    restoreInlineStyles?.();
+    restoreInlineStyles = undefined;
+  }
 
   function onTouchStart(event: TouchEvent): void {
     if (settled || event.touches.length !== 1) return;
@@ -43,7 +61,6 @@ export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) 
     if (!touch) return;
 
     clearTimeout(timer);
-    // The finger takes the sheet where it is, even mid-way through opening.
     const opening = sheet.getAnimations();
     base = opening.length > 0 ? new DOMMatrixReadOnly(getComputedStyle(sheet).transform).m42 : 0;
     for (const animation of opening) animation.cancel();
@@ -55,6 +72,7 @@ export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) 
     dy = 0;
     height = sheet.getBoundingClientRect().height;
     shade = overlay();
+    restoreInlineStyles ??= preserveInlineStyles([sheet, shade]);
     sheet.style.transition = "none";
     sheet.style.willChange = "transform";
     if (shade) shade.style.transition = "none";
@@ -84,13 +102,12 @@ export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) 
     const releaseVelocity = event.timeStamp - lastT < STALE_VELOCITY_MS ? velocity : 0;
     const commit =
       dy > MIN_DISMISS_DRAG_PX &&
-      (base + dy > height * DISMISS_DISTANCE_RATIO || releaseVelocity > DISMISS_VELOCITY);
+      (base + dy > height * DISMISS_DISTANCE_RATIO || releaseVelocity > DISMISS_VELOCITY_PX_PER_MS);
 
     if (commit) dismiss();
     else springBack();
   }
 
-  // The system took the touch (a call, an app switch): put the sheet back.
   function onTouchCancel(): void {
     if (!dragging) return;
     dragging = false;
@@ -100,7 +117,6 @@ export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) 
   function dismiss(): void {
     settled = true;
     const finish = () => {
-      // Inline override stops the data-closed slide/fade replaying over the dragged position.
       sheet.style.animation = "none";
       if (shade) shade.style.animation = "none";
       options.onDismiss();
@@ -128,28 +144,14 @@ export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) 
       shade.style.transition = `opacity ${duration}ms ${EASE}`;
       shade.style.opacity = "";
     }
-    timer = setTimeout(() => {
-      sheet.style.transition = "";
-      sheet.style.transform = "";
-      sheet.style.willChange = "";
-      if (shade) shade.style.transition = "";
-    }, duration + 10);
+    timer = setTimeout(restoreStyles, duration + 10);
   }
 
-  // Reopened before it unmounted (the next extension prompt right after a
-  // dismissed one): hand the sheet back to its opening animation.
   const reopen = new MutationObserver(() => {
     if (!settled || sheet.dataset.state !== "open") return;
     settled = false;
     clearTimeout(timer);
-    for (const element of [sheet, shade]) {
-      if (!element) continue;
-      element.style.transform = "";
-      element.style.transition = "";
-      element.style.animation = "";
-      element.style.opacity = "";
-      element.style.willChange = "";
-    }
+    restoreStyles();
   });
   reopen.observe(sheet, { attributes: true, attributeFilter: ["data-state"] });
 
@@ -162,6 +164,7 @@ export function createSheetDrag(handle: HTMLElement, options: SheetDragOptions) 
     destroy() {
       clearTimeout(timer);
       reopen.disconnect();
+      restoreStyles();
       handle.removeEventListener("touchstart", onTouchStart);
       handle.removeEventListener("touchmove", onTouchMove);
       handle.removeEventListener("touchend", onTouchEnd);

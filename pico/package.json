@@ -22,6 +22,8 @@
     "clsx": "^2.1.1",
     "diff": "^9.0.0",
     "effect": "^3.21.4",
+    "pdfjs-dist": "^6.4.299",
+    "photoswipe": "5.4.4",
     "shiki": "^4.5.0",
     "streaming-markdown": "^0.2.15",
     "svelte": "^5.0.0",
@@ -37,7 +39,8 @@
     "svelte-check": "^4.0.0",
     "tailwindcss": "^4.2.4",
     "typescript": "^5.9.0",
-    "vite": "^8.0.9"
+    "vite": "^8.0.9",
+    "vite-plugin-static-copy": "^4.1.1"
   },
   "packageManager": "pnpm@10.5.2"
 }

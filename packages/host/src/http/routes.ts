@@ -3,10 +3,13 @@ import * as Effect from "effect/Effect";
 import { SessionManager } from "../session.ts";
 import { exportRoute } from "./session-actions.ts";
 
-// Only the streaming HTML export remains here; tRPC moved to /rpc, served by RpcServer.
+import { imageRoute, pdfRoute } from "./files.ts";
+
 export const RawRoutesLive = HttpApiBuilder.Router.use((router) =>
   Effect.gen(function* () {
     const manager = yield* SessionManager;
     yield* router.get("/sessions/:id/export.html", exportRoute(manager));
+    yield* router.get("/fs/pdf", pdfRoute);
+    yield* router.get("/fs/image", imageRoute);
   }),
 );

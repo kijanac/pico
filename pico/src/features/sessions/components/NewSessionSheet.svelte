@@ -16,7 +16,6 @@
     open: boolean;
     creating?: boolean;
     error?: string | null;
-    // Folders of recent sessions, most recent first.
     folders?: readonly string[];
     onCreate: (opts: { cwd: string; title?: string }) => void;
   } = $props();
@@ -24,7 +23,6 @@
   let cwd = $state<string | undefined>();
   const otherFolders = $derived(folders.filter((folder) => folder !== cwd).slice(0, 5));
 
-  // Starts where you last worked.
   $effect(() => {
     if (open && cwd === undefined) cwd = folders[0];
   });
@@ -40,7 +38,7 @@
 </script>
 
 <Sheet.Root bind:open>
-  <Sheet.BottomContent class="max-h-[92dvh]">
+  <Sheet.BottomContent class="[--sheet-max-height:92dvh]">
     <Sheet.Header class="hairline-b flex-row items-center gap-1 space-y-0 px-2 py-2 pr-12 text-left">
       {#if pickerOpen}
         <Button type="button" variant="ghost" size="icon" onclick={() => (pickerOpen = false)} aria-label="Back">

@@ -1,4 +1,5 @@
 import type { ExtensionUiResponseValue, ImageContent, SendMode } from "@pico/protocol";
+import { Effect } from "effect";
 import { sessionExportHtmlUrl } from "@/shared/lib/host-http";
 import { rpc } from "@/shared/lib/rpc-client";
 
@@ -32,30 +33,17 @@ export const getSessionHistory = (sessionId: string, before: string, limit?: num
 const safeFilenamePart = (value: string): string =>
   value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "session";
 
-export async function exportSessionHtml(sessionId: string): Promise<boolean> {
-  const response = await fetch(sessionExportHtmlUrl(sessionId));
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: response.statusText }));
-    throw new Error(`export failed (${response.status}): ${body.error ?? "unknown"}`);
-  }
-
-  const filename = `pi-session-${safeFilenamePart(sessionId)}.html`;
-  const file = new File([await response.blob()], filename, { type: "text/html" });
-  if (navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: filename });
-      return true;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return false;
+export const exportSessionHtml = (sessionId: string) => Effect.tryPromise({
+  try: async (signal) => {
+    const response = await fetch(sessionExportHtmlUrl(sessionId), { signal });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error(`export failed (${response.status}): ${body.error ?? "unknown"}`);
     }
-  }
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(file);
-  link.download = filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
-  return true;
-}
+    return new File([await response.blob()], `pi-session-${safeFilenamePart(sessionId)}.html`, { type: "text/html" });
+  },
+  catch: (error) => error,
+});
 
 export const getSessionTree = (sessionId: string) => rpc((c) => c.sessions.tree({ id: sessionId }));
 
@@ -63,3 +51,5 @@ export const navigateSessionTree = (sessionId: string, opts: { entryId: string; 
   rpc((c) => c.sessions.navigateTree({ id: sessionId, ...opts }));
 
 export const readFile = (path: string, relativeTo?: string) => rpc((c) => c.fs.read({ path, relativeTo }));
+export const listFiles = (path: string, showHidden: boolean) => rpc((c) => c.fs.ls({ path, files: true, showHidden }));
+export const readFileChange = (id: string) => rpc((c) => c.fs.change({ id }));

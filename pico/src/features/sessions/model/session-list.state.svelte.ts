@@ -11,23 +11,23 @@ import {
 import { clearChatDraft } from "@/features/chat/model/chat-draft";
 import { type PicoClient, runRpc } from "@/shared/lib/rpc-client";
 import { diagnoseHostFailure, type HostIssue } from "@/shared/lib/host-issues";
+import { sortSessions } from "./session-order";
 
 type View = "active" | "archived";
 
-// One list per view, so switching shows that view's own rows (or loading),
-// never the other's. null: not loaded yet.
 const lists = $state<Record<View, SessionMeta[] | null>>({ active: null, archived: null });
 let issue = $state<HostIssue | null>(null);
 let archivedView = $state(false);
 let refreshing = $state(false);
 let creating = $state(false);
 let mutatingSessionId = $state<string | null>(null);
-// Bumped by every refresh and failure, so a late answer can't win.
 let refreshes = 0;
 let failures = 0;
+let dataRevision = 0;
+let createdSession = $state<SessionMeta | null>(null);
 
 const view = (): View => (archivedView ? "archived" : "active");
-const sessions = $derived([...(lists[view()] ?? [])].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)));
+const sessions = $derived(sortSessions(lists[view()] ?? []));
 
 function recordError(caught: unknown): void {
   const failure = ++failures;
@@ -43,7 +43,6 @@ function removeLocal(sessionId: string): void {
   }
 }
 
-// Into the list for its view, if that list is loaded; out of the other.
 function replaceSession(session: SessionMeta): void {
   removeLocal(session.id);
   lists[session.archived ? "archived" : "active"]?.unshift(session);
@@ -52,6 +51,7 @@ function replaceSession(session: SessionMeta): void {
 async function mutate<A, E>(sessionId: string, effect: Effect.Effect<A, E, PicoClient>): Promise<A> {
   if (mutatingSessionId) throw new Error("session mutation already in progress");
   mutatingSessionId = sessionId;
+  dataRevision += 1;
   try {
     const result = await runRpc(effect);
     issue = null;
@@ -61,6 +61,7 @@ async function mutate<A, E>(sessionId: string, effect: Effect.Effect<A, E, PicoC
     throw caught;
   } finally {
     mutatingSessionId = null;
+    dataRevision += 1;
   }
 }
 
@@ -71,27 +72,32 @@ export const sessionListState = {
   get creating() { return creating; },
   get mutatingSessionId() { return mutatingSessionId; },
   get error() { return issue; },
+  get loaded() { return lists[view()] !== null; },
+  get createdSession() { return createdSession; },
+
+  dismissCreatedSession(): void { createdSession = null; },
 
   clearError(): void { issue = null; },
   upsert: replaceSession,
   removeLocal,
 
-  // The stored list at once, then the list after pi's files are checked. A
-  // failure keeps what's shown.
   async refresh(): Promise<void> {
     const refresh = ++refreshes;
     const target = view();
+    const revision = dataRevision;
+    const canApply = () => refresh === refreshes && revision === dataRevision && !mutatingSessionId && !creating;
     refreshing = true;
     try {
-      const stored = await runRpc(loadSessionList({ archived: target === "archived" }));
-      // An empty store may just not be indexed yet: wait for the fresh list.
-      if (refresh === refreshes && stored.length > 0) lists[target] = [...stored];
+      if (lists[target] === null) {
+        const stored = await runRpc(loadSessionList({ archived: target === "archived" }));
+        if (canApply() && lists[target] === null && stored.length > 0) lists[target] = [...stored];
+      }
       const fresh = await runRpc(loadSessionList({ archived: target === "archived", fresh: true }));
-      if (refresh !== refreshes) return;
+      if (!canApply()) return;
       lists[target] = [...fresh];
       issue = null;
     } catch (caught) {
-      if (refresh === refreshes) recordError(caught);
+      if (canApply()) recordError(caught);
     } finally {
       if (refresh === refreshes) refreshing = false;
     }
@@ -106,16 +112,17 @@ export const sessionListState = {
   async create(input: CreateSessionInput): Promise<SessionMeta> {
     if (creating) throw new Error("session creation already in progress");
     creating = true;
-    // The caller opens the session as soon as it exists; the list catches up
-    // on its own, and a failed refresh there doesn't fail the create.
+    dataRevision += 1;
+    let session: SessionMeta | null = null;
     try {
-      const session = await runRpc(createSessionRequest(input));
-      archivedView = false;
+      session = await runRpc(createSessionRequest(input));
       replaceSession(session);
-      void this.refresh();
+      createdSession = session;
       return session;
     } finally {
       creating = false;
+      dataRevision += 1;
+      if (session) void this.refresh();
     }
   },
 

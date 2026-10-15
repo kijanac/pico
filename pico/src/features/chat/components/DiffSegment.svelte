@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { diffLines } from "diff/lib/diff/line.js";
+  import { diffRuns, runLineNumbers, type DiffRun } from "./diff-runs";
+  import { Effect, Fiber } from "effect";
   import { highlightLines, inferLangFromPath } from "@/shared/lib/highlighter";
 
-  let { oldText, newText, path }: { oldText: string; newText: string; path: string } = $props();
+  let { oldText, newText, path, full = false }: { oldText: string; newText: string; path: string; full?: boolean } = $props();
 
   type LineKind = "add" | "remove" | "context";
 
@@ -21,12 +22,13 @@
 
   const CONTEXT_LINES = 3;
 
-  const lines = $derived(toDiffLines(oldText, newText));
+  const runs = $derived(diffRuns(oldText, newText));
+  const lines = $derived(full ? [] : toDiffLines(runs));
   const segments = $derived(collapseContext(lines));
+  const lastLine = $derived(runs.reduce((last, run) => Math.max(last, (run.newLine ?? run.oldLine ?? 1) + run.count - 1), 1));
+  const gutterWidth = $derived(`${Math.max(3, String(lastLine).length)}ch`);
 
   let highlighted = $state<{ old: string[]; neu: string[] } | null>(null);
-  // Derived so the effect below re-runs only when the language changes, not on
-  // every read through the props chain.
   const lang = $derived(inferLangFromPath(path));
 
   $effect(() => {
@@ -36,57 +38,34 @@
     highlighted = null;
     if (!currentLang) return;
 
-    const highlight = new AbortController();
-    void (async () => {
-      const [oldLines, newLines] = await Promise.all([
-        highlightLines(oldCode, currentLang, highlight.signal),
-        highlightLines(newCode, currentLang, highlight.signal),
-      ]);
-      if (highlight.signal.aborted || !oldLines || !newLines) return;
-      highlighted = { old: oldLines, neu: newLines };
-    })();
-
-    return () => highlight.abort();
+    const task = Effect.runFork(Effect.all([
+      Effect.tryPromise({ try: (signal) => highlightLines(oldCode, currentLang, signal), catch: () => null }),
+      Effect.tryPromise({ try: (signal) => highlightLines(newCode, currentLang, signal), catch: () => null }),
+    ], { concurrency: 2 }).pipe(
+      Effect.tap(([old, neu]) => Effect.sync(() => { if (old && neu) highlighted = { old, neu }; })),
+      Effect.catchAll(() => Effect.void),
+    ));
+    return () => { Effect.runFork(Fiber.interrupt(task)); };
   });
 
-  // Comparing two texts costs size × number of changes, and this runs while
-  // the page waits. Past this it gives up, as diff tools do, and shows the old
-  // block replaced by the new one: still correct, just coarser. 100ms is about
-  // where a response stops feeling instant.
-  const DIFF_TIMEOUT_MS = 100;
+  function toDiffLines(changes: DiffRun[]): DiffLine[] {
+    return changes.flatMap((run) => {
+      const text = run.text.split("\n");
+      if (text.at(-1) === "") text.pop();
+      return text.map((line, index) => ({
+        kind: run.kind,
+        oldLine: run.oldLine === null ? null : run.oldLine + index,
+        newLine: run.newLine === null ? null : run.newLine + index,
+        text: line,
+      }));
+    });
+  }
 
-  function toDiffLines(oldValue: string, newValue: string): DiffLine[] {
-    const chunks = diffLines(oldValue, newValue, { timeout: DIFF_TIMEOUT_MS }) ?? [
-      { value: oldValue, added: false, removed: true, count: 0 },
-      { value: newValue, added: true, removed: false, count: 0 },
-    ];
-    const out: DiffLine[] = [];
-    let oldNo = 0;
-    let newNo = 0;
-
-    for (const chunk of chunks) {
-      const chunkLines = chunk.value.split("\n");
-      if (chunkLines.length > 0 && chunkLines[chunkLines.length - 1] === "") {
-        chunkLines.pop();
-      }
-      const kind: LineKind = chunk.added ? "add" : chunk.removed ? "remove" : "context";
-
-      for (const text of chunkLines) {
-        if (kind === "add") {
-          newNo += 1;
-          out.push({ kind, oldLine: null, newLine: newNo, text });
-        } else if (kind === "remove") {
-          oldNo += 1;
-          out.push({ kind, oldLine: oldNo, newLine: null, text });
-        } else {
-          oldNo += 1;
-          newNo += 1;
-          out.push({ kind, oldLine: oldNo, newLine: newNo, text });
-        }
-      }
-    }
-
-    return out;
+  function highlightedRun(run: DiffRun): string | null {
+    if (!highlighted) return null;
+    const start = (run.newLine ?? run.oldLine ?? 1) - 1;
+    const source = run.kind === "remove" ? highlighted.old : highlighted.neu;
+    return source.slice(start, start + run.count).join("\n");
   }
 
   function collapseContext(diff: DiffLine[]): CollapsedSegment[] {
@@ -150,14 +129,28 @@
   }
 </script>
 
-<div class="type-code overflow-hidden rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-code-bg)] font-mono text-[color:var(--color-code-fg)]">
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div class="type-code overflow-x-auto overscroll-x-contain rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-code-bg)] font-mono text-[color:var(--color-code-fg)]" class:full-diff={full} role={full ? "region" : undefined} aria-label={full ? "File changes" : undefined} tabindex={full ? 0 : undefined}>
+  {#if full}
+    <div class="min-w-max">
+      {#each runs as run}
+        {@const t = tone(run.kind)}
+        {@const content = highlightedRun(run)}
+        <div class={`flex gap-1 px-1 ${t.bg}`} data-diff-run={run.kind} data-diff-count={run.count}>
+          <pre style:width={gutterWidth} class="m-0 shrink-0 select-none pr-1 text-right tabular-nums text-[color:var(--color-fg-faint)]" aria-hidden="true">{runLineNumbers(run)}</pre>
+          <pre class={`m-0 w-3 shrink-0 select-none text-center ${t.gutterColor}`} aria-label={run.kind === "add" ? "added" : run.kind === "remove" ? "removed" : undefined} aria-hidden={run.kind === "context"}>{`${t.gutter}\n`.repeat(run.count - 1) + t.gutter}</pre>
+          <pre class="m-0 flex-1" data-diff-code>{#if content !== null}{@html content}{:else}{run.text.replace(/\r?\n$/, "")}{/if}</pre>
+        </div>
+      {/each}
+    </div>
+  {:else}
   {#each segments as segment}
     {#if segment.kind === "hunk"}
       {#each segment.lines ?? [] as line}
         {@const t = tone(line.kind)}
         {@const content = highlightedContent(line)}
-        <div class={`flex items-start gap-1 px-1 ${t.bg}`}>
-          <span class={`w-3 shrink-0 select-none text-center tabular-nums ${t.gutterColor}`} aria-hidden="true">{t.gutter}</span>
+        <div class={`flex items-start gap-1 px-1 ${t.bg}`} data-diff-line={line.kind}>
+          <span class={`w-3 shrink-0 select-none text-center tabular-nums ${t.gutterColor}`} aria-label={line.kind === "add" ? "added" : line.kind === "remove" ? "removed" : undefined} aria-hidden={line.kind === "context"}>{t.gutter}</span>
           {#if content}
             <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{@html content}</span>
           {:else}
@@ -171,4 +164,16 @@
       </div>
     {/if}
   {/each}
+  {/if}
 </div>
+
+<style>
+  .full-diff:focus-visible {
+    outline: 1px solid var(--color-accent);
+    outline-offset: -1px;
+  }
+
+  pre {
+    font: inherit;
+  }
+</style>

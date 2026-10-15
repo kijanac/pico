@@ -60,6 +60,7 @@ import { createMobileExtensionUiChannel } from "./mobile-extension-ui-channel.ts
 import type { FileSession, SessionFile, SessionRecord } from "./session-record.ts";
 import { elsewhere, follow, followFile, type Cursor } from "./transcript.ts";
 import { textFromContent, toolResultFields } from "./tool-result-projection.ts";
+import { editReviewExtension } from "./edit-review.ts";
 
 export class PiError extends Data.TaggedError("PiError")<{
   readonly message: string;
@@ -73,7 +74,6 @@ export interface ExportedHtml {
 }
 
 export interface PiSession {
-  // Entries, the live mirror, sends and subscribers (live.ts).
   readonly live: LiveSession;
   readonly interrupt: () => Effect.Effect<void, PiError>;
   readonly extensionUiResponse: (id: string, value: ExtensionUiResponseValue) => Effect.Effect<void>;
@@ -93,10 +93,8 @@ export class PiClient extends Context.Tag("PiClient")<
   {
     readonly create: (opts: { cwd: string; title?: string }, hooks: LiveHooks) => Effect.Effect<PiSession, PiError>;
     readonly resume: (record: SessionRecord, hooks: LiveHooks) => Effect.Effect<PiSession, PiError | SessionNotFound>;
-    // pi's session files, for the session list.
     readonly sessionFiles: () => Effect.Effect<SessionFile[]>;
     readonly readSessionFile: (path: string) => Effect.Effect<Option.Option<FileSession>, PiError>;
-    // For sessions Pico doesn't have open.
     readonly nameSessionFile: (path: string, name: string) => Effect.Effect<void, PiError>;
     readonly deleteSessionFile: (path: string) => Effect.Effect<void, PiError>;
   }
@@ -106,24 +104,19 @@ const EXPORT_DIR = join(HOST_DATA_DIR, "exports");
 const EXPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 let modelRuntimePromise: Promise<ModelRuntime> | undefined;
 
-// A failed create isn't cached, so the next caller retries.
 export const getAgentModelRuntime = (): Promise<ModelRuntime> =>
   modelRuntimePromise ??= ModelRuntime.create().catch((error: unknown) => {
     modelRuntimePromise = undefined;
     throw error;
   });
 
-// The extensions pi's CLI loads into every session (MCP servers, codemode,
-// tool search); the SDK leaves them to the host. Same defaults as the CLI's.
-// Its llama.cpp extension isn't exported.
 const builtInExtensions: InlineExtension[] = [
+  { name: "pico-file-review", factory: editReviewExtension, replaceable: true, builtin: true },
   { name: "codemode", factory: createCodemodeExtension(), replaceable: true, builtin: true },
   { name: "tool-search", factory: createToolSearchExtension(), replaceable: true, builtin: true },
   { name: "mcp", factory: createMcpExtension(), replaceable: true, builtin: true },
 ];
 
-// Same order as pi's CLI: the cwd's services (settings, resources, extensions
-// and any providers they register), then the session from them.
 const openAgentSession = async (
   cwd: string,
   sessionManager: PiSessionManager,
@@ -275,11 +268,9 @@ const setSessionSetting = async (piSession: AgentSession, key: string, value: st
   return sessionSettings(piSession);
 };
 
-// The session's tree as pi's /tree shows it, flattened depth first.
 const flattenSessionTree = (view: PiSessionManager, currentId: string | null): SessionTree => {
   const currentPath = new Set(currentId === null ? [] : view.getBranch(currentId).map((entry) => entry.id));
   const entries: TreeEntry[] = [];
-  // Siblings sit one level in from their parent; an only child stays level with it.
   const stack = view.getTree().map((node) => ({ node, depth: 0 })).reverse();
   for (let next = stack.pop(); next; next = stack.pop()) {
     const { node: { entry, children, label }, depth } = next;
@@ -325,12 +316,9 @@ const userImages = (content: PiUserContent): ImageContent[] | undefined => {
 const assistantText = (content: PiAssistantMessage["content"]): string =>
   content.filter((part) => part.type === "text").map((part) => part.text).join("");
 
-// pi also reports in-flight "pending"/"deferred" stops; only final ones are shown.
 const finalStopReason = (stopReason: PiAssistantMessage["stopReason"]): { stopReason?: StopReason } =>
   stopReason === "pending" || stopReason === "deferred" ? {} : { stopReason };
 
-// One of pi's entries as the phone shows it, or undefined for entries it
-// doesn't show (model and thinking-level changes, labels, usage, …).
 const toEntry = (entry: SessionEntry): Entry | undefined => {
   const at = Date.parse(entry.timestamp);
   switch (entry.type) {
@@ -396,27 +384,21 @@ const sessionStatsWithCwd = (stats: PiSdkSessionStats, cwd: string): SessionStat
 });
 
 
-// What the live session needs from pi's AgentSession.
 export type PiCore = Pick<AgentSession, "subscribe" | "prompt" | "abort" | "clearQueue" | "isStreaming" | "getSessionStats"> & {
   readonly sessionManager: Pick<PiSessionManager, "getLeafId" | "getEntry" | "getEntries" | "getSessionFile">;
 };
 
 export interface Subscriber {
-  // False when it is too far behind; it is then ended and the phone reconnects.
   push(message: ServerMessage): boolean;
   end(): void;
 }
 
 export interface LiveHooks {
-  // Status or usage changed; the session list keeps a copy.
   persist(meta: SessionMeta): void;
-  // The phone's place moved; pi opens there next time.
   moved(sessionId: string, cursor: Cursor): void;
   log(event: string, fields: Record<string, unknown>): void;
 }
 
-// How pi was opened: standing at the phone's place, with its file `from` bytes
-// long or longer, of whose entries the phone had seen `seen`.
 export interface Opened {
   readonly from: number;
   readonly seen: number;
@@ -426,12 +408,9 @@ export type LiveSession = ReturnType<typeof makeLive>;
 
 const TEXT_COALESCE_MS = 50;
 const OUTPUT_COALESCE_MS = 250;
-// A phone further behind than this gets the newest page instead of a catch-up.
 const MAX_CATCHUP_ENTRIES = 400;
 const PAGE_ENTRIES = 100;
 const MAX_REMEMBERED_SENDS = 100;
-// pi defers a prompt sent while it notifies agent_settled and reports it later;
-// this bounds the wait in case it never does.
 const DEFERRED_PROMPT_TIMEOUT_MS = 30_000;
 
 interface SendRecord {
@@ -439,22 +418,13 @@ interface SendRecord {
   readonly text: string;
   readonly mode: SendMode;
   readonly images?: readonly ImageContent[];
-  // Unset until pi reports where the send went; `result` settles then.
   status?: SendStatus;
   result?: Promise<SendStatus>;
-  // The text pi will save: what it queued (templates expanded), or what was sent.
   matchText?: string;
 }
 
 const isIn = (record: SendRecord, ...states: SendState[]) => record.status !== undefined && states.includes(record.status.state);
 
-// One open pi session as phones see it: the entries in pi's file along the
-// phone's line, published as they are saved, plus a mirror of what pi doesn't
-// save, built from the events the host forwarded. Other pi processes (a
-// terminal) may save to the same file; their entries follow the phone's line
-// or count as activity elsewhere. It all runs synchronously with pi's
-// notifications, so a subscriber's sync and the changes after it can't
-// interleave.
 export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHooks, opened: Opened) => {
   const sm = core.sessionManager;
   const mirror = emptyLive();
@@ -466,10 +436,8 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
   let meta = initialMeta;
   let piQueue: { steering: readonly string[]; followUp: readonly string[] } = { steering: [], followUp: [] };
   const seed = sm.getEntries();
-  // pi is opened standing where the phone does, having read its file.
   let cursor: Cursor = { id: sm.getLeafId(), since: seed.length, seen: opened.seen };
   let piLeaf = cursor.id;
-  // Set when the file changed; pi's own saves also move its leaf.
   let changed = true;
   let sendChain: Promise<unknown> = Promise.resolve();
   let queueing: SendRecord | null = null;
@@ -486,8 +454,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     },
   });
 
-  // pi is at work, or about to be: a run, a compaction, a queue, or a send it
-  // hasn't placed yet.
   const busy = () =>
     core.isStreaming || mirror.running || mirror.compacting || mirror.queue.length > 0 || [...sends.values()].some((record) => !record.status);
 
@@ -516,11 +482,8 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     if (status !== meta.status) setMeta({ status });
   };
 
-  // Reply text goes out every 50 ms; a running tool's output, and the
-  // arguments of tool calls the model is writing, every 250 ms.
   let pendingText = "";
   const pendingOutput = new Map<string, { text: string; details?: unknown }>();
-  // The streaming message, and which of its tool calls grew (by content index).
   let pendingCalls: { message: PiAssistantMessage; indexes: Set<number> } | undefined;
   let textTimer: ReturnType<typeof setTimeout> | undefined;
   let outputTimer: ReturnType<typeof setTimeout> | undefined;
@@ -531,7 +494,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     textTimer = outputTimer = undefined;
     if (pendingText) emit({ t: "d", s: pendingText });
     pendingText = "";
-    // pi parses the arguments as they stream; their JSON goes out as changes.
     for (const index of pendingCalls?.indexes ?? []) {
       const part = pendingCalls?.message.content[index];
       if (part?.type !== "toolCall") continue;
@@ -546,7 +508,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     pendingOutput.clear();
   };
 
-  // Saved entries from `id` back to the root, newest first.
   function* branchFrom(id: string | null) {
     for (let entry = id ? transcript.get(id) : undefined; entry; entry = entry.parentId ? transcript.get(entry.parentId) : undefined) yield entry;
   }
@@ -558,9 +519,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
       return entry ? [cid ? { ...entry, cid } : entry] : [];
     });
 
-  // A user entry belongs to the oldest pending send pi would save with that
-  // text (pi matches its queue the same way), else to the send that started
-  // the run (templates may have expanded its text).
   const link = (entryId: string, text: string) => {
     const pending = [...sends.values()].filter((record) => record === queueing || isIn(record, "started", "queued"));
     const record = pending.find((r) => r.matchText === text) ?? pending.find((r) => isIn(r, "started"));
@@ -569,8 +527,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     cidByEntry.set(entryId, record.cid);
   };
 
-  // Entries ending at `fromId`, `limit` shown ones or so, starting at a user
-  // message or compaction so a tool call isn't split from its result.
   const pageEndingAt = (fromId: string | null, limit: number): HistoryPage => {
     const walked: SessionEntry[] = [];
     let shown = 0;
@@ -584,8 +540,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     return { entries: project(walked.reverse()), ...(oldest?.parentId ? { more: oldest.id } : {}) };
   };
 
-  // The entries after `head` on the phone's line; undefined when it isn't
-  // there or is too far back.
   const entriesAfter = (head: string): SessionEntry[] | undefined => {
     const walked: SessionEntry[] = [];
     for (const entry of branchFrom(cursor.id)) {
@@ -602,7 +556,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
       reset: after === undefined,
       leaf: cursor.id,
       ...(after ? { entries: project(after) } : pageEndingAt(cursor.id, PAGE_ENTRIES)),
-      // Encoded after later events change the mirror, so it is copied.
       live: structuredClone(mirror),
       session: meta,
       sends: cids.flatMap((cid) => sends.get(cid)?.status ?? []),
@@ -621,10 +574,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     emit({ t: "elsewhere", ...(now ? { elsewhere: now } : {}) });
   };
 
-  // pi notifies message_end before it saves the message, and most saves have
-  // no event of their own, so after every pi event and host command pi's leaf
-  // (which every save moves) is checked, and the file read when it moved or
-  // changed.
   const pump = () => {
     const leaf = sm.getLeafId();
     if (!changed && leaf === piLeaf) return;
@@ -634,8 +583,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     piLeaf = leaf;
     if (saved.length === 0 && !piMoved) return;
     flush();
-    // pi's own saves deliver what it was sent and end what it streamed,
-    // wherever they landed.
     const own = saved.filter((entry) => sm.getEntry(entry.id) !== undefined);
     for (const entry of own) {
       if (entry.type === "message" && entry.message.role === "user") link(entry.id, userText(entry.message.content));
@@ -646,14 +593,10 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
       const stats = core.getSessionStats();
       setMeta({ tokens: { in: stats.tokens.input, out: stats.tokens.output }, costUsd: stats.cost });
     }
-    // While pi is at work the line is its own: another pi saving there forks it.
     const followed = follow(cursor.id, busy() ? own : saved);
     const since = transcript.entries.length;
     if (piMoved && leaf !== followed.id) {
-      // pi went elsewhere: it navigated the tree, or went on from a place
-      // another pi had moved on from. Phones go with it.
       moveTo({ ...cursor, id: leaf, since });
-      // A new session keeps its settings to itself until its first message.
       if (leaf !== null && !transcript.get(leaf)) return;
       hooks.log("branch_switched", { session_id: meta.id, leaf });
       noteElsewhere();
@@ -665,14 +608,11 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     if (followed.line.length > 0) broadcast({ t: "entries", leaf: cursor.id, entries: project(followed.line) });
   };
 
-  // Before acting on what is saved: pi's file can change without notice
-  // reaching the host yet.
   const pull = () => {
     changed = true;
     pump();
   };
 
-  // The phone looked at every branch: only what's saved from now on is news.
   const seeAll = () => {
     pull();
     moveTo({ ...cursor, seen: transcript.entries.length });
@@ -689,11 +629,9 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     });
   };
 
-  // Sends held for a compaction, then pi's own queue.
   const emitQueue = () => {
     const claimed = new Set<SendRecord>();
     const item = (text: string, mode: SendMode): QueueItem => {
-      // The send being queued right now has no status yet.
       const record = [...sends.values()].find(
         (r) => (r === queueing || isIn(r, "queued")) && r.mode === mode && r.matchText === text && !claimed.has(r),
       );
@@ -726,12 +664,8 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     }
   };
 
-  // Hands a send to pi and settles with how pi took it. Never rejects: a
-  // refused send is forgotten, so the phone can try it again.
   const dispatch = (record: SendRecord): Promise<SendStatus> => {
     if (mirror.compacting) {
-      // pi refuses prompts during a manual compaction, and its TUI holds input
-      // during any compaction; hold them until it ends.
       record.status = { cid: record.cid, state: "held" };
       held.push(record);
       emitQueue();
@@ -743,11 +677,9 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
       const settle = (state: SendState, error?: string) => {
         clearTimeout(timer);
         if (queueing === record) queueing = null;
-        // pi can deliver a queued send before it reports it: keep "delivered".
         const status = record.status?.state === "delivered" ? record.status : { cid: record.cid, state, ...(error ? { error } : {}) };
         record.status = status;
         if (state === "started") record.matchText = record.text;
-        // A report that comes after the timeout below corrects it.
         if (reported) broadcast({ t: "send", ...status });
         else resolve(status);
         reported = true;
@@ -760,7 +692,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
           preflightResult: settle,
         })
         .then(() => {
-          // Deferred; the cid stays known in case pi still runs it.
           if (!reported) timer = setTimeout(() => settle("failed", "pi didn't take the message"), DEFERRED_PROMPT_TIMEOUT_MS).unref();
         })
         .catch((error: unknown) => {
@@ -773,7 +704,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     });
   };
 
-  // Sends wait for each other only until pi reports where each went.
   const enqueue = (record: SendRecord, then: (status: SendStatus) => void) => {
     delete record.status;
     const result = sendChain.then(() => dispatch(record)).then((status) => {
@@ -784,14 +714,11 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     return result;
   };
 
-  // After a host restart a retried send's cid is unknown, so pi's file decides
-  // whether it already arrived.
   const sentAfter = (base: string | null, text: string): string | undefined => {
     let steps = 0;
     for (const entry of branchFrom(cursor.id)) {
       if (entry.id === base || ++steps > MAX_CATCHUP_ENTRIES) return undefined;
       if (entry.type === "message" && entry.message.role === "user") {
-        // pi appends notes on attached images after the text.
         const saved = userText(entry.message.content);
         if (saved === text || saved.startsWith(`${text}\n\n`)) return entry.id;
       }
@@ -808,18 +735,15 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     retry: boolean;
   }): Promise<SendStatus> => {
     if (stopping) throw new Error("The host is restarting; try again in a moment.");
-    // pi was reopened, or the session deleted, since this send looked it up.
     if (closed) throw new Error("The session was reopened; try again.");
     const known = sends.get(input.cid);
     if (known) {
-      // A held send's status is cleared while it is handed to pi again.
       while (!known.status) await known.result;
       return known.status;
     }
     pull();
     const delivered = input.retry ? sentAfter(input.base, input.text) : undefined;
     const record: SendRecord = { cid: input.cid, text: input.text, mode: input.mode, images: input.images };
-    // Recorded before anything awaits, so a racing retry finds it.
     remember(record);
     if (delivered) {
       record.status = { cid: input.cid, state: "delivered" };
@@ -833,9 +757,7 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
   };
 
   const onEvent = (event: AgentSessionEvent) => {
-    // Entries pi saved since its last notification come before this one.
     pump();
-    // Calls a tool makes itself (codemode) show inside that tool's row, as in pi's TUI.
     if ("parentToolCallId" in event && event.parentToolCallId) return;
     switch (event.type) {
       case "message_start":
@@ -873,7 +795,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
         updateStatus();
         break;
       case "queue_update": {
-        // A send being queued right now: note the text pi queued for it.
         const lane = queueing?.mode === "follow_up" ? "followUp" : "steering";
         if (queueing && event[lane].length > piQueue[lane].length) queueing.matchText = event[lane].at(-1);
         piQueue = { steering: event.steering, followUp: event.followUp };
@@ -892,9 +813,7 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
         break;
       case "compaction_end":
         setRun({ compacting: false });
-        // pi saves only a successful compaction; a failure shows like an extension notice.
         if (event.errorMessage) emit({ t: "ui", request: { kind: "notify", id: randomUUIDv7(), message: event.errorMessage, level: "error" } });
-        // Not while shutting down: stop() aborting a compaction ends up here too.
         if (stopping) break;
         for (const record of held.splice(0)) enqueue(record, (status) => broadcast({ t: "send", ...status }));
         emitQueue();
@@ -909,7 +828,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     pumpSoon();
   };
 
-  // Saved now too, so a session opened only to read opens here next time.
   hooks.moved(meta.id, cursor);
   noteElsewhere();
   const unsubscribe = core.subscribe(onEvent);
@@ -919,13 +837,10 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
       return meta;
     },
     patchMeta: (patch: Partial<Pick<SessionMeta, "title" | "archived">>) => setMeta(patch),
-    // Nothing under way and no one watching: safe to close.
     get idle() {
       return subscribers.size === 0 && !busy();
     },
-    // The sync, then every later change, in one synchronous step.
     attach(head: string | null, cids: readonly string[], subscriber: Subscriber): () => void {
-      // Closed between the viewer's lookup and now (evicted or deleted).
       if (closed) {
         subscriber.end();
         return () => {};
@@ -937,14 +852,10 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
       return () => subscribers.delete(subscriber);
     },
     send,
-    // pi reads its file only when it opens it, so it can't go on from where
-    // another pi moved the phone's line on to, or navigate to an entry another
-    // pi saved, until it is opened again. Never while Pico has work under way.
     behind(target?: string): boolean {
       pull();
       return !busy() && (sm.getLeafId() !== cursor.id || (target !== undefined && !sm.getEntry(target)));
     },
-    // pi's tree of every entry in the file, which this pi may not have read.
     tree(): SessionTree {
       seeAll();
       return flattenSessionTree(PiSessionManager.inMemory(meta.cwd, undefined, [...transcript.entries]), cursor.id);
@@ -954,7 +865,6 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
       const parentId = transcript.get(before)?.parentId;
       return parentId ? pageEndingAt(parentId, Math.min(Math.max(1, limit), PAGE_ENTRIES * 2)) : { entries: [] };
     },
-    // Empties the queue and returns it for the composer, like pi's dequeue.
     clearQueue(): { steering: string[]; followUp: string[] } {
       const fromHeld = held.splice(0);
       const fromPi = core.clearQueue();
@@ -969,10 +879,7 @@ export const makeLive = (core: PiCore, initialMeta: SessionMeta, hooks: LiveHook
     },
     ui: (request: ExtensionUiRequest) => emit({ t: "ui", request }),
     uiDone: (id: string) => emit({ t: "ui_done", id }),
-    // After a host command that may have saved entries or moved the leaf.
     pump,
-    // Graceful shutdown: refuse new sends and stop the turn, so pi saves the
-    // partial reply and tool results.
     async stop(): Promise<void> {
       stopping = true;
       if (core.isStreaming || mirror.compacting) {
@@ -1026,7 +933,6 @@ const wirePiSession = (
       compact: (instructions) =>
         Effect.tryPromise({
           try: async () => {
-            // A second compact would abort the first one (compact() aborts first).
             if (piSession.isCompacting) return;
             await piSession.compact(instructions?.trim() || undefined);
           },
@@ -1077,8 +983,6 @@ const wirePiSession = (
             takesArgs: true,
             source: s.filePath,
           })),
-          // The runner's live registry — same list pi's TUI shows, including
-          // commands registered dynamically (not just at load).
           extensions: piSession.extensionRunner.getRegisteredCommands().map((cmd) => ({
             kind: "extension" as const,
             name: cmd.invocationName,
@@ -1100,15 +1004,12 @@ const wirePiSession = (
       navigateTree: (entryId, summarize) =>
         Effect.tryPromise({
           try: async () => {
-            // Where the phone goes from isn't news.
             live.seeAll();
             await piSession.navigateTree(entryId, { summarize });
             live.pump();
           },
           catch: (e) => new PiError({ message: `navigateTree failed: ${String(e)}`, cause: e }),
         }),
-      // As pi's runtime does: extensions hear the session end (MCP closes its
-      // servers), then it is disposed.
       close: () =>
         Effect.promise(async () => {
           live.close();
@@ -1153,9 +1054,6 @@ const makeLiveSession = (
     return yield* wirePiSession(piSession, meta, hooks, { from: 0, seen: 0 }, fs);
   });
 
-// Where the phone was, gone on along its line through what was saved since;
-// the first time, pi's newest entry, where pi itself resumes, with what's
-// elsewhere already seen.
 const resumeAt = (sessionManager: PiSessionManager, stored: Cursor | null) => {
   const entries = sessionManager.getEntries();
   if (stored && (stored.id === null || sessionManager.getEntry(stored.id))) {
@@ -1175,14 +1073,11 @@ const makeResumedSession = (
       PiError | SessionNotFound
     >({
       try: async () => {
-        // findById, for a session not indexed yet, only reads headers.
         const path = storedRecord.path ?? PiSessionManager.findById(storedRecord.cwd, storedRecord.id);
-        // Taken first: whatever is saved after this, pi may or may not read.
         const info = path ? statSync(path, { throwIfNoEntry: false }) : undefined;
         if (!path || !info) throw new SessionNotFound({ id: storedRecord.id });
         const sessionManager = PiSessionManager.open(path);
         const at = resumeAt(sessionManager, storedRecord.cursor);
-        // pi builds its context from where its session manager stands.
         if (at.id === null) sessionManager.resetLeaf();
         else sessionManager.branch(at.id);
         return { piSession: await openAgentSession(storedRecord.cwd, sessionManager, "resume"), opened: { from: info.size, seen: at.seen } };
@@ -1207,10 +1102,8 @@ const makeResumedSession = (
     return yield* wirePiSession(piSession, meta, hooks, opened, fs);
   });
 
-// A session with no name and no message yet.
 const UNTITLED = "new session";
 
-// Every file in pi's sessions folder (a folder per cwd), as pi's /resume lists them.
 const sessionFiles = (fs: FileSystem.FileSystem) =>
   Effect.gen(function* () {
     const root = join(getAgentDir(), "sessions");
@@ -1227,9 +1120,6 @@ const sessionFiles = (fs: FileSystem.FileSystem) =>
     return files.flatMap(Option.toArray);
   });
 
-// A session as pi's /resume shows it (its name, else its first message), and
-// its cost, summed as pi's session stats do. Read line by line, as pi does:
-// files with images run to tens of megabytes.
 const readSessionFile = (path: string) =>
   Effect.tryPromise({
     try: async (): Promise<Option.Option<FileSession>> => {
@@ -1256,7 +1146,6 @@ const readSessionFile = (path: string) =>
         }
         if (entry.type !== "message") continue;
         const { message } = entry;
-        // Activity is what pi sorts /resume by: the last user or assistant message.
         if (message.role !== "user" && message.role !== "assistant") continue;
         updatedAtMs = Math.max(updatedAtMs, typeof message.timestamp === "number" ? message.timestamp : Date.parse(entry.timestamp));
         if (!firstMessage && message.role === "user") {

@@ -2,7 +2,7 @@
   import Anser from "anser";
   import { hasToolDetails, type ToolCallMessage } from "@pico/protocol";
   import { highlightToHtml, inferLangFromPath } from "@/shared/lib/highlighter";
-  import { imageDataUrl } from "@/shared/mobile/image-content";
+  import ImageGrid from "./ImageGrid.svelte";
 
   const BASH_CLASS =
     "tool-ansi type-code mt-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-code-bg)] p-2 font-mono text-[color:var(--color-code-fg)] whitespace-pre-wrap break-words";
@@ -28,8 +28,6 @@
     return contentText;
   });
   const path = $derived.by(() => (msg.toolKind === "builtin" && (msg.tool === "read" || msg.tool === "write") ? msg.args.path : ""));
-  // ANSI parsing is synchronous and re-runs per streaming update; cap to the
-  // tail or huge bash logs stall the main thread.
   const MAX_ANSI_PARSE_CHARS = 32_768;
   const bashHtml = $derived.by(() => {
     let text = displayText;
@@ -51,10 +49,8 @@
     const text = displayText;
     const lang = path ? inferLangFromPath(path) : null;
     highlightedHtml = null;
-    // A file still being written renders plain until its content is complete.
     if (!text || !lang || msg.status === "pending") return;
 
-    // Plain until coloured, which happens a slice at a time.
     const highlight = new AbortController();
     void highlightToHtml(text, lang, highlight.signal).then((html) => {
       if (!highlight.signal.aborted) highlightedHtml = html;
@@ -111,11 +107,7 @@
 {/if}
 
 {#if images.length > 0}
-  <div class="mt-1 grid gap-2">
-    {#each images as image}
-      <img class="max-h-72 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] object-contain" src={imageDataUrl(image)} alt="tool result" />
-    {/each}
-  </div>
+  <ImageGrid {images} interactive altPrefix="tool image" imageClass="max-h-72 object-contain" class="mt-1" />
 {/if}
 
 {#if detailsJson}

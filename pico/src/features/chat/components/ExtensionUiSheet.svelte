@@ -14,7 +14,6 @@
   let activeRequestId = $state<string | null>(null);
   const request = $derived(chatLogState.live.ui[0]);
 
-  // What the sheet shows: kept after the answer, while the sheet slides away.
   let shown = $state<typeof request>();
 
   $effect(() => {
@@ -31,7 +30,6 @@
     if (request && activeRequestId === request.id && !sheetOpen) respond(null);
   });
 
-  // Answering keeps the prompt (and what was typed) until the host has it.
   let answering = $state(false);
   let answerError = $state<string | null>(null);
 
@@ -50,22 +48,13 @@
   }
 </script>
 
-<!--
-  Pass-through render: pi's ctx.ui only ever hands us a title/message string plus
-  flat option strings, so we can't structurally separate a command from prose or
-  know which option is destructive. We bring the old permission card's *feel* —
-  the detail in a monospace, whitespace-preserving block so a command pasted into
-  the prompt reads like code — without inventing any permission-specific type.
-  `confirm` is the one exception we can style: it's structurally binary, so ✓ = true
-  (accent) / ✕ = false (outline) is a fixed mapping, not a guess.
--->
 {#snippet detailBlock(text: string)}
   <pre
     class="max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-code-bg)] px-3 py-2.5 type-code leading-relaxed text-[color:var(--color-code-fg)]">{text}</pre>
 {/snippet}
 
 <Sheet.Root bind:open={sheetOpen}>
-  <Sheet.BottomContent class="max-h-[82dvh]">
+  <Sheet.BottomContent class="[--sheet-max-height:82dvh]">
     {#if answerError}
       <p class="type-meta px-3 pt-2 text-[color:var(--color-danger)]" role="alert">{answerError}</p>
     {/if}
@@ -86,8 +75,6 @@
           </div>
         </div>
       {:else if shown.kind === "select"}
-        <!-- No header: select's single `title` carries the whole ask, so it lives in
-             the detail block. pt-8 clears the sheet's drag handle + close button. -->
         <div class="space-y-3 overflow-y-auto p-3 pt-8">
           {@render detailBlock(shown.title)}
           <div class="space-y-2 pt-1">

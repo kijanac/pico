@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { ChevronDown, Download } from "@lucide/svelte";
+  import ActionRow from "@/shared/components/ActionRow.svelte";
   import { activeSessionState } from "@/features/chat/model/active-session.state.svelte";
   import { formatCost, formatTokens } from "@/shared/lib/format";
 
-  let { sessionId }: { sessionId: string } = $props();
+  let { sessionId, onExport, exporting }: { sessionId: string; onExport: () => void; exporting: boolean } = $props();
 
-  // Shared with the chat header: shown at once if loaded, refreshed on open.
   const stats = $derived(activeSessionState.stats.value);
   let loading = $state(false);
   let error = $state<string | null>(null);
@@ -33,28 +34,43 @@
 
 <div class="flex-1 overflow-y-auto px-3 py-3">
   {#if loading && !stats}<div class="type-copy text-[color:var(--color-fg-muted)]">loading session info…</div>{/if}
-  {#if error}<div class="type-copy text-[color:var(--color-danger)]">{error}</div>{/if}
+  {#if error}<div class="type-copy text-[color:var(--color-danger)]" role="alert">{error}</div>{/if}
   {#if stats}
-    <div class="type-copy space-y-2">
-      {@render InfoRow("session id", stats.sessionId)}
-      {@render InfoRow("file", stats.sessionFile ?? "not saved yet")}
-      {@render InfoRow("cwd", stats.cwd)}
-      {@render InfoRow("messages", String(stats.totalMessages))}
-      {@render InfoRow("user / assistant", `${stats.userMessages} / ${stats.assistantMessages}`)}
-      {@render InfoRow("tools", `${stats.toolCalls} calls · ${stats.toolResults} results`)}
-      {@render InfoRow("tokens", `${formatTokens(stats.tokens.total)} total · ${formatTokens(stats.tokens.input)} in · ${formatTokens(stats.tokens.output)} out`)}
-      {@render InfoRow("cache", `${formatTokens(stats.tokens.cacheRead)} read · ${formatTokens(stats.tokens.cacheWrite)} write`)}
+    <dl class="type-copy space-y-2">
+      {@render InfoRow("workspace", stats.cwd)}
       {@render InfoRow("cost", formatCost(stats.cost))}
-      {#if stats.contextUsage?.tokens !== null && stats.contextUsage}
-        {@render InfoRow("context", `${formatTokens(stats.contextUsage.tokens!)} / ${formatTokens(stats.contextUsage.contextWindow)}${formatContextPercent(stats.contextUsage.percent)}`)}
-      {/if}
-    </div>
+      {@render InfoRow("messages", String(stats.totalMessages))}
+      {@render InfoRow("tool calls", String(stats.toolCalls))}
+    </dl>
+    <details class="group mt-3 border-t border-[color:var(--color-border)]">
+      <summary class="type-copy flex min-h-11 cursor-pointer list-none items-center justify-between text-[color:var(--color-fg-muted)] focus-visible:outline focus-visible:outline-[color:var(--color-accent)] [&::-webkit-details-marker]:hidden">
+        <span>details</span>
+        <ChevronDown class="size-4 group-open:rotate-180" />
+      </summary>
+      <dl class="type-copy space-y-2 pb-3">
+        {@render InfoRow("session id", stats.sessionId)}
+        {@render InfoRow("session file", stats.sessionFile ?? "not saved yet")}
+        {@render InfoRow("user messages", String(stats.userMessages))}
+        {@render InfoRow("assistant messages", String(stats.assistantMessages))}
+        {@render InfoRow("tool results", String(stats.toolResults))}
+        {@render InfoRow("total tokens", formatTokens(stats.tokens.total))}
+        {@render InfoRow("input tokens", formatTokens(stats.tokens.input))}
+        {@render InfoRow("output tokens", formatTokens(stats.tokens.output))}
+        {@render InfoRow("cache read", formatTokens(stats.tokens.cacheRead))}
+        {@render InfoRow("cache write", formatTokens(stats.tokens.cacheWrite))}
+        {@render InfoRow("current context", stats.contextUsage?.tokens !== null && stats.contextUsage ? `${formatTokens(stats.contextUsage.tokens)} / ${formatTokens(stats.contextUsage.contextWindow)}${formatContextPercent(stats.contextUsage.percent)}` : "unavailable")}
+      </dl>
+    </details>
   {/if}
+  <ActionRow variant="card" disabled={exporting} onclick={onExport} class="min-h-11">
+    <Download class="size-4 text-[color:var(--color-fg-muted)]" />
+    <span class="type-copy">{exporting ? "preparing export…" : "export HTML"}</span>
+  </ActionRow>
 </div>
 
 {#snippet InfoRow(label: string, value: string)}
-  <div class="rounded-[var(--radius-md)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2">
-    <div class="label">{label}</div>
-    <div class="mt-1 break-words text-[color:var(--color-fg)]">{value}</div>
+  <div class="flex items-baseline justify-between gap-4">
+    <dt class="shrink-0 text-[color:var(--color-fg-muted)]">{label}</dt>
+    <dd class="min-w-0 text-right tabular-nums text-[color:var(--color-fg)] [overflow-wrap:anywhere]">{value}</dd>
   </div>
 {/snippet}

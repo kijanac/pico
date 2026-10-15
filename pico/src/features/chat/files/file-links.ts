@@ -1,11 +1,14 @@
 import { getContext, setContext } from "svelte";
+import type { EditToolArgs, FileChangeRef } from "@pico/protocol";
 
-export type FileRequest = { path: string; relativeTo?: string };
-type OpenFile = (path: string) => void;
+export type EditReview = { ref: FileChangeRef | null; args: EditToolArgs };
+export type FileRequest = { path: string; relativeTo?: string; edit?: EditReview };
+type OpenFile = (path: string, edit?: EditReview) => void;
 
 const openerKey = Symbol("open-file");
 
 export const provideFileOpener = (open: OpenFile) => setContext(openerKey, open);
+export const fileOpener = () => getContext<OpenFile | undefined>(openerKey);
 
 const urlScheme = /^([a-z][a-z0-9+.-]*:|\/\/)/i;
 const lineNumbers = /(:\d+){1,2}$/;
@@ -33,7 +36,7 @@ export function isFollowableHref(href: string): boolean {
 const isPlainLeftClick = (event: MouseEvent) => event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
 export function fileLinkClicks(): (event: MouseEvent) => void {
-  const open = getContext<OpenFile | undefined>(openerKey);
+  const open = fileOpener();
   return (event) => {
     if (!isPlainLeftClick(event)) return;
     const href = event.target instanceof Element ? event.target.closest("a")?.getAttribute("href") : null;
@@ -51,7 +54,7 @@ const wireMessages: Record<string, string> = {
   forbidden: "the host isn't allowed to read it",
   not_a_file: "that's a folder, not a file",
   too_large: "it's too big to show here",
-  not_text: "it isn't a text file",
+  not_text: "this file format can't be previewed here",
 };
 
 export const describeReadFailure = (message: string) => wireMessages[message] ?? message;

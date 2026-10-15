@@ -6,6 +6,10 @@ import {
   AuthProviders,
   Commands,
   ExtensionUiResponseValue,
+  FileChange,
+  FileChangeId,
+  FsFile,
+  FsListing,
   HistoryPage,
   ImageContent,
   SendMode,
@@ -17,16 +21,7 @@ import {
   SessionTree,
 } from "./index.ts";
 
-export const FsListing = Schema.Struct({
-  path: Schema.String,
-  parent: Schema.NullOr(Schema.String),
-  home: Schema.String,
-  entries: Schema.Array(Schema.Struct({ name: Schema.String, hidden: Schema.Boolean })),
-});
-export type FsListing = typeof FsListing.Type;
-
-export const FsFile = Schema.Struct({ path: Schema.String, text: Schema.String });
-export type FsFile = typeof FsFile.Type;
+export { FsFile, FsListing } from "./index.ts";
 
 export class SessionNotFound extends Schema.TaggedError<SessionNotFound>()("SessionNotFound", {
   id: Schema.String,
@@ -85,8 +80,9 @@ export const PicoRpc = RpcGroup.make(
   Rpc.make("auth.submitLoginInput", { payload: { jobId: Schema.String, value: Schema.String }, success: AuthLoginJob, error: RequestError }),
   Rpc.make("auth.saveApiKey", { payload: { providerId: Schema.String, apiKey: Trimmed }, success: AuthProviders, error: RequestError }),
   Rpc.make("auth.cancelLogin", { payload: { jobId: Schema.String }, error: RequestError }),
-  Rpc.make("fs.ls", { payload: { path: Schema.optional(Schema.String) }, success: FsListing, error: RequestError }),
+  Rpc.make("fs.ls", { payload: { path: Schema.optional(Schema.String), files: Schema.optional(Schema.Boolean), showHidden: Schema.optional(Schema.Boolean) }, success: FsListing, error: RequestError }),
   Rpc.make("fs.read", { payload: { path: Schema.String, relativeTo: Schema.optional(Schema.String) }, success: FsFile, error: RequestError }),
+  Rpc.make("fs.change", { payload: { id: FileChangeId }, success: FileChange, error: RequestError }),
 );
 
 export const PicoSessionRpc = RpcGroup.make(
