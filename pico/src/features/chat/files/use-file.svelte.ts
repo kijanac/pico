@@ -1,7 +1,7 @@
 import { readFile } from "@/features/chat/api";
 import { shortFailureText } from "@/shared/lib/host-issues";
 import { describeReadFailure, type FileRequest } from "./file-links";
-import { useCachedRead } from "./use-cached-read.svelte";
+import { useCachedRead } from "@/shared/lib/use-cached-read.svelte";
 
 const RECENT_FILES = 3;
 

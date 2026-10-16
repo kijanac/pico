@@ -4,7 +4,7 @@ import { forkRpc, type PicoClient } from "@/shared/lib/rpc-client";
 
 type ReadRequest<A> = { key: string; read: Effect.Effect<A, unknown, PicoClient> };
 
-export function useCachedRead<A>(request: () => ReadRequest<A> | null, active: () => boolean, options: { capacity: number; revalidate?: boolean }) {
+export function useCachedRead<A>(request: () => ReadRequest<A> | null, active: () => boolean, options: { capacity: number; revalidate?: boolean; keepPrevious?: boolean }) {
   let value = $state.raw<A | null>(null);
   let failure = $state.raw<unknown>(null);
   let loading = $state(false);
@@ -16,9 +16,9 @@ export function useCachedRead<A>(request: () => ReadRequest<A> | null, active: (
     untrack(() => {
       generation += 1;
       const key = request()?.key;
-      value = key === undefined ? null : recent.get(key) ?? null;
+      value = key === undefined ? null : recent.get(key) ?? (options.keepPrevious ? value : null);
       failure = null;
-      loading = key !== undefined && (options.revalidate !== false || value === null);
+      loading = key !== undefined && (options.revalidate !== false || !recent.has(key));
     });
   }
 

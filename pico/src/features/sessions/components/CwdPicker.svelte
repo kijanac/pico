@@ -1,51 +1,30 @@
 <script lang="ts">
   import { Check, ChevronLeft, ChevronRight, Folder, Home } from "@lucide/svelte";
-  import { Effect } from "effect";
-  import type { FsListing } from "@pico/protocol/rpc";
   import { listDirectories } from "@/features/sessions/api";
   import ActionRow from "@/shared/components/ActionRow.svelte";
   import { diagnoseHostFailure, issueText } from "@/shared/lib/host-issues";
-  import { runRpc } from "@/shared/lib/rpc-client";
-  import { createLatest } from "@/shared/lib/latest";
   import { Button } from "@/shared/ui/button";
+  import { useCachedRead } from "@/shared/lib/use-cached-read.svelte";
 
   let { initial, onSelect }: { initial?: string; onSelect: (path: string) => void } = $props();
 
   // svelte-ignore state_referenced_locally
   let path = $state<string | undefined>(initial);
-  let listing = $state<FsListing | null>(null);
-  let loading = $state(false);
+  const read = useCachedRead(() => ({ key: JSON.stringify([path]), read: listDirectories(path) }), () => true, { capacity: 0, keepPrevious: true });
+  const listing = $derived(read.value);
+  const loading = $derived(read.loading);
   let error = $state<string | null>(null);
-  const listingRequest = createLatest();
 
   $effect(() => {
-    void load(path);
+    const failure = read.failure;
+    const requested = path;
+    if (failure === null) { error = null; return; }
+    let current = true;
+    error = issueText(diagnoseHostFailure(failure, (better) => {
+      if (current && path === requested) error = issueText(better);
+    }));
+    return () => { current = false; };
   });
-
-  async function load(nextPath?: string): Promise<void> {
-    const token = listingRequest.begin();
-    loading = true;
-    error = null;
-    await runRpc(listDirectories(nextPath).pipe(
-        Effect.tap((nextListing) =>
-          Effect.sync(() => {
-            if (!listingRequest.isCurrent(token) || nextPath !== path) return;
-            listing = nextListing;
-          }),
-        ),
-        Effect.catchAll((caught) =>
-          Effect.sync(() => {
-            const current = () => listingRequest.isCurrent(token) && nextPath === path;
-            if (!current()) return;
-            error = issueText(diagnoseHostFailure(caught, (better) => {
-              if (current() && error) error = issueText(better);
-            }));
-          }),
-        ),
-      ),
-    );
-    if (listingRequest.isCurrent(token)) loading = false;
-  }
 
   function drill(name: string): void {
     if (!listing) return;

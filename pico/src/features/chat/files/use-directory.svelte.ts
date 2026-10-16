@@ -1,6 +1,6 @@
 import { listFiles } from "@/features/chat/api";
 import { shortFailureText } from "@/shared/lib/host-issues";
-import { useCachedRead } from "./use-cached-read.svelte";
+import { useCachedRead } from "@/shared/lib/use-cached-read.svelte";
 
 const RECENT_DIRECTORIES = 8;
 

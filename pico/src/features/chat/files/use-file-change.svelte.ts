@@ -1,6 +1,6 @@
 import { readFileChange } from "@/features/chat/api";
 import type { EditReview } from "./file-links";
-import { useCachedRead } from "./use-cached-read.svelte";
+import { useCachedRead } from "@/shared/lib/use-cached-read.svelte";
 
 const RECENT_CHANGES = 3;
 

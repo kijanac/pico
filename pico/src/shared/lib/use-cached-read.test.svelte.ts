@@ -26,7 +26,7 @@ afterEach(async () => {
   await Promise.all(tasks.splice(0).map((task) => Effect.runPromise(Fiber.await(task))));
 });
 
-function fixture(options = { capacity: 3, revalidate: true }) {
+function fixture(options: { capacity: number; revalidate?: boolean; keepPrevious?: boolean } = { capacity: 3, revalidate: true }) {
   let wanted = $state.raw<{ key: string; read: Effect.Effect<string, string> } | null>(null);
   let active = $state(true);
   let read!: ReturnType<typeof useCachedRead<string>>;
@@ -101,6 +101,22 @@ describe("reactive filesystem reads", () => {
     expect(tasks).toHaveLength(5);
     await load(f, "a", Effect.succeed("historical"));
     expect(f.snapshot).toEqual({ value: "historical", failure: null, loading: false });
+  });
+
+  it("keeps previous presentation separate from immutable cache-hit detection", async () => {
+    const f = fixture({ capacity: 0, revalidate: false, keepPrevious: true });
+    await load(f, "a");
+    const next = heldRead();
+    f.select("b", next.read);
+    flushSync();
+    await next.started();
+    expect(f.snapshot).toEqual({ value: "a", failure: null, loading: true });
+    next.succeed("b");
+    await settle();
+    expect(f.snapshot).toEqual({ value: "b", failure: null, loading: false });
+    f.select(null);
+    f.read.showCached();
+    expect(f.read.value).toBeNull();
   });
 
   for (const outcome of ["success", "failure"] as const) {
