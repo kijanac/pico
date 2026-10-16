@@ -99,7 +99,7 @@
 
         <div>
           <label class="label mb-1.5 block" for="session_title">title</label>
-          <Input id="session_title" type="text" bind:value={title} placeholder="optional" class="h-10" />
+          <Input id="session_title" data-keyboard-editor type="text" bind:value={title} placeholder="optional" class="h-10" />
         </div>
 
         {#if error}

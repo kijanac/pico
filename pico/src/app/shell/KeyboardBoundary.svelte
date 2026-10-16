@@ -6,7 +6,7 @@
   $effect(() => {
     const viewport = keyboardState.viewport;
     const root = document.documentElement;
-    root.style.setProperty("--keyboard-bottom-inset", `${viewport?.bottom ?? 0}px`);
+    root.style.setProperty("--keyboard-bottom-inset", viewport ? `calc(100% - ${viewport.top + viewport.height}px)` : "0px");
     root.style.setProperty("--app-viewport-height", viewport ? `${viewport.height}px` : "100dvh");
     root.style.setProperty("--app-safe-bottom", keyboardState.height > 0 ? "0px" : "env(safe-area-inset-bottom)");
     return () => {

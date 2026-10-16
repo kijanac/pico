@@ -39,6 +39,7 @@
 
     <div class="px-3 pt-3 pb-2">
       <Input
+        data-keyboard-editor
         autofocus
         type="text"
         bind:value
